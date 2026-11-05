@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Library Studio KH</title>
+<link rel="stylesheet" href="style.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="bar">
+  <h1>Library Studio KH</h1>
+  <button id="toggle" type="button" class="quiet">Settings</button>
+</header>
+
+<main id="home">
+  <p id="summary" class="summary" aria-live="polite">Loading…</p>
+  <ul id="apps" class="apps" aria-label="Connected apps"></ul>
+  <p id="notice" class="notice" role="alert" hidden></p>
+
+  <section aria-labelledby="list-h">
+    <h2 id="list-h">Your library</h2>
+    <p id="empty" class="empty" hidden>Nothing connected yet. Open Settings and add qBittorrent and at least one of Sonarr, Radarr or Lidarr.</p>
+    <table id="list" class="list">
+      <thead><tr><th scope="col">Title</th><th scope="col">State</th><th scope="col">When</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section aria-labelledby="stock-h" id="stock-section" hidden>
+    <h2 id="stock-h">Cleanup settings inside your apps</h2>
+    <p class="hint">Library Studio KH puts these in when you save Settings. qBittorrent only stops seeding; removing the files is left to this app, which checks the library first.</p>
+    <table id="stock" class="list compact">
+      <thead><tr><th scope="col">App</th><th scope="col">Setting</th><th scope="col">Now</th><th scope="col">Should be</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+</main>
+
+<main id="settings" hidden>
+  <form id="form" novalidate>
+    <h2>Local cleanup</h2>
+    <label class="check"><input type="checkbox" name="cleanupOn"> Remove local copies after they reach the library</label>
+    <label>Days to wait before removing <input type="number" name="cleanupDays" min="0" max="3650" required inputmode="numeric"></label>
+
+    <h2>Folders</h2>
+    <label>Download folder on this computer <input name="downloadPath" placeholder="Used to show free space"></label>
+    <label>Library folder on the NAS <input name="libraryPath" placeholder="Used to check the NAS is reachable"></label>
+
+    <h2>qBittorrent</h2>
+    <label>Address <input name="qbittorrent.url" placeholder="http://127.0.0.1:8080" inputmode="url"></label>
+    <label>Username <input name="qbittorrent.username" autocomplete="off"></label>
+    <label>Password <input name="qbittorrent.password" type="password" autocomplete="new-password" data-secret="qbittorrent"></label>
+
+    <div id="arr-fields"></div>
+
+    <p id="form-msg" class="msg" role="status" hidden></p>
+    <div class="actions"><button type="submit">Save</button></div>
+  </form>
+</main>
+
+<footer class="foot">
+  <details id="whatsnew">
+    <summary>Version <span id="version">…</span> · What's new</summary>
+    <div id="releases"></div>
+  </details>
+</footer>
+</body>
+</html>

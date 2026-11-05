@@ -1,0 +1,273 @@
+// Package library gathers the dashboard list from the stock apps and decides which local copies may go.
+package library
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"librarystudio/internal/config"
+	"librarystudio/internal/platform"
+	"librarystudio/internal/stock"
+)
+
+type Item struct {
+	Title    string    `json:"title"`
+	Kind     string    `json:"kind"` // downloading | waiting | imported | unmanaged | upcoming | removed
+	App      string    `json:"app,omitempty"`
+	When     time.Time `json:"when,omitempty"` // upcoming date, planned removal, or removal done
+	Progress float64   `json:"progress,omitempty"`
+}
+
+type AppState struct {
+	Name  string `json:"name"`
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+}
+
+type Setting struct {
+	App   string `json:"app"`
+	Name  string `json:"name"`
+	Value string `json:"value"`
+	Want  string `json:"want"`
+	OK    bool   `json:"ok"`
+}
+
+type Snapshot struct {
+	Items     []Item     `json:"items"`
+	Apps      []AppState `json:"apps"`
+	Settings  []Setting  `json:"settings"`
+	FreeBytes *int64     `json:"freeBytes"` // nil = not known, never shown as 0
+	FreeFrom  string     `json:"freeFrom,omitempty"`
+	Library   string     `json:"library"` // reachable | missing | not set
+	Blocked   string     `json:"blocked,omitempty"`
+	remove    []stock.Torrent
+}
+
+type arrApp struct {
+	name string
+	cfg  config.App
+}
+
+func arrs(c config.Config) []*stock.Arr {
+	var out []*stock.Arr
+	for _, a := range []arrApp{{"Sonarr", c.Sonarr}, {"Radarr", c.Radarr}, {"Lidarr", c.Lidarr}} {
+		if a.cfg.URL != "" && a.cfg.APIKey != "" {
+			out = append(out, stock.NewArr(a.name, a.cfg.URL, a.cfg.APIKey))
+		}
+	}
+	return out
+}
+
+// Decide is the safety rule: remove only a finished torrent that a library app reports as fully
+// imported, that no library app is still handling, and whose import is at least days old.
+func Decide(t stock.Torrent, imported map[string]time.Time, queued map[string]bool, now time.Time, days int) (kind string, removeAt time.Time, remove bool) {
+	h := strings.ToUpper(t.Hash)
+	at, ok := imported[h]
+	switch {
+	case t.Progress < 1:
+		return "downloading", time.Time{}, false
+	case !ok && queued[h]:
+		return "waiting", time.Time{}, false
+	case !ok:
+		return "unmanaged", time.Time{}, false
+	case queued[h]:
+		return "waiting", time.Time{}, false // partly imported: the app still lists it
+	}
+	removeAt = at.Add(time.Duration(days) * 24 * time.Hour)
+	return "imported", removeAt, !now.Before(removeAt)
+}
+
+func Gather(c config.Config, home string, now time.Time) Snapshot {
+	s := Snapshot{Items: []Item{}, Library: "not set"}
+	imported, queued := map[string]time.Time{}, map[string]bool{}
+	appOf := map[string]string{}
+	for _, a := range arrs(c) {
+		st := AppState{Name: a.Name, OK: true}
+		im, err := a.Imports()
+		var q map[string]bool
+		if err == nil {
+			q, err = a.Queue()
+		}
+		if err != nil {
+			st = AppState{Name: a.Name, Error: err.Error()}
+			s.Blocked = fmt.Sprintf("%s didn't answer, so nothing is removed until it does.", a.Name)
+		}
+		for h, t := range im {
+			if t.After(imported[h]) {
+				imported[h], appOf[h] = t, a.Name
+			}
+		}
+		for h := range q {
+			queued[h], appOf[h] = true, a.Name
+		}
+		if err == nil {
+			up, uerr := a.Upcoming(now, now.Add(14*24*time.Hour))
+			if uerr != nil {
+				st = AppState{Name: a.Name, Error: uerr.Error()}
+			}
+			for _, u := range up {
+				s.Items = append(s.Items, Item{Title: u.Title, Kind: "upcoming", App: a.Name, When: u.When})
+			}
+			handling, removesNow, herr := a.Handling()
+			h, r := onOff(handling), onOff(removesNow)
+			if herr != nil {
+				h, r = "Couldn't read", "Couldn't read"
+			}
+			s.Settings = append(s.Settings,
+				Setting{a.Name, "Completed download handling", h, "On", herr == nil && handling},
+				Setting{a.Name, "Remove downloads right after import", r, "Off", herr == nil && !removesNow})
+		}
+		s.Apps = append(s.Apps, st)
+	}
+	if c.Prowlarr.URL != "" && c.Prowlarr.APIKey != "" {
+		st := AppState{Name: "Prowlarr", OK: true}
+		if err := stock.NewArr("Prowlarr", c.Prowlarr.URL, c.Prowlarr.APIKey).Ping(); err != nil {
+			st = AppState{Name: "Prowlarr", Error: err.Error()}
+		}
+		s.Apps = append(s.Apps, st)
+	}
+
+	if c.QBit.URL != "" {
+		qb := stock.NewQBit(c.QBit.URL, c.QBit.Username, c.QBit.Password)
+		ts, err := qb.Torrents()
+		if err != nil {
+			s.Apps = append([]AppState{{Name: "qBittorrent", Error: err.Error()}}, s.Apps...)
+			s.Blocked = "qBittorrent didn't answer, so nothing is removed until it does."
+		} else {
+			s.Apps = append([]AppState{{Name: "qBittorrent", OK: true}}, s.Apps...)
+			for _, t := range ts {
+				kind, at, rm := Decide(t, imported, queued, now, c.CleanupDays)
+				it := Item{Title: t.Name, Kind: kind, App: appOf[strings.ToUpper(t.Hash)], Progress: t.Progress}
+				if kind == "imported" {
+					it.When = at
+				}
+				if rm {
+					s.remove = append(s.remove, t)
+				}
+				s.Items = append(s.Items, it)
+			}
+			if p, err := qb.Prefs(); err == nil {
+				s.Settings = append(s.Settings, qbitSettings(p, c.CleanupDays)...)
+			}
+			if c.DownloadPath == "" {
+				if f, err := qb.FreeSpace(); err == nil {
+					s.FreeBytes, s.FreeFrom = &f, "qBittorrent's download disk"
+				}
+			}
+		}
+	}
+	if c.DownloadPath != "" {
+		if f, err := platform.FreeBytes(c.DownloadPath); err == nil {
+			s.FreeBytes, s.FreeFrom = &f, c.DownloadPath
+		}
+	}
+	if c.LibraryPath != "" {
+		s.Library = "missing"
+		if fi, err := os.Stat(c.LibraryPath); err == nil && fi.IsDir() {
+			s.Library = "reachable"
+		}
+	}
+	for _, r := range readLog(home) {
+		s.Items = append(s.Items, r)
+	}
+	order := map[string]int{"downloading": 0, "waiting": 1, "imported": 2, "unmanaged": 3, "upcoming": 4, "removed": 5}
+	sort.SliceStable(s.Items, func(i, j int) bool {
+		a, b := s.Items[i], s.Items[j]
+		if order[a.Kind] != order[b.Kind] {
+			return order[a.Kind] < order[b.Kind]
+		}
+		if a.Kind == "removed" {
+			return a.When.After(b.When)
+		}
+		return a.When.Before(b.When)
+	})
+	return s
+}
+
+func onOff(b bool) string {
+	if b {
+		return "On"
+	}
+	return "Off"
+}
+
+// qBittorrent's limit action: 0 stop, 1 remove torrent, 2 super seeding, 3 remove torrent and files.
+var limitActions = map[float64]string{0: "Stop torrent", 1: "Remove torrent", 2: "Super seeding", 3: "Remove torrent and files"}
+
+func qbitSettings(p map[string]any, days int) []Setting {
+	enabled, _ := p["max_seeding_time_enabled"].(bool)
+	mins, _ := p["max_seeding_time"].(float64)
+	act, _ := p["max_ratio_act"].(float64)
+	limit := "No limit"
+	if enabled {
+		limit = fmt.Sprintf("%g days", mins/1440)
+	}
+	want := fmt.Sprintf("%d days", days)
+	return []Setting{
+		{"qBittorrent", "Stop seeding after", limit, want, enabled && int(mins) == days*1440},
+		// Removing files from inside qBittorrent would skip the library check, so it must not be the action.
+		{"qBittorrent", "When the limit is reached", limitActions[act], "Stop torrent", act == 0},
+	}
+}
+
+// Apply puts the cleanup settings into the stock apps. It never turns on removal inside them.
+func Apply(c config.Config) []string {
+	var errs []string
+	if c.QBit.URL != "" {
+		qb := stock.NewQBit(c.QBit.URL, c.QBit.Username, c.QBit.Password)
+		p := map[string]any{"max_seeding_time_enabled": true, "max_seeding_time": c.CleanupDays * 1440, "max_ratio_act": 0}
+		if err := qb.SetPrefs(p); err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+	for _, a := range arrs(c) {
+		if err := a.ApplyHandling(); err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+	return errs
+}
+
+// Cleanup removes the local copies the snapshot cleared. It does nothing when switched off or when any app failed to answer.
+func Cleanup(c config.Config, home string, s Snapshot, now time.Time) (removed int, errs []string) {
+	if !c.CleanupOn || s.Blocked != "" || len(s.remove) == 0 {
+		return 0, nil
+	}
+	qb := stock.NewQBit(c.QBit.URL, c.QBit.Username, c.QBit.Password)
+	for _, t := range s.remove {
+		if err := qb.Delete(t.Hash); err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
+		removed++
+		appendLog(home, Item{Title: t.Name, Kind: "removed", When: now})
+	}
+	return removed, errs
+}
+
+const logKeep = 200
+
+func logPath(home string) string { return filepath.Join(home, "removed.json") }
+
+func readLog(home string) []Item {
+	var items []Item
+	if b, err := os.ReadFile(logPath(home)); err == nil {
+		_ = json.Unmarshal(b, &items)
+	}
+	return items
+}
+
+func appendLog(home string, it Item) {
+	items := append(readLog(home), it)
+	if len(items) > logKeep {
+		items = items[len(items)-logKeep:]
+	}
+	b, _ := json.MarshalIndent(items, "", "  ")
+	_ = os.MkdirAll(home, 0o700)
+	_ = os.WriteFile(logPath(home), b, 0o600)
+}
