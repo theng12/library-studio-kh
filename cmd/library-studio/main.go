@@ -5,9 +5,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"librarystudio/internal/config"
@@ -16,7 +18,12 @@ import (
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:0", "address to listen on (this computer only)")
+	withShell := flag.Bool("with-shell", false, "exit when the desktop shell closes our stdin")
 	flag.Parse()
+	if *withShell {
+		// The shell holds our stdin open; it closes on any exit, crash or kill included.
+		go func() { io.Copy(io.Discard, os.Stdin); os.Exit(0) }()
+	}
 
 	home, err := config.Dir()
 	if err != nil {

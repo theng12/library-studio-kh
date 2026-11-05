@@ -13,7 +13,7 @@ fn start_server() -> Result<(Child, String), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let name = if cfg!(windows) { "library-studio-server.exe" } else { "library-studio-server" };
     let mut cmd = Command::new(exe.with_file_name(name));
-    cmd.stdout(Stdio::piped());
+    cmd.arg("-with-shell").stdin(Stdio::piped()).stdout(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
