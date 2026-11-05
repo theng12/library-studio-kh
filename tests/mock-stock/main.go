@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"log"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -17,14 +18,12 @@ func main() {
 	now := time.Now()
 	ago := func(d int) string { return now.Add(-time.Duration(d) * 24 * time.Hour).Format(time.RFC3339) }
 	ahead := func(d int) string { return now.Add(time.Duration(d) * 24 * time.Hour).Format(time.RFC3339) }
+	unix := func(h float64) int64 { return now.Add(-time.Duration(h * float64(time.Hour))).Unix() }
+	done := func(hash, name string, size float64, added, finished float64) map[string]any {
+		return map[string]any{"hash": hash, "name": name, "progress": 1, "state": "stalledUP", "size": size, "downloaded": size, "uploaded": size * 0.8,
+			"ratio": 0.8, "added_on": unix(added), "completion_on": unix(finished), "num_seeds": 0, "num_leechs": 1, "save_path": "/Users/me/Downloads", "category": "tv-sonarr"}
+	}
 	routes := map[string]any{
-		"/api/v2/torrents/info": []map[string]any{
-			{"hash": "a1", "name": "Sample Series S02E04 1080p", "progress": 0.62},
-			{"hash": "a2", "name": "Example Film (2024) 2160p", "progress": 1},
-			{"hash": "a3", "name": "Demo Artist - First Album (FLAC)", "progress": 1},
-			{"hash": "a4", "name": "Sample Series S02E03 1080p", "progress": 1},
-			{"hash": "a5", "name": "home-videos-backup", "progress": 1},
-		},
 		"/api/v2/app/preferences": map[string]any{"max_seeding_time_enabled": false, "max_seeding_time": -1, "max_ratio_act": 0},
 		"/api/v2/sync/maindata":   map[string]any{"server_state": map[string]any{"free_space_on_disk": 412e9}},
 	}
@@ -40,8 +39,67 @@ func main() {
 		"/api/v1/config/downloadclient": {"id": 1, "enableCompletedDownloadHandling": true},
 	}
 	cal := []map[string]any{{"title": "New Beginnings", "seasonNumber": 2, "episodeNumber": 5, "airDateUtc": ahead(3), "series": map[string]any{"title": "Sample Series"}}}
+	media := map[string]any{
+		"/api/v3/series": []map[string]any{
+			{"id": 1, "title": "Sample Series", "year": 2023, "added": ago(40), "statistics": map[string]any{"episodeFileCount": 3}},
+			{"id": 2, "title": "Another Show", "year": 2019, "added": ago(5)},
+		},
+		"/api/v3/series/lookup": []map[string]any{
+			{"title": "Lookup Show", "year": 2025, "tvdbId": 11, "overview": "A made-up show for testing.", "added": "0001-01-01T00:00:00Z"},
+			{"id": 1, "title": "Sample Series", "year": 2023},
+		},
+		"/api/v3/movie": []map[string]any{
+			{"id": 1, "title": "Example Film", "year": 2024, "hasFile": true, "added": ago(1)},
+			{"id": 2, "title": "A Quiet Film", "year": 1998, "hasFile": true, "added": ago(90)},
+		},
+		"/api/v3/movie/lookup":   []map[string]any{{"title": "Lookup Film", "year": 2021, "tmdbId": 22, "overview": "A made-up film for testing."}},
+		"/api/v1/artist":         []map[string]any{{"id": 1, "artistName": "Demo Artist", "added": ago(6), "statistics": map[string]any{"trackFileCount": 10}}},
+		"/api/v1/artist/lookup":  []map[string]any{{"artistName": "Lookup Artist", "foreignArtistId": "x", "overview": "A made-up artist for testing."}},
+		"/api/v3/qualityprofile": []map[string]any{{"id": 1}}, "/api/v1/qualityprofile": []map[string]any{{"id": 1}},
+		"/api/v3/rootfolder": []map[string]any{{"id": 1, "path": "/Volumes/NAS/Media"}}, "/api/v1/rootfolder": []map[string]any{{"id": 1, "path": "/Volumes/NAS/Music"}},
+		"/api/v1/metadataprofile": []map[string]any{{"id": 1}},
+	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
+		if p == "/api/v2/torrents/info" {
+			// The one active download changes speed on every read, so the app's sampler has something to record.
+			speed := rand.Int63n(30e6)
+			if rand.Intn(5) == 0 {
+				speed = 0
+			}
+			json.NewEncoder(w).Encode([]map[string]any{
+				{"hash": "a1", "name": "Sample Series S02E04 1080p", "progress": 0.62, "state": "downloading", "size": 2.4e9, "downloaded": 1.49e9,
+					"dlspeed": speed, "upspeed": 120e3, "eta": 61, "added_on": unix(0.4), "num_seeds": 14, "num_leechs": 3, "save_path": "/Users/me/Downloads", "category": "tv-sonarr"},
+				done("a2", "Example Film (2024) 2160p", 18e9, 30, 29.2),
+				done("a3", "Demo Artist - First Album (FLAC)", 0.6e9, 150, 149.9),
+				done("a4", "Sample Series S02E03 1080p", 2.3e9, 80, 79.7),
+				done("a5", "home-videos-backup", 40e9, 300, 290),
+			})
+			return
+		}
+		if p == "/api/v2/torrents/add" {
+			r.ParseMultipartForm(32 << 20)
+			n := 0
+			if r.MultipartForm != nil {
+				n = len(r.MultipartForm.File["torrents"])
+			}
+			log.Printf("ADD TORRENTS links=%q files=%d", r.FormValue("urls"), n)
+			w.Write([]byte("Ok."))
+			return
+		}
+		if r.Method == "POST" && media[p] != nil {
+			log.Printf("ADD %s", p)
+			w.WriteHeader(201)
+			return
+		}
+		if v, ok := media[p]; ok {
+			// Searches return the made-up results only when the term contains "look".
+			if strings.HasSuffix(p, "lookup") && !strings.Contains(strings.ToLower(r.URL.Query().Get("term")), "look") {
+				v = []any{}
+			}
+			json.NewEncoder(w).Encode(v)
+			return
+		}
 		switch {
 		case p == "/api/v2/app/setPreferences" || p == "/api/v2/torrents/delete" || r.Method == "PUT":
 			log.Printf("%s %s %s", r.Method, p, r.FormValue("json"))

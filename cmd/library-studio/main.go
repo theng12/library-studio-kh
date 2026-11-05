@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"librarystudio/internal/config"
+	"librarystudio/internal/library"
 	"librarystudio/internal/server"
 )
 
@@ -45,6 +46,12 @@ func main() {
 		for {
 			s.RunCleanup()
 			time.Sleep(time.Hour)
+		}
+	}()
+	go func() {
+		for {
+			_ = library.Sample(store.Get(), home, time.Now()) // a missed reading only leaves a gap
+			time.Sleep(library.SampleEvery)
 		}
 	}()
 	// The desktop shell reads this exact line.

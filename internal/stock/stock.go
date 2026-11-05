@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -22,8 +23,19 @@ type Torrent struct {
 	Name         string  `json:"name"`
 	Progress     float64 `json:"progress"`
 	State        string  `json:"state"`
+	AddedOn      int64   `json:"added_on"`
 	CompletionOn int64   `json:"completion_on"`
 	ETA          int64   `json:"eta"`
+	Size         int64   `json:"size"`
+	Downloaded   int64   `json:"downloaded"`
+	Uploaded     int64   `json:"uploaded"`
+	DlSpeed      int64   `json:"dlspeed"`
+	UpSpeed      int64   `json:"upspeed"`
+	Ratio        float64 `json:"ratio"`
+	Seeds        int     `json:"num_seeds"`
+	Peers        int     `json:"num_leechs"`
+	SavePath     string  `json:"save_path"`
+	Category     string  `json:"category"`
 }
 
 type QBit struct {
@@ -91,6 +103,38 @@ func (q *QBit) Delete(hash string) error {
 	return q.call("/api/v2/torrents/delete", url.Values{"hashes": {hash}, "deleteFiles": {"true"}}, nil)
 }
 
+// AddLinks hands magnet or web links to qBittorrent, which saves them in its default folder.
+func (q *QBit) AddLinks(links []string) error {
+	return q.call("/api/v2/torrents/add", url.Values{"urls": {strings.Join(links, "\n")}}, nil)
+}
+
+// AddFiles uploads .torrent files to qBittorrent in one request.
+func (q *QBit) AddFiles(files map[string][]byte) error {
+	if err := q.login(); err != nil {
+		return err
+	}
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	for name, b := range files {
+		w, err := mw.CreateFormFile("torrents", name)
+		if err != nil {
+			return err
+		}
+		w.Write(b)
+	}
+	mw.Close()
+	resp, err := q.c.Post(q.base+"/api/v2/torrents/add", mw.FormDataContentType(), &body)
+	if err != nil {
+		return fmt.Errorf("qBittorrent is not reachable: %w", err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	if resp.StatusCode != 200 || strings.TrimSpace(string(b)) == "Fails." {
+		return fmt.Errorf("qBittorrent didn't accept the torrent files (%s)", strings.TrimSpace(resp.Status+" "+string(b)))
+	}
+	return nil
+}
+
 // FreeSpace is qBittorrent's own reading of its download disk.
 func (q *QBit) FreeSpace() (int64, error) {
 	var m struct {
@@ -148,6 +192,11 @@ func (a *Arr) do(method, path string, body, out any) error {
 		return fmt.Errorf("%s refused the API key", a.Name)
 	}
 	if resp.StatusCode/100 != 2 {
+		// The apps explain refusals (e.g. "already added") as [{"errorMessage": ...}].
+		var why []struct{ ErrorMessage string }
+		if json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&why) == nil && len(why) > 0 && why[0].ErrorMessage != "" {
+			return fmt.Errorf("%s: %s", a.Name, why[0].ErrorMessage)
+		}
 		return fmt.Errorf("%s answered %s for %s", a.Name, resp.Status, path)
 	}
 	if out == nil {

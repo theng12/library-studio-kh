@@ -21,6 +21,7 @@ type Item struct {
 	App      string    `json:"app,omitempty"`
 	When     time.Time `json:"when,omitempty"` // upcoming date, planned removal, or removal done
 	Progress float64   `json:"progress,omitempty"`
+	Stats    *Stats    `json:"stats,omitempty"` // downloads in qBittorrent only
 }
 
 type AppState struct {
@@ -140,9 +141,12 @@ func Gather(c config.Config, home string, now time.Time) Snapshot {
 			s.Blocked = "qBittorrent didn't answer, so nothing is removed until it does."
 		} else {
 			s.Apps = append([]AppState{{Name: "qBittorrent", OK: true}}, s.Apps...)
+			speedMu.Lock()
+			speeds := readSpeeds(home)
+			speedMu.Unlock()
 			for _, t := range ts {
 				kind, at, rm := Decide(t, imported, queued, now, c.CleanupDays)
-				it := Item{Title: t.Name, Kind: kind, App: appOf[strings.ToUpper(t.Hash)], Progress: t.Progress}
+				it := Item{Title: t.Name, Kind: kind, App: appOf[strings.ToUpper(t.Hash)], Progress: t.Progress, Stats: statsOf(t, speeds[t.Hash])}
 				if kind == "imported" {
 					it.When = at
 				}
@@ -187,6 +191,59 @@ func Gather(c config.Config, home string, now time.Time) Snapshot {
 		return a.When.Before(b.When)
 	})
 	return s
+}
+
+// Browse lists what Sonarr, Radarr and Lidarr already look after. errs names any app that didn't answer.
+func Browse(c config.Config) (items []stock.Media, errs []string) {
+	items = []stock.Media{}
+	for _, a := range arrs(c) {
+		m, err := a.Library()
+		if err != nil {
+			errs = append(errs, err.Error())
+		}
+		items = append(items, m...)
+	}
+	return
+}
+
+// Find asks each library app's own search for new shows, films or artists.
+func Find(c config.Config, term string) (items []stock.Media, errs []string) {
+	items = []stock.Media{}
+	for _, a := range arrs(c) {
+		m, err := a.Lookup(term)
+		if err != nil {
+			errs = append(errs, err.Error())
+		}
+		items = append(items, m...)
+	}
+	return
+}
+
+// Add hands a Find result back to the app it came from.
+func Add(c config.Config, app string, raw json.RawMessage) (string, error) {
+	for _, a := range arrs(c) {
+		if a.Name == app {
+			return a.Add(raw)
+		}
+	}
+	return "", fmt.Errorf("%s isn't connected", app)
+}
+
+// AddTorrents hands magnet/web links and .torrent files to qBittorrent.
+func AddTorrents(c config.Config, links []string, files map[string][]byte) error {
+	if c.QBit.URL == "" {
+		return fmt.Errorf("qBittorrent isn't connected. Add it in Settings first.")
+	}
+	qb := stock.NewQBit(c.QBit.URL, c.QBit.Username, c.QBit.Password)
+	if len(links) > 0 {
+		if err := qb.AddLinks(links); err != nil {
+			return err
+		}
+	}
+	if len(files) > 0 {
+		return qb.AddFiles(files)
+	}
+	return nil
 }
 
 func onOff(b bool) string {

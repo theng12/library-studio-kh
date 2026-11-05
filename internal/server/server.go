@@ -7,6 +7,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -62,7 +63,100 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/", http.FileServerFS(static))
 	mux.HandleFunc("GET /api/state", s.state)
 	mux.HandleFunc("POST /api/settings", s.saveSettings)
+	mux.HandleFunc("GET /api/browse", func(w http.ResponseWriter, r *http.Request) {
+		items, errs := library.Browse(s.Store.Get())
+		writeJSON(w, 200, map[string]any{"items": items, "problems": errs})
+	})
+	mux.HandleFunc("GET /api/find", func(w http.ResponseWriter, r *http.Request) {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		if q == "" || len(q) > 200 {
+			writeJSON(w, 400, map[string]string{"error": "Type what you're looking for."})
+			return
+		}
+		items, errs := library.Find(s.Store.Get(), q)
+		writeJSON(w, 200, map[string]any{"items": items, "problems": errs})
+	})
+	mux.HandleFunc("POST /api/add", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			App string          `json:"app"`
+			Raw json.RawMessage `json:"raw"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil || len(req.Raw) == 0 {
+			writeJSON(w, 400, map[string]string{"error": "That result could not be read."})
+			return
+		}
+		where, err := library.Add(s.Store.Get(), req.App, req.Raw)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]string{"folder": where})
+	})
+	mux.HandleFunc("POST /api/torrents", s.addTorrents)
 	return s.guard(mux)
+}
+
+const maxTorrentUpload = 32 << 20
+
+// addTorrents takes pasted links (one per line) and .torrent files, single or many, and passes them to qBittorrent.
+func (s *Server) addTorrents(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxTorrentUpload)
+	if err := r.ParseMultipartForm(maxTorrentUpload); err != nil {
+		writeJSON(w, 400, map[string]string{"error": "That was too big or couldn't be read. Add up to 32 MB of torrent files at a time."})
+		return
+	}
+	var links []string
+	for _, l := range strings.Split(r.FormValue("links"), "\n") {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		low := strings.ToLower(l)
+		if !strings.HasPrefix(low, "magnet:?") && !strings.HasPrefix(low, "http://") && !strings.HasPrefix(low, "https://") {
+			writeJSON(w, 400, map[string]string{"error": "This line isn't a magnet or web link: " + truncate(l, 80)})
+			return
+		}
+		links = append(links, l)
+	}
+	files := map[string][]byte{}
+	for _, fh := range r.MultipartForm.File["torrents"] {
+		if !strings.HasSuffix(strings.ToLower(fh.Filename), ".torrent") {
+			writeJSON(w, 400, map[string]string{"error": fh.Filename + " isn't a .torrent file."})
+			return
+		}
+		f, err := fh.Open()
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": fh.Filename + " couldn't be read."})
+			return
+		}
+		b, err := io.ReadAll(f)
+		f.Close()
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": fh.Filename + " couldn't be read."})
+			return
+		}
+		files[fh.Filename] = b
+	}
+	if len(links)+len(files) == 0 {
+		writeJSON(w, 400, map[string]string{"error": "Paste a link or choose a .torrent file first."})
+		return
+	}
+	if len(links) > 500 {
+		writeJSON(w, 400, map[string]string{"error": "Up to 500 links at a time, please."})
+		return
+	}
+	if err := library.AddTorrents(s.Store.Get(), links, files); err != nil {
+		writeJSON(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]int{"links": len(links), "files": len(files)})
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 // guard: only this machine's own names (stops DNS rebinding), and the API needs the launch token
