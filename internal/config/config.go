@@ -23,20 +23,25 @@ type QBit struct {
 }
 
 type Config struct {
-	CleanupOn    bool   `json:"cleanupOn"`
-	CleanupDays  int    `json:"cleanupDays"`
-	DownloadPath string `json:"downloadPath"`
-	LibraryPath  string `json:"libraryPath"`
-	QBit         QBit   `json:"qbittorrent"`
-	Sonarr       App    `json:"sonarr"`
-	Radarr       App    `json:"radarr"`
-	Lidarr       App    `json:"lidarr"`
-	Prowlarr     App    `json:"prowlarr"`
+	TailscaleOn   bool   `json:"tailscaleOn"`
+	TailscalePort int    `json:"tailscalePort"`
+	CleanupOn     bool   `json:"cleanupOn"`
+	CleanupDays   int    `json:"cleanupDays"`
+	DownloadPath  string `json:"downloadPath"`
+	LibraryPath   string `json:"libraryPath"`
+	QBit          QBit   `json:"qbittorrent"`
+	Sonarr        App    `json:"sonarr"`
+	Radarr        App    `json:"radarr"`
+	Lidarr        App    `json:"lidarr"`
+	Prowlarr      App    `json:"prowlarr"`
 }
 
-func Default() Config { return Config{CleanupOn: true, CleanupDays: 7} }
+func Default() Config { return Config{CleanupOn: true, CleanupDays: 7, TailscalePort: 7882} }
 
 func (c Config) Validate() error {
+	if c.TailscaleOn && (c.TailscalePort < 1024 || c.TailscalePort > 65535) {
+		return errors.New("Tailscale port must be a whole number from 1024 to 65535")
+	}
 	if c.CleanupDays < 0 || c.CleanupDays > 3650 {
 		return errors.New("days before removal must be between 0 and 3650")
 	}

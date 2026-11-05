@@ -1,4 +1,4 @@
-// Package server serves the dashboard and its small JSON API on 127.0.0.1 only.
+// Package server serves the dashboard locally, with optional token-protected Tailscale access.
 package server
 
 import (
@@ -29,8 +29,9 @@ type Server struct {
 	Token string
 	Now   func() time.Time
 
-	mu   sync.Mutex
-	last *lastRun
+	mu     sync.Mutex
+	last   *lastRun
+	remote remoteAccess
 }
 
 type lastRun struct {
@@ -202,6 +203,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		"saved":     saved,
 		"snapshot":  library.Gather(c, s.Home, s.Now()),
 		"lastClean": last,
+		"remote":    s.RemoteStatus(),
 	})
 }
 
@@ -227,8 +229,11 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var problems []string
+	if err := s.ConfigureRemote(); err != nil {
+		problems = append(problems, err.Error())
+	}
 	if c.CleanupOn {
-		problems = library.Apply(c)
+		problems = append(problems, library.Apply(c)...)
 	}
 	writeJSON(w, 200, map[string]any{"problems": problems})
 }

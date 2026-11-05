@@ -305,6 +305,12 @@ $("#find-form").addEventListener("submit", async (ev) => {
 
 function fillForm(st) {
   const f = $("#form"), c = st.settings;
+  f.tailscaleOn.checked = c.tailscaleOn;
+  f.tailscalePort.value = c.tailscalePort || 7882;
+  const remote = st.remote || {};
+  $("#remote-status").textContent = remote.error || (remote.on ? "Ready for Tailscale connections." : "Tailscale access is off.");
+  $("#remote-link-box").hidden = !remote.url;
+  $("#remote-link").value = remote.url || "";
   f.cleanupOn.checked = c.cleanupOn;
   f.cleanupDays.value = c.cleanupDays;
   f.downloadPath.value = c.downloadPath;
@@ -359,6 +365,7 @@ $("#form").addEventListener("submit", async (ev) => {
     msg.hidden = false; msg.textContent = "Days must be a whole number from 0 to 3650."; f.cleanupDays.focus(); return;
   }
   const body = {
+    tailscaleOn: f.tailscaleOn.checked, tailscalePort: Number(f.tailscalePort.value),
     cleanupOn: f.cleanupOn.checked, cleanupDays: days,
     downloadPath: f.downloadPath.value.trim(), libraryPath: f.libraryPath.value.trim(),
     qbittorrent: { url: f["qbittorrent.url"].value.trim(), username: f["qbittorrent.username"].value.trim(), password: f["qbittorrent.password"].value },
@@ -368,7 +375,7 @@ $("#form").addEventListener("submit", async (ev) => {
   try {
     const r = await api("/api/settings", body);
     msg.textContent = r.problems && r.problems.length
-      ? "Saved here, but some apps didn't take the cleanup settings: " + r.problems.join("; ")
+      ? "Saved, but these settings couldn't be applied:" + r.problems.join("; ")
       : "Saved.";
     await load();
     fillForm(current);

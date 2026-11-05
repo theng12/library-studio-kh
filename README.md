@@ -24,6 +24,14 @@ On Save, the app also sets the stock apps so they don't fight this: qBittorrent 
 
 The rule lives in `internal/library` (`Decide`, `Cleanup`) and is tested in `internal/library/library_test.go` against mocked apps.
 
+## Use from your phone or away from home
+
+In Settings → Phone & Tailscale access, switch on **Allow access through Tailscale** and save. The app detects this computer's Tailscale address and shows a private phone link. Open that link on your phone with Tailscale connected to the same network. The host computer must stay awake with Library Studio KH running. Tailscale access rules must allow the displayed port (default 7882, changeable in Settings).
+
+Remote access starts off. It binds only the local Tailscale address, accepts only Tailscale peers, and still requires the app's access key. The link includes that key: keep it private. Restarting the app changes the key, so use the new link from Settings. Switching access off and saving closes the remote listener immediately. The link uses HTTP inside Tailscale's encrypted network; no router port forwarding or public sharing is needed. Only the numeric address in the displayed link is accepted.
+
+If Tailscale is disconnected when you enable access or start the app, Settings explains the problem. Connect Tailscale and save again. This app does not install, sign in to, or change Tailscale itself.
+
 ## Develop
 
 ```sh

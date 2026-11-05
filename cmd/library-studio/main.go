@@ -42,6 +42,9 @@ func main() {
 		log.Fatal("Library Studio KH only listens on this computer (127.0.0.1)")
 	}
 	s := server.New(store, home)
+	if err := s.ConfigureRemote(); err != nil {
+		log.Printf("Tailscale: %v", err)
+	}
 	go func() {
 		for {
 			s.RunCleanup()

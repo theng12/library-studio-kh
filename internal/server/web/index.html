@@ -129,6 +129,17 @@
       <header class="head"><h1>Settings</h1></header>
       <form id="form" novalidate>
         <fieldset class="panel">
+          <legend>Phone &amp; Tailscale access</legend>
+          <label class="check"><input type="checkbox" name="tailscaleOn"> Allow access through Tailscale</label>
+          <p class="muted">Off by default. Connect this computer and your phone to the same Tailscale network. Keep Library Studio KH open and this computer awake.</p>
+          <label class="short">Port <input type="number" name="tailscalePort" min="1024" max="65535" inputmode="numeric"></label>
+          <p id="remote-status" class="msg" role="status"></p>
+          <label id="remote-link-box" hidden>Phone link <span class="hint">· includes your access key; keep it private</span>
+            <input id="remote-link" readonly type="text" aria-describedby="remote-help">
+          </label>
+          <p id="remote-help" class="muted">Save to apply. Send the phone link to your own phone and open it in its browser with Tailscale connected. The link changes when you restart the app.</p>
+        </fieldset>
+        <fieldset class="panel">
           <legend>Local cleanup</legend>
           <label class="check"><input type="checkbox" name="cleanupOn"> Remove local copies after they reach the library</label>
           <label class="short">Days to wait <input type="number" name="cleanupDays" min="0" max="3650" required inputmode="numeric"></label>
