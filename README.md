@@ -26,7 +26,7 @@ The rule lives in `internal/library` (`Decide`, `Cleanup`) and is tested in `int
 
 ## Use from your phone or away from home
 
-In Settings → Phone & Tailscale access, switch on **Allow access through Tailscale** and save. The app detects this computer's Tailscale address and shows a private phone link. Open that link on your phone with Tailscale connected to the same network. The host computer must stay awake with Library Studio KH running. Tailscale access rules must allow the displayed port (default 7882, changeable in Settings).
+In Settings → Phone & Tailscale access, switch on **Allow access from my Tailscale devices** and save. The app detects this computer's Tailscale address and shows a private phone link. Open that link on your phone with Tailscale connected to the same network. The host computer must stay awake with Library Studio KH running. Tailscale access rules must allow the displayed port (default 7882, changeable in Settings).
 
 Remote access starts off. It binds only the local Tailscale address, accepts only Tailscale peers, and still requires the app's access key. The link includes that key: keep it private. Restarting the app changes the key, so use the new link from Settings. Switching access off and saving closes the remote listener immediately. The link uses HTTP inside Tailscale's encrypted network; no router port forwarding or public sharing is needed. Only the numeric address in the displayed link is accepted.
 
