@@ -42,6 +42,12 @@ func (m *Manager) configure() {
 		_ = m.update("blocked", "Some native connections are unavailable. Complete the app's prompts or connect its existing account in Settings, then check again.", -1, nil)
 		return
 	}
+	if ready, err := m.musicPreferencesReady(c); err != nil {
+		m.block("Lidarr", "Music profiles", err, c)
+		return
+	} else if !ready {
+		return
+	}
 	if m.update("configuring", "Configuring selected folders, categories and native links…", -1, nil) != nil {
 		return
 	}
@@ -87,7 +93,7 @@ func (m *Manager) configure() {
 		}
 		aConfig := getArr(c, app.ID)
 		a := stock.NewArr(app.Name, aConfig.URL, aConfig.APIKey)
-		folder, err := a.EnsureRootFolder(stock.RootFolderInput{Path: root})
+		folder, err := a.EnsureRootFolder(stock.RootFolderInput{Path: root, QualityProfileID: req.MusicQualityProfileID, MetadataProfileID: req.MusicMetadataProfileID})
 		if err != nil {
 			m.block(app.Name, "Library folder", err, c)
 			return
@@ -202,8 +208,12 @@ func (m *Manager) configure() {
 		return
 	}
 	if req.StartAtLogin {
-		_ = m.update("blocked", "Connections are ready. At-login startup must be installed and verified before setup can finish.", -1, nil)
-		return
+		if ready, err := m.installStartup(); err != nil {
+			m.block("Library", "At-login configuration", err, c)
+			return
+		} else if !ready {
+			return
+		}
 	}
 	_ = m.update("ready", "Selected apps, folders, native links and search sources passed their checks. Automatic cleanup remains at your saved setting.", -1, nil)
 }

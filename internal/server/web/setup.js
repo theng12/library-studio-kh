@@ -124,7 +124,7 @@ function setupJobView(job) {
     plan: false,
     run: state === "planned",
     retry: ["failed", "interrupted"].includes(state),
-    check: !active && ["needs_approval", "needs_sources", "blocked", "ready"].includes(state),
+    check: !active && ["needs_approval", "needs_sources", "blocked", "needs_restart", "ready"].includes(state),
     open: active ? [] : apps.filter((a) => a && a.managed === true && SETUP_OPEN_STATES.includes(a.state)).map((a) => a.id),
     sources: state === "needs_sources" || appState("needs_sources"),
     settings: appState("needs_connection"),

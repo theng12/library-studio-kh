@@ -825,6 +825,7 @@ $("#setup-form").addEventListener("submit", async (ev) => {
     AUTH.authenticated = true;
     AUTH.setupRequired = false;
     await enterApp();
+    show("help");
   } catch (e) {
     if (created) {
       showGate("signin");

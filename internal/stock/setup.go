@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode"
@@ -251,7 +252,9 @@ func (a *Arr) EnsureQBitClient(in QBitClientInput) (ClientSetup, error) {
 
 // RootFolderInput is an explicit folder the caller wants the app to index.
 type RootFolderInput struct {
-	Path string `json:"path"`
+	Path              string `json:"path"`
+	QualityProfileID  int    `json:"qualityProfileId,omitempty"`
+	MetadataProfileID int    `json:"metadataProfileId,omitempty"`
 }
 
 type RootFolderSetup struct {
@@ -292,7 +295,20 @@ func (a *Arr) EnsureRootFolder(in RootFolderInput) (RootFolderSetup, error) {
 		return res, nil
 	}
 
-	if err := a.do("POST", "/rootfolder", map[string]any{"path": res.Path}, nil); err != nil {
+	payload := map[string]any{"path": res.Path}
+	if a.Name == "Lidarr" {
+		options, err := a.Options()
+		if err != nil {
+			return res, a.SafeError(err)
+		}
+		if !hasID(options.QualityProfiles, in.QualityProfileID) || !hasID(options.MetadataProfiles, in.MetadataProfileID) {
+			return res, errors.New("choose the quality and metadata profiles Lidarr currently lists before creating its root folder")
+		}
+		payload["name"] = filepath.Base(filepath.Clean(res.Path))
+		payload["defaultQualityProfileId"] = in.QualityProfileID
+		payload["defaultMetadataProfileId"] = in.MetadataProfileID
+	}
+	if err := a.do("POST", "/rootfolder", payload, nil); err != nil {
 		res.Status, res.Blocked = SetupBlocked, a.setupErrorText(err)
 		return res, a.SafeError(err)
 	}
@@ -306,6 +322,10 @@ func (a *Arr) EnsureRootFolder(in RootFolderInput) (RootFolderSetup, error) {
 	found := findRootFolder(folders, res.Path)
 	if found == nil {
 		res.Readback, res.ReadbackError = CheckFailed, "the new folder is missing from "+a.Name+"'s root folder list"
+		return res, errors.New(res.ReadbackError)
+	}
+	if a.Name == "Lidarr" && (asInt(found["defaultQualityProfileId"]) != in.QualityProfileID || asInt(found["defaultMetadataProfileId"]) != in.MetadataProfileID) {
+		res.Readback, res.ReadbackError = CheckFailed, "Lidarr did not read back the selected root-folder profiles"
 		return res, errors.New(res.ReadbackError)
 	}
 	res.Accessible, res.FreeSpace = setupAccessible(found)

@@ -95,6 +95,7 @@ test("job controls follow the reported state, and retry keeps the saved plan id"
   assert.equal(context.setupJobView({ id: "p", state: "failed", apps: [] }).check, false);
   const restart = context.setupJobView({ id: "p", state: "needs_restart", apps: [] });
   assert.equal(restart.restart, true);
+  assert.equal(restart.check, true);
   assert.equal(restart.ready, false);
   const ready = context.setupJobView({ id: "p", state: "ready", apps: [] });
   assert.equal(ready.ready, true);

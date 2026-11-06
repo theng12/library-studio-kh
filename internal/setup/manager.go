@@ -15,18 +15,22 @@ import (
 
 	"librarystudio/internal/companioninstall"
 	"librarystudio/internal/config"
+	"librarystudio/internal/platform"
+	"librarystudio/internal/stock"
 )
 
 // Request contains owner choices, never package URLs, hashes or native credentials.
 type Request struct {
-	Apps         []companioninstall.AppID `json:"apps"`
-	AppDir       string                   `json:"appDir"`
-	DownloadPath string                   `json:"downloadPath"`
-	Roots        map[string]string        `json:"roots"`
-	Ports        map[string]int           `json:"ports"`
-	Categories   map[string]string        `json:"categories"`
-	RenameTV     bool                     `json:"renameTV"`
-	StartAtLogin bool                     `json:"startAtLogin"`
+	Apps                   []companioninstall.AppID `json:"apps"`
+	AppDir                 string                   `json:"appDir"`
+	DownloadPath           string                   `json:"downloadPath"`
+	Roots                  map[string]string        `json:"roots"`
+	Ports                  map[string]int           `json:"ports"`
+	Categories             map[string]string        `json:"categories"`
+	RenameTV               bool                     `json:"renameTV"`
+	StartAtLogin           bool                     `json:"startAtLogin"`
+	MusicQualityProfileID  int                      `json:"musicQualityProfileId"`
+	MusicMetadataProfileID int                      `json:"musicMetadataProfileId"`
 }
 
 type AppStep struct {
@@ -51,13 +55,14 @@ type Check struct {
 }
 
 type Job struct {
-	ID        string    `json:"id"`
-	State     string    `json:"state"`
-	Detail    string    `json:"detail"`
-	Request   Request   `json:"request"`
-	Apps      []AppStep `json:"apps"`
-	Checks    []Check   `json:"checks"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID            string         `json:"id"`
+	State         string         `json:"state"`
+	Detail        string         `json:"detail"`
+	Request       Request        `json:"request"`
+	Apps          []AppStep      `json:"apps"`
+	Checks        []Check        `json:"checks"`
+	MusicProfiles *stock.Options `json:"musicProfiles,omitempty"`
+	UpdatedAt     time.Time      `json:"updatedAt"`
 }
 
 type savedJob struct {
@@ -76,20 +81,25 @@ type packageInstaller interface {
 
 // Manager owns one resumable setup. Native credentials stay in the private file.
 type Manager struct {
-	mu              sync.Mutex
-	home            string
-	store           *config.Store
-	installer       packageInstaller
-	job             *savedJob
-	busy            bool
-	loadErr         error
-	cancel          context.CancelFunc
-	openApp         func(context.Context, string, []string) error
-	applicationDirs []string
+	mu               sync.Mutex
+	home             string
+	store            *config.Store
+	installer        packageInstaller
+	job              *savedJob
+	busy             bool
+	loadErr          error
+	cancel           context.CancelFunc
+	openApp          func(context.Context, string, []string) error
+	applicationDirs  []string
+	hostPort         int
+	installHost      func(platform.HostServiceSpec) (platform.HostServiceStatus, error)
+	installCompanion func(platform.CompanionServiceSpec) (platform.CompanionServiceStatus, error)
 }
 
 func NewManager(home string, store *config.Store) *Manager {
 	m := &Manager{home: home, store: store, installer: companioninstall.New(companioninstall.Options{}), openApp: openNativeApp}
+	m.installHost = platform.NewHostService(nil, nil).Install
+	m.installCompanion = platform.NewCompanionService(nil).Install
 	m.applicationDirs = []string{"/Applications"}
 	if userHome, err := os.UserHomeDir(); err == nil {
 		m.applicationDirs = append(m.applicationDirs, filepath.Join(userHome, "Applications"))

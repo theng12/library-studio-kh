@@ -50,7 +50,11 @@ func main() {
 		if exe == "" {
 			exe, _ = os.Executable()
 		}
-		out, code := runHostControl(*hostControl, hostControlService(), platform.HostServiceSpec{Exe: exe, Home: home, Port: *port})
+		spec := platform.HostServiceSpec{Exe: exe, Home: home, Port: *port}
+		if *hostControl == "status" {
+			spec = platform.HostServiceSpec{Home: home}
+		}
+		out, code := runHostControl(*hostControl, hostControlService(), spec)
 		printHostControl(out)
 		os.Exit(code)
 	}

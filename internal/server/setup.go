@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +18,11 @@ import (
 )
 
 func (s *Server) registerSetup(mux *http.ServeMux) {
+	if local, err := url.Parse(s.LocalURL); err == nil {
+		if port, err := strconv.Atoi(local.Port()); err == nil {
+			s.setup.SetHostPort(port)
+		}
+	}
 	mux.HandleFunc("GET /api/setup/status", s.setupStatus)
 	mux.HandleFunc("POST /api/setup/plan", func(w http.ResponseWriter, r *http.Request) {
 		var req setup.Request
@@ -54,6 +61,18 @@ func (s *Server) registerSetup(mux *http.ServeMux) {
 			return
 		}
 		job, err := s.setup.Continue(req.ID)
+		setupReply(w, job, err)
+	})
+	mux.HandleFunc("POST /api/setup/preferences", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID                string `json:"id"`
+			QualityProfileID  int    `json:"qualityProfileId"`
+			MetadataProfileID int    `json:"metadataProfileId"`
+		}
+		if !readSetup(w, r, &req) {
+			return
+		}
+		job, err := s.setup.ChooseMusicProfiles(req.ID, req.QualityProfileID, req.MetadataProfileID)
 		setupReply(w, job, err)
 	})
 	mux.HandleFunc("POST /api/setup/client", s.setupClient)

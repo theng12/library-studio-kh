@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -42,7 +43,7 @@ func LoadClientHost(home string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !fi.Mode().IsRegular() || fi.Mode().Perm()&0o077 != 0 || fi.Size() > 16<<10 {
+	if !fi.Mode().IsRegular() || (runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0) || fi.Size() > 16<<10 {
 		return "", errors.New("saved client host must be a private regular file within the 16 KiB limit")
 	}
 	file, err := os.Open(path)

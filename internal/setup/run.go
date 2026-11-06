@@ -187,7 +187,7 @@ func (m *Manager) Continue(id string) (Job, error) {
 	if m.job == nil || m.job.View.ID != id || m.busy {
 		return Job{}, errors.New("wait for the current setup step")
 	}
-	if m.job.View.State != "needs_approval" && m.job.View.State != "needs_sources" && m.job.View.State != "blocked" && m.job.View.State != "ready" {
+	if m.job.View.State != "needs_approval" && m.job.View.State != "needs_sources" && m.job.View.State != "blocked" && m.job.View.State != "needs_restart" && m.job.View.State != "ready" {
 		return Job{}, errors.New("finish installation and first-launch approval before checking connections")
 	}
 	m.job.View.State = "checking"
