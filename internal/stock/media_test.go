@@ -15,7 +15,7 @@ func TestLookupAndAdd(t *testing.T) {
 			if r.URL.Query().Get("term") != "big fish" {
 				t.Errorf("term not passed: %q", r.URL.RawQuery)
 			}
-			w.Write([]byte(`[{"title":"Big Fish","year":2003,"tmdbId":587,"added":"0001-01-01T00:00:00Z"},{"id":4,"title":"Big Fish Too","year":2010,"hasFile":true,"monitored":true,"qualityProfileId":6}]`))
+			w.Write([]byte(`[{"title":"Big Fish","year":2003,"genres":["Drama","Mystery"],"tmdbId":587,"added":"0001-01-01T00:00:00Z"},{"id":4,"title":"Big Fish Too","year":2010,"hasFile":true,"monitored":true,"qualityProfileId":6}]`))
 		case "/api/v3/qualityprofile":
 			w.Write([]byte(`[{"id":6,"name":"HD"},{"id":7}]`))
 		case "/api/v3/rootfolder":
@@ -38,6 +38,18 @@ func TestLookupAndAdd(t *testing.T) {
 	}
 	if got[1].ID != 4 || !got[1].Monitored || got[1].QualityProfileID != 6 {
 		t.Fatalf("library fields missing: %+v", got[1])
+	}
+	if len(got[0].Genres) != 2 || got[0].Genres[0] != "Drama" {
+		t.Fatalf("reported genres missing: %+v", got[0].Genres)
+	}
+	if got[1].Genres == nil || len(got[1].Genres) != 0 {
+		t.Fatalf("absent genres must stay an empty list, not null: %+v", got[1].Genres)
+	}
+	b, _ := json.Marshal(got[1])
+	var fields map[string]any
+	_ = json.Unmarshal(b, &fields)
+	if genres, ok := fields["genres"].([]any); !ok || len(genres) != 0 {
+		t.Fatalf("absent genres must serialize as []: %v", fields["genres"])
 	}
 	where, err := a.Add(got[0].Raw)
 	if err != nil || where != "/nas/films" {
