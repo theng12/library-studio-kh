@@ -3,6 +3,10 @@
 package platform
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"os"
@@ -108,6 +112,24 @@ func (s *HostService) Status(spec HostServiceSpec) HostServiceStatus {
 	}
 	st.Loaded = true
 	st.State = HostServiceLoaded
+	// When the caller supplies a full desired spec, the saved job must match it.
+	// A zero Port or empty Exe means "start what is installed", used by the
+	// desktop helper, and is verified by the loaded marker instead.
+	if spec.Exe != "" && spec.Port != 0 {
+		current, err := os.ReadFile(path)
+		if err != nil || string(current) != hostPlist(spec) {
+			st.State = HostServiceNeedsRestart
+			st.NeedsRestart = true
+			st.Detail = "The saved login job does not match these settings. Run install to save them, then start."
+			return st
+		}
+	}
+	if !loadedConfigMatches(path) {
+		st.State = HostServiceNeedsRestart
+		st.NeedsRestart = true
+		st.Detail = "The loaded login job does not match the saved settings. Run start or reinstall before relying on it."
+		return st
+	}
 	if s.verify == nil {
 		st.Detail = "The background host job is loaded."
 		return st
@@ -128,6 +150,51 @@ func inspectExisting(path string) (ours, exists bool, err error) {
 	return inspectLabeledPlist(path, HostServiceLabel)
 }
 
+type plistNode struct {
+	XMLName xml.Name
+	Content string      `xml:",chardata"`
+	Nodes   []plistNode `xml:",any"`
+}
+
+// plistLabel reads the single top-level Label value. A label mentioned only in
+// ProgramArguments, a nested dictionary or a second time is not accepted.
+func plistLabel(data []byte) (string, bool, error) {
+	var doc plistNode
+	if err := xml.NewDecoder(bytes.NewReader(data)).Decode(&doc); err != nil || doc.XMLName.Local != "plist" {
+		return "", false, errors.New("the launch job file is not a valid property list")
+	}
+	var dicts []plistNode
+	for _, node := range doc.Nodes {
+		if node.XMLName.Local == "dict" {
+			dicts = append(dicts, node)
+		}
+	}
+	if len(dicts) != 1 {
+		return "", false, errors.New("the launch job file has no single job dictionary")
+	}
+	label := ""
+	found := false
+	nodes := dicts[0].Nodes
+	for i, node := range nodes {
+		if node.XMLName.Local != "key" || node.Content != "Label" {
+			continue
+		}
+		if found {
+			return "", false, errors.New("the launch job file has more than one Label")
+		}
+		found = true
+		if i+1 >= len(nodes) || len(node.Nodes) != 0 {
+			return "", false, errors.New("the launch job Label has no value")
+		}
+		value := nodes[i+1]
+		if value.XMLName.Local != "string" || len(value.Nodes) != 0 {
+			return "", false, errors.New("the launch job Label is not a plain string")
+		}
+		label = value.Content
+	}
+	return label, found, nil
+}
+
 func inspectLabeledPlist(path, label string) (ours, exists bool, err error) {
 	fi, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -143,8 +210,14 @@ func inspectLabeledPlist(path, label string) (ours, exists bool, err error) {
 	if err != nil {
 		return false, true, fmt.Errorf("the launch job file could not be read")
 	}
-	return strings.Contains(string(b), "<key>Label</key>") &&
-		strings.Contains(string(b), "<string>"+label+"</string>"), true, nil
+	got, found, err := plistLabel(b)
+	if err != nil {
+		return false, true, err
+	}
+	if !found {
+		return false, true, nil
+	}
+	return got == label, true, nil
 }
 
 func validateInstallSpec(spec HostServiceSpec) error {
@@ -226,6 +299,40 @@ func writePrivate(path string, b []byte) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+func loadedMarkerPath(plistPath string) string { return plistPath + ".loaded" }
+
+func plistDigest(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// markLoaded records the exact plist launchd accepted. Status compares this
+// marker so a failed or skipped reload can never read as the desired job.
+func markLoaded(plistPath string) error {
+	b, err := os.ReadFile(plistPath)
+	if err != nil {
+		return err
+	}
+	return writePrivate(loadedMarkerPath(plistPath), []byte(plistDigest(b)))
+}
+
+func loadedConfigMatches(plistPath string) bool {
+	markerPath := loadedMarkerPath(plistPath)
+	fi, err := os.Lstat(markerPath)
+	if err != nil || !fi.Mode().IsRegular() || fi.Mode().Perm()&0o077 != 0 || fi.Size() > 128 {
+		return false
+	}
+	marker, err := os.ReadFile(markerPath)
+	if err != nil {
+		return false
+	}
+	b, err := os.ReadFile(plistPath)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(marker)) == plistDigest(b)
 }
 
 // writeFiles keeps the login job private, returns a recoverable backup of a
@@ -333,23 +440,16 @@ func (s *HostService) Install(spec HostServiceSpec) (HostServiceStatus, error) {
 		}
 		changed = string(old) != plist
 	}
-	if s.isRunning(spec.Home) {
-		if !changed {
-			return s.Status(spec), nil
-		}
-		if err := s.writeFiles(path, spec, plist, exists); err != nil {
-			return blockedStatus("The login job could not be saved."), err
-		}
-		if err := s.launchctl("bootout", serviceDomain()+"/"+HostServiceLabel); err != nil {
-			return blockedStatus("The running background host could not be restarted."), err
-		}
-		if err := s.bootstrap(path); err != nil {
-			return blockedStatus("The background host could not be started."), err
-		}
-		return s.finish(spec), nil
-	}
-	if !changed && s.isLoaded() {
+	loaded := s.isLoaded()
+	if !changed && loaded && loadedConfigMatches(path) {
 		return s.Status(spec), nil
+	}
+	// Stop the old job before changing or reloading its definition. If bootout
+	// fails, the old plist and old job stay together and Status stays truthful.
+	if loaded {
+		if err := s.launchctl("bootout", serviceDomain()+"/"+HostServiceLabel); err != nil {
+			return blockedStatus("The background host could not be stopped; saved settings were not changed."), err
+		}
 	}
 	if err := s.writeFiles(path, spec, plist, changed && exists); err != nil {
 		return blockedStatus("The login job could not be saved."), err
@@ -359,13 +459,11 @@ func (s *HostService) Install(spec HostServiceSpec) (HostServiceStatus, error) {
 	if configHomeBusy(spec.Home) {
 		return needsRestartStatus("The background host is installed. Quit and reopen Library Studio KH to start it."), nil
 	}
-	if s.isLoaded() {
-		if err := s.launchctl("bootout", serviceDomain()+"/"+HostServiceLabel); err != nil {
-			return blockedStatus("The old background host could not be stopped."), err
-		}
-	}
 	if err := s.bootstrap(path); err != nil {
 		return blockedStatus("The background host could not be started. Check host.err.log in the configuration folder."), err
+	}
+	if err := markLoaded(path); err != nil {
+		return blockedStatus("The background host started but its loaded settings could not be recorded; start it again."), err
 	}
 	return s.finish(spec), nil
 }
@@ -383,14 +481,15 @@ func (s *HostService) Start(spec HostServiceSpec) (HostServiceStatus, error) {
 		err := errors.New("the background host is not installed; run install first")
 		return blockedStatus(err.Error()), err
 	}
-	if s.isRunning(spec.Home) {
+	loaded := s.isLoaded()
+	if loaded && loadedConfigMatches(path) && (s.verify == nil || s.isRunning(spec.Home)) {
 		return s.Status(spec), nil
 	}
-	if s.isLoaded() {
-		// Reload from disk so changed settings take effect; launchctl kickstart
-		// would keep the old job definition. Only our own label is touched.
+	if loaded {
+		// Reload from disk so changed settings take effect; a kickstart would
+		// keep the old job definition. Only our own label is touched.
 		if err := s.launchctl("bootout", serviceDomain()+"/"+HostServiceLabel); err != nil {
-			return blockedStatus("The old background host could not be stopped."), err
+			return blockedStatus("The old background host could not be stopped; the loaded job was not changed."), err
 		}
 	}
 	if configHomeBusy(spec.Home) {
@@ -398,6 +497,9 @@ func (s *HostService) Start(spec HostServiceSpec) (HostServiceStatus, error) {
 	}
 	if err := s.bootstrap(path); err != nil {
 		return blockedStatus("The background host could not be started. Check host.err.log in the configuration folder."), err
+	}
+	if err := markLoaded(path); err != nil {
+		return blockedStatus("The background host started but its loaded settings could not be recorded; start it again."), err
 	}
 	return s.finish(spec), nil
 }

@@ -29,7 +29,7 @@ func main() {
 	withShell := flag.Bool("with-shell", false, "exit when the desktop shell closes our stdin")
 	hostControl := flag.String("host-control", "", "manage the macOS background host: install, start, stop or status")
 	hostHome := flag.String("host-home", "", "configuration home for -host-control (default: the app's config folder)")
-	serverExe := flag.String("exe", "", "server executable for -host-control install (default: this executable)")
+	serverExe := flag.String("exe", "", "trusted local server path for -host-control install (default: this executable)")
 	clientHost := flag.String("client-host", "", "use another Library host webpage URL, or clear this desktop's saved host")
 	flag.Parse()
 
@@ -77,7 +77,9 @@ func main() {
 		if !errors.Is(err, errNoHost) {
 			log.Fatal(err)
 		}
-		spec := platform.HostServiceSpec{Home: home, Port: *port}
+		// Only the installed job is started here; it may use a different port
+		// or executable than this process's flags.
+		spec := platform.HostServiceSpec{Home: home}
 		svc := hostControlService()
 		st := svc.Status(spec)
 		if st.Supported && st.Installed {

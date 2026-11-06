@@ -11,12 +11,33 @@ import (
 )
 
 type fakeRunner struct {
-	loaded bool
-	calls  []string
-	fail   string
+	loaded     bool
+	calls      []string
+	fail       string
+	bundleID   string
+	executable string
 }
 
 func (f *fakeRunner) Run(name string, args ...string) ([]byte, error) {
+	if name == "plutil" {
+		f.calls = append(f.calls, name)
+		if len(args) < 2 {
+			return nil, errors.New("bad plutil call")
+		}
+		switch args[1] {
+		case "CFBundleIdentifier":
+			if f.bundleID == "" {
+				return nil, errors.New("missing bundle identifier")
+			}
+			return []byte(f.bundleID + "\n"), nil
+		case "CFBundleExecutable":
+			if f.executable == "" {
+				return nil, errors.New("missing executable")
+			}
+			return []byte(f.executable + "\n"), nil
+		}
+		return nil, errors.New("unexpected plutil key")
+	}
 	if name != "launchctl" || len(args) == 0 {
 		return nil, errors.New("unexpected command")
 	}
@@ -32,6 +53,9 @@ func (f *fakeRunner) Run(name string, args ...string) ([]byte, error) {
 		}
 		f.loaded = true
 	case "bootout":
+		if f.fail == "bootout" {
+			return []byte("still running"), errors.New("exit 1")
+		}
 		f.loaded = false
 	case "kickstart":
 		if f.fail == "kickstart" {
@@ -141,7 +165,7 @@ func TestInstallRefusesForeignJob(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	foreign := []byte(`<key>Label</key><string>com.example.other</string>`)
+	foreign := []byte(`<plist version="1.0"><dict><key>Label</key><string>com.example.other</string><key>ProgramArguments</key><array><string>kh.librarystudio.host</string></array></dict></plist>`)
 	if err := os.WriteFile(path, foreign, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -253,6 +277,14 @@ func TestStartReloadsTheJobDefinitionFromDisk(t *testing.T) {
 	if _, err := svc.Install(spec); err != nil {
 		t.Fatal(err)
 	}
+	path, _ := svc.plistPath()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(b, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	r.calls = nil
 	if _, err := svc.Start(spec); err != nil {
 		t.Fatal(err)
@@ -260,6 +292,9 @@ func TestStartReloadsTheJobDefinitionFromDisk(t *testing.T) {
 	joined := strings.Join(r.calls, ",")
 	if !strings.Contains(joined, "bootout") || !strings.Contains(joined, "bootstrap") {
 		t.Fatalf("start did not reload the saved job: %v", r.calls)
+	}
+	if !loadedConfigMatches(path) {
+		t.Fatal("start did not record the reloaded definition")
 	}
 }
 
@@ -303,5 +338,92 @@ func TestPlistEscapesPathsAndRejectsControlCharacters(t *testing.T) {
 	spec = HostServiceSpec{Exe: spec.Exe, Home: "/tmp/home\n", Port: 7881}
 	if _, err := svc.Install(spec); err == nil {
 		t.Fatal("control character was accepted")
+	}
+}
+
+func TestInspectLabeledPlistRequiresTheTopLevelLabel(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	ours, exists, err := inspectLabeledPlist(write("correct.plist", `<plist version="1.0"><dict><key>Label</key><string>kh.librarystudio.host</string><key>ProgramArguments</key><array><string>kh.librarystudio.host</string></array></dict></plist>`), HostServiceLabel)
+	if err != nil || !exists || !ours {
+		t.Fatalf("correct label = ours %v exists %v err %v", ours, exists, err)
+	}
+	ours, exists, err = inspectLabeledPlist(write("foreign.plist", `<plist version="1.0"><dict><key>Label</key><string>com.example.other</string><key>ProgramArguments</key><array><string>kh.librarystudio.host</string></array></dict></plist>`), HostServiceLabel)
+	if err != nil || !exists || ours {
+		t.Fatalf("argument-only label accepted: ours %v exists %v err %v", ours, exists, err)
+	}
+	ours, exists, err = inspectLabeledPlist(write("nested.plist", `<plist version="1.0"><dict><key>EnvironmentVariables</key><dict><key>Label</key><string>kh.librarystudio.host</string></dict></dict></plist>`), HostServiceLabel)
+	if err != nil || !exists || ours {
+		t.Fatalf("nested label accepted: ours %v exists %v err %v", ours, exists, err)
+	}
+	if _, _, err := inspectLabeledPlist(write("duplicate.plist", `<plist version="1.0"><dict><key>Label</key><string>kh.librarystudio.host</string><key>Label</key><string>kh.librarystudio.host</string></dict></plist>`), HostServiceLabel); err == nil {
+		t.Fatal("duplicate Label was accepted")
+	}
+	if _, _, err := inspectLabeledPlist(write("array.plist", `<plist version="1.0"><dict><key>Label</key><array><string>kh.librarystudio.host</string></array></dict></plist>`), HostServiceLabel); err == nil {
+		t.Fatal("non-string Label was accepted")
+	}
+}
+
+func TestHostBootoutFailureKeepsOldJobAndPlist(t *testing.T) {
+	r := &fakeRunner{}
+	svc, spec := newTestService(t, r, nil)
+	if _, err := svc.Install(spec); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := svc.plistPath()
+	old, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldSpec := spec
+	spec.Port = 7882
+	r.fail = "bootout"
+	if _, err := svc.Install(spec); err == nil {
+		t.Fatal("bootout failure reported success")
+	}
+	now, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(now) != string(old) || !strings.Contains(string(now), "<string>7881</string>") {
+		t.Fatal("failed bootout changed the saved plist")
+	}
+	if !loadedConfigMatches(path) {
+		t.Fatal("marker no longer matches the still-loaded old job")
+	}
+	if !r.loaded {
+		t.Fatal("fake job was incorrectly unloaded")
+	}
+	if st := svc.Status(spec); st.State != HostServiceNeedsRestart || !st.NeedsRestart {
+		t.Fatalf("unsaved desired settings status = %+v", st)
+	}
+	if st := svc.Status(oldSpec); st.State != HostServiceLoaded {
+		t.Fatalf("saved old settings status = %+v", st)
+	}
+}
+
+func TestHostStatusNeedsRestartWhenLoadedDefinitionDiffers(t *testing.T) {
+	r := &fakeRunner{}
+	svc, spec := newTestService(t, r, nil)
+	if _, err := svc.Install(spec); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := svc.plistPath()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(b, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if st := svc.Status(spec); st.State != HostServiceNeedsRestart || !st.NeedsRestart {
+		t.Fatalf("stale loaded definition status = %+v", st)
 	}
 }

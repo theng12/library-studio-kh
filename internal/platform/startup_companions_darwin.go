@@ -84,6 +84,27 @@ func (s *CompanionService) Status(spec CompanionServiceSpec) CompanionServiceSta
 	}
 	st.Loaded = true
 	st.State = HostServiceLoaded
+	if spec.AppPath != "" && spec.ProfileDir != "" {
+		app := companionApps[spec.ID]
+		clean := spec
+		clean.Home = filepath.Clean(clean.Home)
+		current, err := os.ReadFile(path)
+		if err != nil || string(current) != companionPlist(clean, app, label) {
+			st.State = HostServiceNeedsRestart
+			st.Detail = "The saved at-login job does not match these settings. Reinstall at-login startup."
+			return st
+		}
+	}
+	if !loadedConfigMatches(path) {
+		st.State = HostServiceNeedsRestart
+		st.Detail = "The loaded at-login job does not match the saved settings. Reinstall at-login startup."
+		return st
+	}
+	if err := s.validateDependency(spec); err != nil {
+		st.State = HostServiceBlocked
+		st.Detail = "At-login startup cannot be verified: " + err.Error()
+		return st
+	}
 	st.Detail = "At-login startup is installed and loaded."
 	return st
 }
@@ -147,7 +168,19 @@ func companionProfileReady(id CompanionID, dir string) error {
 	return nil
 }
 
-func validateCompanionApp(app companionApp, path string) error {
+func bundleString(runner CommandRunner, infoPath, key string) (string, error) {
+	out, err := runner.Run("plutil", "-extract", key, "raw", "-o", "-", infoPath)
+	if err != nil {
+		return "", err
+	}
+	value := strings.TrimSpace(string(out))
+	if value == "" {
+		return "", errors.New("missing value")
+	}
+	return value, nil
+}
+
+func validateCompanionApp(runner CommandRunner, id CompanionID, app companionApp, path string) error {
 	if !filepath.IsAbs(path) {
 		return errors.New("the app path must be absolute")
 	}
@@ -164,7 +197,51 @@ func validateCompanionApp(app companionApp, path string) error {
 	if err != nil || !fi.Mode().IsRegular() {
 		return fmt.Errorf("the %s app bundle is incomplete", app.bundle)
 	}
+	want := companionBundleID(id)
+	if want == "" {
+		return fmt.Errorf("the %s app has no registered identity", app.bundle)
+	}
+	got, err := bundleString(runner, info, "CFBundleIdentifier")
+	if err != nil || got != want {
+		return fmt.Errorf("the %s app is not the expected bundle", app.bundle)
+	}
+	exe, err := bundleString(runner, info, "CFBundleExecutable")
+	if err != nil || strings.ContainsAny(exe, `/\`) || exe == "." || exe == ".." {
+		return fmt.Errorf("the %s app has no usable executable", app.bundle)
+	}
+	exeInfo, err := os.Lstat(filepath.Join(path, "Contents", "MacOS", exe))
+	if err != nil || !exeInfo.Mode().IsRegular() || exeInfo.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("the %s app executable is missing", app.bundle)
+	}
 	return nil
+}
+
+func (s *CompanionService) validateDependency(spec CompanionServiceSpec) error {
+	app, ok := companionApps[spec.ID]
+	if !ok {
+		return errors.New("unknown companion")
+	}
+	if !filepath.IsAbs(spec.Home) || spec.AppPath == "" || spec.ProfileDir == "" {
+		return errors.New("the companion app and managed profile are needed to verify at-login startup")
+	}
+	home := filepath.Clean(spec.Home)
+	if _, err := ownedDirInfo(home); err != nil {
+		return err
+	}
+	if _, err := ownedDirInfo(filepath.Join(home, "companions")); err != nil {
+		return err
+	}
+	want := CompanionServiceProfileDir(home, spec.ID)
+	if filepath.Clean(spec.ProfileDir) != want {
+		return fmt.Errorf("the companion profile must be the Library-managed folder %s", want)
+	}
+	if err := requirePrivateDir(want); err != nil {
+		return err
+	}
+	if err := companionProfileReady(spec.ID, want); err != nil {
+		return err
+	}
+	return validateCompanionApp(s.runner, spec.ID, app, spec.AppPath)
 }
 
 func (s *CompanionService) validateInstall(spec CompanionServiceSpec) (companionApp, string, error) {
@@ -183,24 +260,7 @@ func (s *CompanionService) validateInstall(spec CompanionServiceSpec) (companion
 			return companionApp{}, "", errors.New("paths cannot contain control characters")
 		}
 	}
-	home := filepath.Clean(spec.Home)
-	if _, err := ownedDirInfo(home); err != nil {
-		return companionApp{}, "", err
-	}
-	if _, err := ownedDirInfo(filepath.Join(home, "companions")); err != nil {
-		return companionApp{}, "", err
-	}
-	wantProfile := CompanionServiceProfileDir(home, spec.ID)
-	if filepath.Clean(spec.ProfileDir) != wantProfile {
-		return companionApp{}, "", fmt.Errorf("the companion profile must be the Library-managed folder %s", wantProfile)
-	}
-	if err := requirePrivateDir(wantProfile); err != nil {
-		return companionApp{}, "", err
-	}
-	if err := companionProfileReady(spec.ID, wantProfile); err != nil {
-		return companionApp{}, "", err
-	}
-	if err := validateCompanionApp(app, spec.AppPath); err != nil {
+	if err := s.validateDependency(spec); err != nil {
 		return companionApp{}, "", err
 	}
 	return app, CompanionServiceLabel(spec.ID), nil
@@ -313,8 +373,15 @@ func (s *CompanionService) Install(spec CompanionServiceSpec) (CompanionServiceS
 		changed = string(old) != plist
 	}
 	loaded := s.isLoaded(label)
-	if !changed && loaded {
+	if !changed && loaded && loadedConfigMatches(path) {
 		return s.Status(spec), nil
+	}
+	// Stop the old job before changing or reloading its definition. If bootout
+	// fails, the old plist and old job stay together and Status stays truthful.
+	if loaded {
+		if err := launchctlRun(s.runner, "bootout", serviceDomain()+"/"+label); err != nil {
+			return companionBlocked(spec, "The previous at-login job could not be stopped; saved settings were not changed."), err
+		}
 	}
 	if changed && exists {
 		retired, err := companionRetiredPath(spec.Home, label)
@@ -328,13 +395,11 @@ func (s *CompanionService) Install(spec CompanionServiceSpec) (CompanionServiceS
 	if err := s.writeFiles(spec, label, plist); err != nil {
 		return companionBlocked(spec, "The at-login job could not be saved."), err
 	}
-	if loaded {
-		if err := launchctlRun(s.runner, "bootout", serviceDomain()+"/"+label); err != nil {
-			return companionBlocked(spec, "The previous at-login job could not be stopped."), err
-		}
-	}
 	if err := launchctlRun(s.runner, "bootstrap", serviceDomain(), path); err != nil {
 		return companionBlocked(spec, "The at-login job could not be loaded. Check its log in the Library configuration folder."), err
+	}
+	if err := markLoaded(path); err != nil {
+		return companionBlocked(spec, "At-login startup started but its loaded settings could not be recorded; reinstall it."), err
 	}
 	return s.Status(spec), nil
 }

@@ -31,13 +31,19 @@ func companionFixture(t *testing.T, id CompanionID) (*CompanionService, Companio
 		}
 	}
 	app := filepath.Join(dir, companionApps[id].bundle)
-	if err := os.MkdirAll(filepath.Join(app, "Contents"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(app, "Contents", "MacOS"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(app, "Contents", "Info.plist"), []byte("plist"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r := &fakeRunner{}
+	r := &fakeRunner{
+		bundleID:   companionBundleID(id),
+		executable: strings.TrimSuffix(companionApps[id].bundle, ".app"),
+	}
+	if err := os.WriteFile(filepath.Join(app, "Contents", "MacOS", r.executable), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	svc := NewCompanionService(r)
 	svc.agentDir = filepath.Join(dir, "LaunchAgents")
 	return svc, CompanionServiceSpec{ID: id, AppPath: app, ProfileDir: profile, Home: home, AtLogin: true}, r
@@ -122,7 +128,7 @@ func TestCompanionInstallIsIdempotent(t *testing.T) {
 		t.Fatalf("status = %+v", st)
 	}
 	for _, call := range r.calls {
-		if call != "print" {
+		if call == "bootstrap" || call == "bootout" {
 			t.Fatalf("unchanged install changed the job: %v", r.calls)
 		}
 	}
@@ -135,7 +141,7 @@ func TestCompanionInstallRetiresChangedJob(t *testing.T) {
 		t.Fatal(err)
 	}
 	path, _ := svc.plistPath(st.Label)
-	old := `<key>Label</key><string>` + st.Label + `</string><string>old settings</string>`
+	old := `<plist version="1.0"><dict><key>Label</key><string>` + st.Label + `</string><key>Note</key><string>old settings</string></dict></plist>`
 	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +259,7 @@ func TestCompanionRejectsForeignOrSymlinkedPlist(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	foreign := []byte(`<key>Label</key><string>com.example.other</string>`)
+	foreign := []byte(`<plist version="1.0"><dict><key>Label</key><string>com.example.other</string><key>ProgramArguments</key><array><string>` + label + `</string></array></dict></plist>`)
 	if err := os.WriteFile(path, foreign, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -263,8 +269,10 @@ func TestCompanionRejectsForeignOrSymlinkedPlist(t *testing.T) {
 	if b, _ := os.ReadFile(path); string(b) != string(foreign) {
 		t.Fatal("foreign plist changed")
 	}
-	if len(r.calls) != 0 {
-		t.Fatalf("foreign plist ran commands: %v", r.calls)
+	for _, call := range r.calls {
+		if call == "bootstrap" || call == "bootout" {
+			t.Fatalf("foreign plist ran launchctl: %v", r.calls)
+		}
 	}
 	if err := os.Rename(path, path+".moved"); err != nil {
 		t.Fatal(err)
@@ -339,4 +347,101 @@ func containsCall(calls []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestCompanionRejectsForeignBundleIdentity(t *testing.T) {
+	svc, spec, r := companionFixture(t, CompanionRadarr)
+	r.bundleID = "com.example.not-radarr"
+	if _, err := svc.Install(spec); err == nil || !strings.Contains(err.Error(), "expected bundle") {
+		t.Fatalf("foreign bundle identity accepted: %v", err)
+	}
+	r.bundleID = companionBundleID(CompanionRadarr)
+	r.executable = "Missing"
+	if _, err := svc.Install(spec); err == nil || !strings.Contains(err.Error(), "executable is missing") {
+		t.Fatalf("missing declared executable accepted: %v", err)
+	}
+}
+
+func TestCompanionStatusRechecksDependency(t *testing.T) {
+	svc, spec, _ := companionFixture(t, CompanionSonarr)
+	if _, err := svc.Install(spec); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(spec.ProfileDir, spec.ProfileDir+".moved"); err != nil {
+		t.Fatal(err)
+	}
+	st := svc.Status(spec)
+	if st.State != HostServiceBlocked || !st.Installed || !st.Loaded {
+		t.Fatalf("status for a removed profile = %+v", st)
+	}
+	if st := svc.Status(CompanionServiceSpec{ID: spec.ID, Home: spec.Home}); st.State != HostServiceBlocked {
+		t.Fatalf("status without dependency paths = %+v", st)
+	}
+}
+
+func TestCompanionStatusNeedsRestartWhenLoadedDefinitionDiffers(t *testing.T) {
+	svc, spec, _ := companionFixture(t, CompanionRadarr)
+	st, err := svc.Install(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, _ := svc.plistPath(st.Label)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(b, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.Status(spec); got.State != HostServiceNeedsRestart {
+		t.Fatalf("stale loaded definition status = %+v", got)
+	}
+}
+
+func TestCompanionBootoutFailureKeepsOldJobAndPlist(t *testing.T) {
+	svc, spec, r := companionFixture(t, CompanionRadarr)
+	if _, err := svc.Install(spec); err != nil {
+		t.Fatal(err)
+	}
+	oldSpec := spec
+	path, _ := svc.plistPath(CompanionServiceLabel(spec.ID))
+	old, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherDir := t.TempDir()
+	otherApp := filepath.Join(otherDir, "Radarr.app")
+	if err := os.MkdirAll(filepath.Join(otherApp, "Contents", "MacOS"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(otherApp, "Contents", "Info.plist"), []byte("plist"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(otherApp, "Contents", "MacOS", r.executable), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	spec.AppPath = otherApp
+	r.fail = "bootout"
+	if _, err := svc.Install(spec); err == nil {
+		t.Fatal("bootout failure reported success")
+	}
+	now, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(now) != string(old) || !strings.Contains(string(now), oldSpec.AppPath) {
+		t.Fatal("failed bootout changed the saved plist")
+	}
+	if !loadedConfigMatches(path) {
+		t.Fatal("marker no longer matches the still-loaded old job")
+	}
+	if !r.loaded {
+		t.Fatal("fake job was incorrectly unloaded")
+	}
+	if got := svc.Status(spec); got.State != HostServiceNeedsRestart {
+		t.Fatalf("unsaved desired settings status = %+v", got)
+	}
+	if got := svc.Status(oldSpec); got.State != HostServiceLoaded {
+		t.Fatalf("old desired configuration status = %+v", got)
+	}
 }

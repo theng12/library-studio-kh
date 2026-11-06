@@ -1,6 +1,10 @@
 package platform
 
-import "path/filepath"
+import (
+	"path/filepath"
+
+	"librarystudio/internal/companioninstall"
+)
 
 // CompanionID is one of the five stock apps Library already manages. No other
 // ID is accepted, so the launch label and flags can never be caller-chosen.
@@ -71,6 +75,17 @@ func CompanionServiceLabel(id CompanionID) string {
 // CompanionServiceProfileDir is the only profile path accepted for a known ID.
 func CompanionServiceProfileDir(home string, id CompanionID) string {
 	return filepath.Join(home, "companions", string(id))
+}
+
+// companionBundleID comes from the verified installer registry, not a second
+// list kept here.
+func companionBundleID(id CompanionID) string {
+	for _, app := range companioninstall.Registry() {
+		if CompanionID(app.ID) == id {
+			return app.BundleID
+		}
+	}
+	return ""
 }
 
 // CompanionService installs optional at-login jobs for new Library-managed

@@ -22,6 +22,8 @@ const HostServiceLabel = "kh.librarystudio.host"
 // HostServiceSpec is everything the manager needs. Paths are absolute; the
 // configuration home is the same folder the desktop and background host use.
 type HostServiceSpec struct {
+	// Exe is a trusted local packaging value, never a server RPC input. The
+	// desktop/server must pass os.Executable(); only the local CLI may override it.
 	Exe  string `json:"exe"`
 	Home string `json:"home"`
 	Port int    `json:"port"`
