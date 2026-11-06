@@ -1027,3 +1027,73 @@ func TestProofWithoutImportDateIsLeftProtected(t *testing.T) {
 		t.Fatal("an import without a date must never be moved or removed")
 	}
 }
+
+func TestFutureOrImpossibleLedgerTimesFailClosed(t *testing.T) {
+	t.Run("future import time", func(t *testing.T) {
+		h := newHarness(t)
+		importedAt := *h.clock
+		it := h.add("Movie", importedAt)
+		h.run() // save the staging record
+		h.clockNow(importedAt.Add(3 * 24 * time.Hour))
+		h.rewriteState(func(s *cleanupStore) {
+			s.Items[0].ImportedAt = h.clock.Add(time.Hour)
+		})
+		if _, err := h.engine().Run(h.cfg); err == nil || !strings.Contains(err.Error(), "import time") {
+			t.Fatalf("a future import time must be refused, got %v", err)
+		}
+		if !exists(it.src) || len(trashEntries(t, h.managed)) != 0 || h.src.stopCalls != 0 || len(h.src.metadataCalls) != 0 {
+			t.Fatal("an invalid import time must never move or remove anything")
+		}
+	})
+
+	t.Run("zero staging time", func(t *testing.T) {
+		h := newHarness(t)
+		importedAt := *h.clock
+		it := h.add("Movie", importedAt)
+		h.atManaged(it, importedAt)
+		h.clockNow(importedAt.Add(4 * 24 * time.Hour))
+		h.rewriteState(func(s *cleanupStore) {
+			s.Items[0].StagedAt = time.Time{}
+		})
+		if _, err := h.engine().Run(h.cfg); err == nil || !strings.Contains(err.Error(), "staging time") {
+			t.Fatalf("a zero staging time must be refused, got %v", err)
+		}
+		if len(trashEntries(t, h.managed)) != 1 {
+			t.Fatal("an invalid staging time must never move or remove anything")
+		}
+	})
+
+	cases := []struct {
+		name string
+		at   func(time.Time) time.Time
+	}{
+		{"zero native time", func(time.Time) time.Time { return time.Time{} }},
+		{"future native time", func(now time.Time) time.Time { return now.Add(time.Hour) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			importedAt := *h.clock
+			it := h.add("Movie", importedAt)
+			h.atManaged(it, importedAt)
+			h.clockNow(importedAt.Add(7 * 24 * time.Hour))
+			if phase := phaseOf(t, h.run(), it.hash); phase != phaseNative {
+				t.Fatalf("day 7 must reach the system Trash, got %s", phase)
+			}
+			if len(trashEntries(t, h.trash)) != 1 {
+				t.Fatal("setup must leave one system Trash entry")
+			}
+			h.clockNow(importedAt.Add(37 * 24 * time.Hour))
+			h.rewriteState(func(s *cleanupStore) {
+				s.Items[0].NativeAt = tc.at(*h.clock)
+			})
+			res, err := h.engine().Run(h.cfg)
+			if err == nil || !strings.Contains(err.Error(), "system Trash time") {
+				t.Fatalf("an invalid native Trash time must be refused, got %v", err)
+			}
+			if res.Purged != 0 || len(trashEntries(t, h.trash)) != 1 {
+				t.Fatal("an invalid native Trash time must never purge the stored copy")
+			}
+		})
+	}
+}

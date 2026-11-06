@@ -22,6 +22,9 @@ var ErrCleanupDisabled = errors.New("staged cleanup is off")
 
 const cleanupStateFile = "staged_cleanup.json"
 
+// clockSkew tolerates small clock differences between this app and a stock app.
+const clockSkew = 5 * time.Minute
+
 const (
 	phaseStaging = "staging"
 	phaseManaged = "managed_trash"
@@ -161,16 +164,17 @@ func (e *StagedCleanup) Status(c config.Config) CleanupStatus {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	st := e.baseStatus(c)
+	now := e.Now()
 	recs, err := e.load()
 	if err != nil {
 		st.Blocked = append(st.Blocked, "Saved cleanup state could not be read: "+err.Error())
 		return st
 	}
-	if err := validateRecords(recs, managedRoot(c), e.LocalVolume); err != nil {
+	if err := validateRecords(recs, managedRoot(c), now, e.LocalVolume); err != nil {
 		st.Blocked = append(st.Blocked, "Saved cleanup state is unsafe: "+err.Error())
 		return st
 	}
-	e.render(&st, recs, c, e.Now())
+	e.render(&st, recs, c, now)
 	return st
 }
 
@@ -200,7 +204,7 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 		return res, err
 	}
 	// Corrupt or hand-edited state must never steer a filesystem write.
-	if err := validateRecords(recs, managedRoot(c), e.LocalVolume); err != nil {
+	if err := validateRecords(recs, managedRoot(c), now, e.LocalVolume); err != nil {
 		return res, fmt.Errorf("saved cleanup state is unsafe, so nothing was changed: %w", err)
 	}
 	byHash := map[string]*cleanupRecord{}
@@ -266,7 +270,7 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 			p := ps[0]
 			// A missing or future import time would skip or misplace every
 			// retention wait, so it is never guessed.
-			if p.ImportedAt.IsZero() || p.ImportedAt.After(now.Add(5*time.Minute)) {
+			if p.ImportedAt.IsZero() || p.ImportedAt.After(now.Add(clockSkew)) {
 				res.Problems = append(res.Problems, shortHash(h)+" has no valid import date, so it is left protected.")
 				continue
 			}
@@ -646,7 +650,7 @@ func (e *StagedCleanup) Restore(c config.Config, hash string) (CleanupResult, er
 	if err != nil {
 		return res, err
 	}
-	if err := validateRecords(recs, managedRoot(c), e.LocalVolume); err != nil {
+	if err := validateRecords(recs, managedRoot(c), now, e.LocalVolume); err != nil {
 		return res, fmt.Errorf("saved cleanup state is unsafe, so nothing was changed: %w", err)
 	}
 	var rec *cleanupRecord
@@ -880,13 +884,14 @@ func (e *StagedCleanup) load() ([]*cleanupRecord, error) {
 // filesystem write. A managed path may live under the root that was current
 // when it was moved, because DownloadPath and ManagedTrashPath can change
 // later, but only with a proven local, symlink-free Library-owned entry.
-func validateRecords(recs []*cleanupRecord, managed string, local func(string) (bool, error)) error {
+// Clock fields that drive eligibility must be real past times.
+func validateRecords(recs []*cleanupRecord, managed string, now time.Time, local func(string) (bool, error)) error {
 	for _, r := range recs {
 		if !validCleanupHash(r.Hash) {
 			return fmt.Errorf("record %q has an invalid download ID", shortHash(r.Hash))
 		}
-		if r.ImportedAt.IsZero() {
-			return fmt.Errorf("record %s has no verified import time", shortHash(r.Hash))
+		if !validLedgerTime(r.ImportedAt, now) {
+			return fmt.Errorf("record %s has no valid import time", shortHash(r.Hash))
 		}
 		if r.SavePath == "" || !filepath.IsAbs(r.SavePath) || r.MoveRoot == "" || !filepath.IsAbs(r.MoveRoot) {
 			return fmt.Errorf("record %s has an unsafe source path", shortHash(r.Hash))
@@ -911,9 +916,18 @@ func validateRecords(recs []*cleanupRecord, managed string, local func(string) (
 			if err := validateManagedPath(r, managed, local); err != nil {
 				return err
 			}
+			if !validLedgerTime(r.StagedAt, now) {
+				return fmt.Errorf("record %s has no valid staging time", shortHash(r.Hash))
+			}
 		case phaseNative:
 			if !safeNativeName(r.NativeName) {
 				return fmt.Errorf("record %s has an unsafe system Trash name", shortHash(r.Hash))
+			}
+			if !validLedgerTime(r.StagedAt, now) {
+				return fmt.Errorf("record %s has no valid staging time", shortHash(r.Hash))
+			}
+			if !validLedgerTime(r.NativeAt, now) {
+				return fmt.Errorf("record %s has no valid system Trash time", shortHash(r.Hash))
 			}
 		case phaseRemoved, phaseRestore:
 		default:
@@ -921,6 +935,12 @@ func validateRecords(recs []*cleanupRecord, managed string, local func(string) (
 		}
 	}
 	return nil
+}
+
+// validLedgerTime rejects a zero or implausibly future clock value. It never
+// substitutes a guessed time.
+func validLedgerTime(t, now time.Time) bool {
+	return !t.IsZero() && !t.After(now.Add(clockSkew))
 }
 
 // validateManagedPath accepts the root recorded at move time, or the current
@@ -934,7 +954,8 @@ func validateManagedPath(r *cleanupRecord, current string, local func(string) (b
 	root := filepath.Clean(strings.TrimSpace(r.ManagedRoot))
 	if strings.TrimSpace(r.ManagedRoot) == "" {
 		// Older state has no recorded root: only the current root or the
-		// default DownloadPath/_trash layout can be proven.
+		// default DownloadPath/_trash layout can be proven; a custom
+		// historical root fails closed.
 		parent := filepath.Dir(filepath.Clean(r.ManagedPath))
 		if parent != filepath.Clean(current) && filepath.Base(parent) != "_trash" {
 			return fmt.Errorf("record %s has an unsafe managed _trash root", shortHash(r.Hash))
