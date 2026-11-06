@@ -215,3 +215,13 @@ func TestWaitShellReturnsWhenStdinCloses(t *testing.T) {
 		t.Fatal("waitShell did not return after stdin closed")
 	}
 }
+
+func TestWaitForHostIsBoundedAndNeverFallsBack(t *testing.T) {
+	start := time.Now()
+	if _, err := waitForHost(t.TempDir(), 150*time.Millisecond); err == nil {
+		t.Fatal("waitForHost accepted a missing descriptor")
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("waitForHost is not bounded: %s", elapsed)
+	}
+}
