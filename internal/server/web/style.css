@@ -302,6 +302,45 @@ dialog::backdrop { background: rgba(14, 18, 32, 0.45); }
 .help-facts dd { margin: 0; color: var(--ink-2); max-width: 70ch; }
 .help-facts dd strong { color: var(--ink); }
 
+/* Guided setup */
+.setup-panel { display: grid; gap: 1rem; padding: 0 1.25rem 1.25rem; }
+#setup-plan-form { max-width: none; gap: 1rem; }
+#setup-plan-form > .actions { margin-top: 0.25rem; }
+.setup-fieldset { border: 0; border-top: 1px solid var(--line); margin: 0; padding: 0.9rem 0 0; min-width: 0; }
+.setup-fieldset:first-of-type { border-top: 0; padding-top: 0.25rem; }
+.setup-fieldset legend { float: none; width: auto; padding: 0; margin-bottom: 0.35rem; font-weight: 650; }
+.setup-fieldset + .setup-fieldset { margin-top: 0.25rem; }
+.setup-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 0.9rem; }
+.setup-checks { display: grid; gap: 0.35rem; }
+.setup-fieldset .check { min-height: 44px; margin-top: 0; }
+#show-client, #show-owner { min-height: 44px; }
+#setup-plan-form label input, #setup-client-form input, #setup-client-form button,
+#setup-plan-form button, .setup-app button, .setup-actions button { min-height: 44px; }
+#setup-job { display: grid; gap: 0.75rem; }
+.setup-job { display: grid; gap: 0.85rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+.setup-job-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.setup-job h3, .setup-review h3, .setup-checks-list h3 { font-size: 0.95rem; margin: 0; }
+.setup-job .badge { margin-top: 0; }
+.setup-review { display: grid; gap: 0.4rem; }
+.setup-review .help-facts { grid-template-columns: 8.5rem 1fr; padding: 0.5rem 0 0; }
+.setup-apps { list-style: decimal; list-style-position: inside; margin: 0; padding: 0; }
+.setup-app { padding: 0.9rem 0; border-top: 1px solid var(--line); }
+.setup-app:first-child { border-top: 0; }
+.setup-app-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.setup-app-head strong { flex: 1 1 10rem; }
+.setup-app-head .badge { margin-top: 0; }
+.setup-detail, .setup-app-facts { margin: 0.3rem 0 0; }
+.setup-app-facts { color: var(--ink-2); font-size: 0.85rem; overflow-wrap: anywhere; }
+.setup-app-actions { margin-top: 0.6rem; }
+.setup-check-list { list-style: none; margin: 0.4rem 0 0; padding: 0; display: grid; gap: 0.3rem; }
+.setup-check-list li { color: var(--ink-2); overflow-wrap: anywhere; }
+.setup-check-list li::before {
+  content: ""; display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%;
+  margin-right: 0.45rem; background: var(--muted); vertical-align: 0.06rem;
+}
+.setup-check-list li.ok::before { background: var(--connected); }
+.setup-check-list li.bad::before { background: var(--disconnected); }
+
 /* Downloads */
 .dl-tools { justify-content: space-between; align-items: center; }
 .dl-tools .actions { margin: 0; }
@@ -364,6 +403,9 @@ dialog::backdrop { background: rgba(14, 18, 32, 0.45); }
   .help-facts { grid-template-columns: 1fr; gap: 0.1rem; }
   .help-facts dd { margin-bottom: 0.6rem; }
   .sessions li { flex-wrap: wrap; }
+  .setup-grid, .setup-review .help-facts { grid-template-columns: 1fr; }
+  .setup-panel { padding: 0 1rem 1rem; }
+  .setup-app-actions button, #setup-plan-form .actions button, #setup-client-form .actions button { flex: 1 1 auto; }
   .dl-tools { align-items: stretch; }
   .dl-tools .actions { width: 100%; }
   .dl-tools .actions button { flex: 1 1 auto; min-height: 44px; }

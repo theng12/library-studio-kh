@@ -5,6 +5,8 @@ if (location.hash.length > 1) {
   history.replaceState(null, "", location.pathname);
 }
 let token = sessionStorage.getItem("token") || "";
+function clearLocalToken() { token = ""; sessionStorage.removeItem("token"); }
+window.libraryClearToken = clearLocalToken;
 const $ = (s) => document.querySelector(s);
 const ARRS = ["sonarr", "radarr", "lidarr", "prowlarr", "bazarr"];
 const NAMES = { sonarr: "Sonarr (TV)", radarr: "Radarr (films)", lidarr: "Lidarr (music)", prowlarr: "Prowlarr (search sites)", bazarr: "Bazarr (subtitles · optional)" };
@@ -535,6 +537,7 @@ function show(view) {
   for (const b of document.querySelectorAll(".side [data-view]")) {
     if (b.dataset.view === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   }
+  document.dispatchEvent(new CustomEvent("library:view", { detail: { view } }));
   if (view === "settings" && current) { fillForm(current); loadSessions(); }
   if (view === "browse") loadLibrary();
   if (view === "downloads") loadDownloads();
@@ -697,6 +700,7 @@ function showGate(mode) {
   document.title = (mode === "setup" ? "Create account" : mode === "recovery" ? "Recover access" : "Sign in") + " · Library Studio KH";
   const first = $("#gate-" + mode).querySelector("input, button");
   if (first) first.focus();
+  document.dispatchEvent(new CustomEvent("library:gate", { detail: { mode } }));
 }
 
 function hideGate() {
@@ -708,6 +712,7 @@ function hideGate() {
 function signedOut() {
   AUTH.authenticated = false;
   showGate(AUTH.setupRequired ? "blocked" : "signin");
+  document.dispatchEvent(new CustomEvent("library:signedout"));
 }
 
 function fillAuthCopy() {
@@ -871,12 +876,12 @@ $("#logout").addEventListener("click", async () => {
     btn.disabled = false;
     return;
   }
-  token = "";
-  sessionStorage.removeItem("token");
+  clearLocalToken();
   AUTH.authenticated = false;
   fillAuthCopy();
   btn.disabled = false;
   showGate(AUTH.setupRequired ? "blocked" : "signin");
+  document.dispatchEvent(new CustomEvent("library:signedout"));
 });
 
 $("#form").addEventListener("submit", async (ev) => {
@@ -925,11 +930,17 @@ async function start() {
   await enterApp();
 }
 
-$("#open-public-help").addEventListener("click", () => {
-  const copy = $("#view-help").cloneNode(true);
+function publicHelpCopy(source) {
+  const copy = source.cloneNode(true);
+  // Remove owner forms, paths and running-job actions before IDs are stripped.
+  for (const node of copy.querySelectorAll("[data-owner-only]")) node.remove();
   copy.removeAttribute("id"); copy.hidden = false;
   for (const node of copy.querySelectorAll("[id]")) node.removeAttribute("id");
-  $("#public-help-content").replaceChildren(copy);
+  return copy;
+}
+
+$("#open-public-help").addEventListener("click", () => {
+  $("#public-help-content").replaceChildren(publicHelpCopy($("#view-help")));
   $("#gate").hidden = true;
   $("#public-help").hidden = false;
   $("#close-public-help").focus();
