@@ -1,5 +1,11 @@
 # What's new in Library Studio KH
 
+## 0.3.1 — 2026-11-06
+
+- Phone navigation now uses a compact header, four everyday tabs at the bottom and a separate Menu for settings and information.
+- Phone lists keep their field labels, search and filters fit the screen, and controls have larger touch targets with readable input text.
+- App connections fold into a live status line. Sources puts reported health first and shows each library app's sources as a readable list.
+
 ## 0.3.0 — 2026-11-06
 
 - Open a library item to see movie details, series seasons/episodes or artist albums, with monitoring controls for each supported level.

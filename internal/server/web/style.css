@@ -95,6 +95,9 @@ button.inline { border: 0; background: none; padding: 0; color: var(--accent); t
   content: ""; display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%;
   margin-right: 0.45rem; background: currentColor; vertical-align: 0.06rem;
 }
+.connections summary { cursor: pointer; min-height: 44px; padding: 0.6rem 0; color: var(--ink-2); font-size: 0.9rem; }
+.connections .apps { padding: 0.5rem 0; }
+.connections summary.off { color: var(--warn-ink); }
 .apps .ok::before { background: var(--accent); }
 .apps .bad { color: var(--warn-ink); background: var(--warn-bg); border-color: transparent; }
 .notice { margin: 0; background: var(--warn-bg); color: var(--warn-ink); padding: 0.75rem 1rem; border-radius: 10px; }
@@ -204,25 +207,60 @@ dialog::backdrop { background: rgba(14, 18, 32, 0.45); }
 #releases ul { margin: 0; padding-left: 1.2rem; max-width: 70ch; color: var(--ink-2); }
 #releases li + li { margin-top: 0.3rem; }
 
+.mobile-menu-toggle { display: none; }
+#more-menu { display: contents; }
+.side { gap: 0.2rem; }
+.side .brand { margin-bottom: 1.5rem; }
+.check-target { display: inline-flex; align-items: center; justify-content: center; margin: 0; }
+
 @media (max-width: 760px) {
-  .shell { grid-template-columns: 1fr; }
-  .side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; padding: 0.9rem 1rem; border-right: 0; border-bottom: 1px solid var(--line); }
-  .menu { grid-template-columns: repeat(3, minmax(0, 1fr)); order: 3; width: 100%; }
-  .menu button { min-height: 44px; padding: 0.55rem 0.25rem; }
+  :root { --gap: 1.15rem; }
+  body { font-size: 16px; }
+  .shell { display: block; }
+  .side { position: sticky; z-index: 20; top: 0; height: auto; flex-direction: row; align-items: center; justify-content: space-between; padding: 0.5rem 1rem; border-right: 0; border-bottom: 1px solid var(--line); }
+  .side .brand { margin: 0; padding: 0; font-size: 0.95rem; }
+  .mobile-menu-toggle { display: block; min-height: 44px; }
+  .primary-menu { position: fixed; z-index: 20; bottom: 0; left: 0; right: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.2rem; padding: 0.5rem max(0.5rem, env(safe-area-inset-right)) calc(0.5rem + env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left)); border-top: 1px solid var(--line); background: var(--side); }
+  .primary-menu button { text-align: center; min-height: 48px; padding: 0.45rem 0.15rem; font-size: 0.8rem; }
+  #more-menu { display: none; position: absolute; top: 100%; left: 0; right: 0; padding: 0.5rem 1rem 1rem; background: var(--side); border-bottom: 1px solid var(--line); max-height: calc(100dvh - 9rem); overflow-y: auto; }
+  .menu-open #more-menu { display: grid; gap: 0.5rem; }
+  .secondary-menu button { min-height: 48px; }
+  .version { margin: 0; padding: 0.75rem; }
+  .content { padding: 1.5rem 1rem calc(6rem + env(safe-area-inset-bottom)); }
+  .head h1 { font-size: 1.6rem; }
+  .lede { font-size: 0.95rem; }
   input[type=file] { max-width: 100%; }
+  label input:not([type=checkbox]), select, textarea { font-size: 16px; min-height: 44px; }
+  .tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; padding: 1rem; }
   .tools, .tools label, .add-grid { min-width: 0; }
-  .menu button { text-align: center; }
-  .version { margin: 0 0 0 auto; padding: 0.3rem 0.5rem; }
-  .content { padding: 1.5rem 1rem 2rem; }
+  .tools .search { grid-column: 1 / -1; }
+  .tools select { width: 100%; }
+  .tools button.primary { min-height: 44px; }
   .pair { grid-template-columns: 1fr; }
   .list thead { display: none; }
-  .list tr { display: block; padding: 0.7rem 1rem; border-bottom: 1px solid var(--line); }
+  .list tr { display: block; padding: 1rem; border-bottom: 1px solid var(--line); }
   .list tr:last-child { border-bottom: 0; }
-  .list td { display: block; padding: 0.1rem 0; border: 0; white-space: normal !important; }
+  .list td { display: grid; grid-template-columns: 6rem minmax(0, 1fr); align-items: center; gap: 0.75rem; padding: 0.3rem 0; border: 0; white-space: normal !important; overflow-wrap: anywhere; font-size: 0.95rem; }
+  .list td::before { content: attr(data-label); font-size: 0.8rem; color: var(--ink-2); font-weight: 400; }
+  .list td:first-child { display: block; padding: 0 0 0.6rem; font-weight: 650; font-size: 1rem; }
+  .list td:first-child::before { content: none; }
+  .list td[data-label="Action"], .list td[data-label="Search"] { display: block; padding-top: 0.75rem; }
+  .list td[data-label="Action"]::before, .list td[data-label="Search"]::before { content: none; }
+  .list td button.small { min-height: 44px; }
+  button.inline.title { min-height: 44px; }
+  .check-target { min-height: 44px; width: 44px; justify-self: start; }
+  input[type=checkbox] { width: 20px; height: 20px; }
+  #dl tr { display: grid; grid-template-columns: minmax(0, 1fr) 44px; }
+  #dl td { grid-column: 1 / -1; }
+  #dl td:first-child { grid-column: 2; grid-row: 1; width: auto; padding: 0; }
+  #dl td:nth-child(2) { grid-column: 1; grid-row: 1; display: block; font-weight: 650; padding-bottom: 0.6rem; }
+  #dl td:nth-child(2)::before { content: none; }
+  #found td:last-child { text-align: left; }
   .facts { grid-template-columns: 1fr; gap: 0.1rem; }
-  .facts dd + dt { margin-top: 0.5rem; }
+  .facts dd + dt { margin-top: 0.6rem; }
   .bands li { grid-template-columns: 1fr auto; }
   .bands .bar { grid-column: 1 / -1; grid-row: 2; }
+  .close { min-width: 44px; min-height: 44px; }
 }
 
 /* Sign-in and owner setup */

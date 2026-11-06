@@ -16,6 +16,7 @@ function mediaTable(headers, rows) {
   const table = mediaNode("table", null, "list"), head = document.createElement("thead"), tr = document.createElement("tr");
   for (const name of headers) { const th = mediaNode("th", name); th.scope = "col"; tr.append(th); }
   head.append(tr);
+  for (const row of rows) for (const [i, cell] of [...row.cells].entries()) cell.dataset.label = headers[i];
   const body = document.createElement("tbody"); body.append(...rows);
   table.append(head, body); wrap.append(table); return wrap;
 }
@@ -195,11 +196,11 @@ async function loadSources() {
     message.textContent = !data.configured ? "Prowlarr isn't connected. Add it in Settings to view its sources. " + problems.join(" ") : problems.join(" ");
     const indexerRows = (data.indexers || []).map(x => row([x.name, x.enabled == null ? "Not reported" : x.enabled ? "Enabled" : "Disabled", x.protocol || "Not reported",
       x.priority == null ? "Not reported" : x.priority, sourceDisableTime(x.disabledUntil)]));
-    content.append(mediaPanel("Prowlarr sources", "Observed configuration and reported status, not a live test of every source.", indexerRows.length ? mediaTable(["Source", "Setting", "Protocol", "Priority", "Reported availability"], indexerRows) : mediaNode("p", "No source entries available.", "empty")));
+    const sources = mediaPanel("Prowlarr sources", "Configured sources and their reported availability.", indexerRows.length ? mediaTable(["Source", "Setting", "Protocol", "Priority", "Availability"], indexerRows) : mediaNode("p", "No source entries available.", "empty"));
     const health = mediaNode("ul", null, "source-notes");
     for (const h of data.health || []) health.append(mediaNode("li", (h.type || "Message") + ": " + h.message));
     if (!health.childNodes.length) health.append(mediaNode("li", "No health messages were reported. Check any availability errors before relying on this result."));
-    content.append(mediaPanel("Reported health", "Messages supplied by the connected app.", health));
+    content.append(mediaPanel("Reported health", "Messages supplied by Prowlarr; source availability is listed below.", health), sources);
     const links = (data.links || []).map(x => row([x.name, x.syncLevel || "Not reported"]));
     content.append(mediaPanel("Application links", "A configured sync mode does not prove that the latest synchronization succeeded.", links.length ? mediaTable(["Application", "Configured sync"], links) : mediaNode("p", "No application links available.", "empty")));
     const libraries = mediaNode("div", null, "media-padding");
@@ -208,8 +209,9 @@ async function loadSources() {
       if (app.error) libraries.append(mediaNode("p", app.error, "notice"));
       else if (!app.configured) libraries.append(mediaNode("p", "Not connected", "muted"));
       else {
-        const names = (app.indexers || []).map(x => x.name + (x.enabled == null ? "" : x.enabled ? " (enabled)" : " (disabled)"));
-        libraries.append(mediaNode("p", names.length ? names.join(" · ") : "No source entries reported.", "source-names"));
+        const names = mediaNode("ul", null, "source-list");
+        for (const x of app.indexers || []) names.append(mediaNode("li", x.name + (x.enabled == null ? " · setting not reported" : x.enabled ? " · enabled" : " · disabled")));
+        libraries.append(names.childNodes.length ? names : mediaNode("p", "No source entries reported.", "source-names"));
       }
     }
     content.append(mediaPanel("Sources in each library app", "Enabled means at least one RSS or search mode is enabled. These are observed lists; equal counts alone do not prove synchronization.", libraries));

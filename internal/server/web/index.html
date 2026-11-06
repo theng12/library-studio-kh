@@ -80,17 +80,22 @@
       <svg class="mark" viewBox="0 0 1024 1024" aria-hidden="true"><rect width="1024" height="1024" rx="224" fill="currentColor"/><rect x="232" y="260" width="120" height="504" rx="24" fill="#fff"/><rect x="392" y="320" width="120" height="444" rx="24" fill="#fff"/><rect x="552" y="248" width="120" height="516" rx="24" fill="#fff" opacity=".7"/><rect x="690" y="300" width="120" height="470" rx="24" fill="#fff" transform="rotate(-12 750 535)"/></svg>
       <span>Library Studio KH</span>
     </div>
-    <ul class="menu">
+    <button type="button" class="small mobile-menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="more-menu">Menu</button>
+    <ul class="menu primary-menu" aria-label="Everyday screens">
       <li><button type="button" data-view="activity" aria-current="page">Activity</button></li>
       <li><button type="button" data-view="downloads">Downloads</button></li>
       <li><button type="button" data-view="browse">My library</button></li>
       <li><button type="button" data-view="find">Find &amp; add</button></li>
+    </ul>
+    <div id="more-menu">
+    <ul class="menu secondary-menu" aria-label="Settings and information">
       <li><button type="button" data-view="sources">Sources</button></li>
       <li><button type="button" data-view="cleanup">Cleanup</button></li>
       <li><button type="button" data-view="settings">Settings</button></li>
       <li><button type="button" data-view="help">Setup &amp; help</button></li>
     </ul>
     <button type="button" class="version" data-view="whatsnew">Version <span id="version">…</span><br><span class="link">What's new</span></button>
+    </div>
   </nav>
 
   <main class="content">
@@ -99,7 +104,10 @@
         <h1>Activity</h1>
         <p id="summary" class="lede" aria-live="polite">Loading…</p>
       </header>
-      <ul id="apps" class="apps" aria-label="Connected apps"></ul>
+      <details class="connections">
+        <summary id="connections-summary">App connections</summary>
+        <ul id="apps" class="apps" aria-label="Connected apps"></ul>
+      </details>
       <p id="notice" class="notice" role="alert" hidden></p>
       <div class="panel">
         <div class="tools">
@@ -109,7 +117,7 @@
         </div>
         <p id="empty" class="empty" hidden>Nothing connected yet. Open <button type="button" class="inline" data-view="settings">Settings</button> and add qBittorrent and at least one of Sonarr, Radarr or Lidarr.</p>
         <table id="list" class="list">
-          <thead><tr><th scope="col">Title</th><th scope="col">State</th><th scope="col">When</th></tr></thead>
+          <thead><tr><th scope="col">Title</th><th scope="col">State</th><th scope="col">Details</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>

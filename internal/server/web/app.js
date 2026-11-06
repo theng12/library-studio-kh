@@ -54,11 +54,16 @@ function stateOf(it, cleanupOn) {
   return [it.kind, ""];
 }
 
-function row(cells) {
+function row(cells, tableID) {
   const tr = document.createElement("tr");
-  for (const c of cells) {
+  const headers = tableID ? document.getElementById(tableID).querySelectorAll("thead th") : [];
+  for (const [i, c] of cells.entries()) {
     const td = document.createElement("td");
-    if (c instanceof Node) td.append(c); else td.textContent = c;
+    if (headers[i]) td.dataset.label = headers[i].textContent;
+    if (c instanceof HTMLInputElement && c.type === "checkbox") {
+      const label = document.createElement("label"); label.className = "check-target";
+      label.append(c); td.append(label);
+    } else if (c instanceof Node) td.append(c); else td.textContent = c;
     tr.append(td);
   }
   return tr;
@@ -77,6 +82,9 @@ function render(st) {
   if (s.library === "missing") parts.push("<span class=off>The NAS library folder can't be found.</span>");
   $("#summary").innerHTML = parts.join(" ");
 
+  const connected = s.apps.filter(a => a.ok).length;
+  $("#connections-summary").textContent = s.apps.length ? connected + " of " + s.apps.length + " apps connected" : "No apps connected";
+  $("#connections-summary").classList.toggle("off", connected < s.apps.length);
   $("#apps").replaceChildren(...s.apps.map((a) => {
     const li = document.createElement("li");
     li.className = a.ok ? "ok" : "bad";
@@ -103,7 +111,7 @@ function render(st) {
     const now = document.createElement("span");
     now.textContent = x.value || "Unknown";
     if (!x.ok) now.className = "off";
-    return row([x.app, x.name, now, x.want]);
+    return row([x.app, x.name, now, x.want], "stock");
   }));
 
   $("#releases").replaceChildren(...st.releases.map((r) => {
@@ -148,7 +156,7 @@ function renderActivity() {
       title.type = "button"; title.className = "inline title"; title.textContent = it.title;
       title.addEventListener("click", () => openDetails(it));
     }
-    return row([title, tag, when]);
+    return row([title, tag, when], "list");
   }));
 }
 
@@ -312,7 +320,7 @@ function renderLibrary() {
       open.addEventListener("click", () => openMediaDetails(m));
       title.firstChild.replaceWith(open, " ");
     }
-    return row([title, TYPE[m.app] || m.app, m.haveFiles ? "In library" : "Waiting for files", monitor, m.added ? day(m.added) : ""]);
+    return row([title, TYPE[m.app] || m.app, m.haveFiles ? "In library" : "Waiting for files", monitor, m.added ? day(m.added) : ""], "lib");
   }));
 }
 for (const id of ["#lib-q", "#lib-type", "#lib-sort"]) $(id).addEventListener("input", renderLibrary);
@@ -339,7 +347,7 @@ $("#find-form").addEventListener("submit", async (ev) => {
           action.textContent = "In library";
         }));
       }
-      return row([titleCell(m), TYPE[m.app] || m.app, action]);
+      return row([titleCell(m), TYPE[m.app] || m.app, action], "found");
     }));
   } catch (e) { msg.textContent = e.message; }
 });
@@ -464,7 +472,24 @@ function buildArrFields() {
   }
 }
 
+const menuToggle = $("#menu-toggle");
+function closeMenu() {
+  $(".side").classList.remove("menu-open");
+  menuToggle.setAttribute("aria-expanded", "false");
+}
+menuToggle.addEventListener("click", () => {
+  const open = $(".side").classList.toggle("menu-open");
+  menuToggle.setAttribute("aria-expanded", String(open));
+});
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && menuToggle.getAttribute("aria-expanded") === "true") {
+    closeMenu(); menuToggle.focus();
+  }
+});
+document.addEventListener("click", (ev) => { if (!ev.target.closest(".side")) closeMenu(); });
+
 function show(view) {
+  closeMenu();
   for (const v of document.querySelectorAll(".view")) v.hidden = v.id !== "view-" + view;
   for (const b of document.querySelectorAll(".side [data-view]")) {
     if (b.dataset.view === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
@@ -524,7 +549,7 @@ function renderDownloads() {
     state.className = "state " + (dlPaused(t.state) ? "paused" : bad ? "error" : "downloading");
     state.textContent = dlLabel(t.state);
     const speed = dlPaused(t.state) ? "—" : rate(t.dlspeed || 0) + " down";
-    return row([box, t.name, state, Math.round((t.progress || 0) * 100) + "%", t.size ? bytes(t.size) : "—", speed]);
+    return row([box, t.name, state, Math.round((t.progress || 0) * 100) + "%", t.size ? bytes(t.size) : "—", speed], "dl");
   }));
   updateDlButtons();
 }
