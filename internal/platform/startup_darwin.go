@@ -100,6 +100,9 @@ func (s *HostService) Status(spec HostServiceSpec) HostServiceStatus {
 	if !ours {
 		return blockedStatus("Another login job uses Library Studio KH's name; refusing to change it.")
 	}
+	if err := checkJobHome(path, spec.Home); err != nil {
+		return blockedStatus(err.Error())
+	}
 	st := HostServiceStatus{
 		Supported: true,
 		State:     HostServiceInstalled,
@@ -431,6 +434,11 @@ func (s *HostService) Install(spec HostServiceSpec) (HostServiceStatus, error) {
 		err := errors.New("another login job uses Library Studio KH's name; not changing it")
 		return blockedStatus(err.Error()), err
 	}
+	if exists {
+		if err := checkJobHome(path, spec.Home); err != nil {
+			return blockedStatus(err.Error()), err
+		}
+	}
 	plist := hostPlist(spec)
 	changed := true
 	if exists {
@@ -479,6 +487,9 @@ func (s *HostService) Start(spec HostServiceSpec) (HostServiceStatus, error) {
 	}
 	if !exists || !ours {
 		err := errors.New("the background host is not installed; run install first")
+		return blockedStatus(err.Error()), err
+	}
+	if err := checkJobHome(path, spec.Home); err != nil {
 		return blockedStatus(err.Error()), err
 	}
 	loaded := s.isLoaded()

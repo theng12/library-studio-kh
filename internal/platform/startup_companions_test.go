@@ -141,7 +141,7 @@ func TestCompanionInstallRetiresChangedJob(t *testing.T) {
 		t.Fatal(err)
 	}
 	path, _ := svc.plistPath(st.Label)
-	old := `<plist version="1.0"><dict><key>Label</key><string>` + st.Label + `</string><key>Note</key><string>old settings</string></dict></plist>`
+	old := `<plist version="1.0"><dict><key>Label</key><string>` + st.Label + `</string><key>EnvironmentVariables</key><dict><key>LIBRARY_STUDIO_HOME</key><string>` + xmlEscape(spec.Home) + `</string></dict><key>Note</key><string>old settings</string></dict></plist>`
 	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
 		t.Fatal(err)
 	}

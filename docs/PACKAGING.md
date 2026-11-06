@@ -2,7 +2,7 @@
 
 Library Studio KH is a Tauri 2 shell around one Go server, the same shape as Music Studio KH.
 The Go server is pure Go (`CGO_ENABLED=0`), so it cross-compiles for every target from any machine.
-The only operating-system specific code is `internal/platform` (free disk space) and two `cfg(windows)` lines in `src-tauri/src/main.rs` (no console window).
+Operating-system work stays in `internal/platform`, the guarded macOS setup/installation helpers and the Tauri shell. The packaged app supplies its server, client-mode switchback and macOS login-job controls; Node/Go/Homebrew are development tools, not end-user requirements.
 
 ## Mac (now)
 

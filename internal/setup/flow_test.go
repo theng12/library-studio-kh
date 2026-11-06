@@ -563,7 +563,7 @@ func TestFreshSetupFiveAppsFromPlanThroughMusicChoiceToReady(t *testing.T) {
 
 	ready := h.chooseMusicProfiles(waiting)
 	if ready.State != "ready" {
-		t.Fatalf("KNOWN DEFECT (setup calls remove-after-import off twice; the second call fails once the flag is already false): setup = %q, detail %s, checks %+v", ready.State, ready.Detail, ready.Checks)
+		t.Fatalf("setup = %q, detail %s, checks %+v", ready.State, ready.Detail, ready.Checks)
 	}
 
 	want := map[string][]string{
@@ -704,11 +704,11 @@ func TestNativeFailureBlocksWithoutReadyOrSavedConnectionsThenRetrySucceeds(t *t
 	}
 	waiting := flowWait(t, h.manager, "needs_preferences", "blocked")
 	if waiting.State != "needs_preferences" {
-		t.Fatalf("KNOWN DEFECT (setup calls remove-after-import off twice; the second call fails once the flag is already false): retry = %q: %s", waiting.State, waiting.Detail)
+		t.Fatalf("retry = %q: %s", waiting.State, waiting.Detail)
 	}
 	ready := h.chooseMusicProfiles(waiting)
 	if ready.State != "ready" {
-		t.Fatalf("KNOWN DEFECT (setup calls remove-after-import off twice; the second call fails once the flag is already false): retry after native failure = %q: %s", ready.State, ready.Detail)
+		t.Fatalf("retry after native failure = %q: %s", ready.State, ready.Detail)
 	}
 	if h.store.Get().Lidarr.URL == "" || h.store.Get().QBit.URL == "" {
 		t.Fatal("successful retry did not save the live connections")
@@ -740,14 +740,14 @@ func TestStartupHandoffNeedsRestartThenReady(t *testing.T) {
 	}
 	waiting := flowWait(t, h.manager, "needs_preferences", "blocked", "ready")
 	if waiting.State != "needs_preferences" {
-		t.Fatalf("KNOWN DEFECT (setup calls remove-after-import off twice; the second call fails once the flag is already false): before music choice = %q: %s", waiting.State, waiting.Detail)
+		t.Fatalf("before music choice = %q: %s", waiting.State, waiting.Detail)
 	}
 	if _, err := h.manager.ChooseMusicProfiles(waiting.ID, 1, 3); err != nil {
 		t.Fatal(err)
 	}
 	restart := flowWait(t, h.manager, "needs_restart", "ready", "blocked")
 	if restart.State != "needs_restart" {
-		t.Fatalf("KNOWN DEFECT (setup calls remove-after-import off twice; the second call fails once the flag is already false): startup handoff = %q: %s", restart.State, restart.Detail)
+		t.Fatalf("startup handoff = %q: %s", restart.State, restart.Detail)
 	}
 	if !hasFlowCheck(restart, "Library", "At-login configuration", "not_checked") {
 		t.Fatalf("startup handoff did not stay not_checked: %+v", restart.Checks)
@@ -770,6 +770,6 @@ func TestStartupHandoffNeedsRestartThenReady(t *testing.T) {
 				applied = check.App + ": " + check.Name + " — " + check.Detail
 			}
 		}
-		t.Fatalf("KNOWN DEFECT: setup must reach ready after the at-login handoff restart, but a recheck failed at %q: %s", after.State, applied)
+		t.Fatalf("setup must reach ready after the at-login handoff restart, but a recheck failed at %q: %s", after.State, applied)
 	}
 }

@@ -1,88 +1,53 @@
 # Background host
 
-Library Studio KH can run two ways. Both keep the local dashboard on loopback; the separate optional Tailscale listener is controlled in Settings.
+Library can run with the desktop window or as an optional macOS user login job. Both keep the local dashboard on loopback. Settings controls the separate optional Tailscale listener.
 
-| Mode | What starts it | Lifecycle |
-| --- | --- | --- |
-| Desktop only (default) | The desktop app starts the server itself | Ends with the window, as before |
-| Background host | A macOS LaunchAgent runs `-service` | Keeps running when the window closes; the desktop app attaches to it |
+Desktop-only is the starting mode. Closing the window stops its server. A background host keeps running when the window closes, and the desktop attaches to it. Setup does not change an existing startup arrangement unless the owner selects startup.
 
-Nothing changes for existing desktop-only users until a background host is installed. Optional features stay off until selected.
+## Packaged startup
 
-## Desktop attach
+In Setup & help, select Start at login when reviewing a setup plan. Library registers only its own host and the new Library-managed companions selected in that plan. Adopted or externally managed companion jobs remain unchanged. Each companion opens through the normal macOS application launcher; setup first requires explicit opening and native readiness. No service bypasses macOS approval.
 
-`-with-shell` looks for the private descriptor `host.json` in the same configuration home
-(`~/Library/Application Support/Library Studio KH` unless `LIBRARY_STUDIO_HOME` says otherwise).
+The server included inside Library Studio KH also provides local controls, with no Node, Go or Homebrew prerequisite:
 
-- Descriptor present and healthy: the desktop helper prints the existing loopback address and
-  token for the window, then waits on its stdin. Closing the window stops only the helper; the
-  background host keeps running.
-- Descriptor missing: the old desktop lifecycle is used, with no change.
-- Descriptor present but unreachable or unsafe: the desktop stops with a clear error instead of
-  silently starting a second server. Start the host again, or remove the descriptor to return to
-  a desktop-only session.
-
-The descriptor is created by `-service` with mode `0600`. It contains the process id, loopback
-address, version and bootstrap token. It is never printed or logged. A descriptor that is a
-symlink, readable by other users, damaged, or points anywhere but loopback is refused.
-
-Attachment sends a fresh challenge to the loopback-only host-proof endpoint and checks the returned HMAC locally. It does not send the bootstrap key to an unverified listener or follow redirects. Both the descriptor version and verified live version must match the desktop build; an old host is refused with a clear restart instruction. An OS-released configuration lock prevents multiple real servers from writing the same settings/session home.
-
-## Background host
-
-```sh
-library-studio-server -service -port 7881
+```bash
+library-studio-server -host-control install -port 7881
 ```
 
-- Loopback only, fixed port (default `7881`, must be 1024–65535).
-- Writes the private descriptor, then logs one token-free ready line. It never prints the token.
-- If the port is taken it exits with an error naming the port instead of starting a duplicate.
-- On `SIGTERM`/interrupt it removes its own descriptor only.
-
-## macOS LaunchAgent manager
-
-`scripts/manage-host.mjs` installs one Library-only job named `kh.librarystudio.host` at
-`~/Library/LaunchAgents/kh.librarystudio.host.plist`. It never touches other agents, network
-settings, the firewall, passwords or the stock apps.
-
-```sh
-# Install and start (absolute server path required)
-node scripts/manage-host.mjs install --exe "/Applications/Library Studio KH.app/Contents/MacOS/library-studio-server" \
-  --home "$HOME/Library/Application Support/Library Studio KH" --port 7881
-
-node scripts/manage-host.mjs start
-node scripts/manage-host.mjs stop
-node scripts/manage-host.mjs status
+```bash
+library-studio-server -host-control status
 ```
 
-- `install` is idempotent: unchanged settings with a loaded job are a no-op; changed settings
-  rewrite the plist and reload only this job. `--dry-run` prints the plist and the `launchctl`
-  commands without running them.
-- Paths are escaped for the plist. Control characters are rejected.
-- Logs go to `host.log` and `host.err.log` in the selected configuration home. They contain no
-  credentials.
-- `stop` keeps the plist, so `install` or `start` can bring the host back.
-- `--self-test` checks escaping, validation and dry-run safety without calling `launchctl`.
+```bash
+library-studio-server -host-control start
+```
 
-Other operating systems are unsupported for now. The manager exits with a clear message instead
-of pretending to install; run the server directly with `-service` there.
+```bash
+library-studio-server -host-control stop
+```
+
+Use the installed sidecar's full path if it is not on PATH. `-host-home` selects the Library configuration home. Only the local install CLI accepts `-exe` as a trusted packaging override; server requests never supply an executable. Status inspects the saved installation rather than treating default flags as desired settings.
+
+The host job is `kh.librarystudio.host`. Companion jobs are `kh.librarystudio.companion.<app-id>`. Definitions and logs are private. A foreign, symlinked or ambiguous job file is blocked. Replaced Library definitions are retained recoverably. The loaded definition must match the saved definition before status reports it loaded; an unverified host is never reported running.
+
+If a desktop server currently holds the configuration lock, installing the host reports Restart needed. Quit and reopen Library, then check setup again. The native Restart Library menu performs the desktop restart. No second server is started while the home is locked.
+
+The older `scripts/manage-host.mjs` remains a developer compatibility tool. It is not required for packaged setup.
+
+## Desktop attach and client mode
+
+The desktop first reads its private `client.json`. A saved normal remote host URL takes precedence over local hosting. It contains no owner credentials or bootstrap token. The native Use this Mac as host menu retires this desktop's client setting and restarts only the desktop helper. It does not stop the remote host or a local background job.
+
+For local hosting, the helper checks the private `host.json` descriptor in the Library configuration home. The default home is the operating system's Library Studio KH configuration folder; `LIBRARY_STUDIO_HOME` can override it.
+
+A healthy descriptor is attached. A missing descriptor with an installed login job causes a bounded start and proof check. Without an installed job, the desktop starts its own server. An unsafe, unreachable or mismatched descriptor produces an error instead of silently starting a duplicate.
+
+The descriptor is mode 0600 and records the process, loopback address, version and bootstrap credential. Attachment sends a fresh challenge to the loopback-only host-proof endpoint and checks its HMAC locally. It never sends the bootstrap credential to an unverified listener or follows redirects. The verified live version must match the desktop build. An OS-released configuration lock protects the settings/session home.
 
 ## Troubleshooting
 
-| Symptom | Meaning and fix |
-| --- | --- |
-| `not installed` | Run `install` with the absolute server path first. |
-| Port already in use | Another program or host uses the port. Choose another with `--port` / `-port`, then reinstall. |
-| Desktop says the host is configured but not reachable | The job is stopped or crashed. Run `start`; check `host.err.log`. |
-| `readable by other users` | Run `chmod 600` on `host.json`, or reinstall the host so it is recreated privately. |
-| `not this computer` | The descriptor names a non-loopback address and is refused. Remove it and restart the host. |
-| `launchctl bootstrap failed` | Read the message: usually a bad plist path or a job that needs `stop` first. |
+A missing job needs Install. A configured but unreachable host needs Start and a review of its private error log. An occupied port requires another selected port. A changed or unverified loaded definition needs a successful restart before it can report ready. Invalid private descriptors are retained for diagnosis; do not discard account or settings files as a shortcut.
 
-## Limits
+Stopping the background host keeps its definition. Starting it reloads the saved Library definition. Existing media engines, native accounts, seeding policy, NAS mounts and unrelated jobs are outside the host controls.
 
-- The initial transport remains private Tailnet HTTP, matching the rest of the app. This does not
-  claim HTTPS or Secure-cookie protection.
-- The host manager changes only Library's own login agent. It does not change macOS automatic login, FileVault, firewall, Tailscale, NAS credentials or stock-app settings.
-- The manager requires Node as a developer tool; the packaged Go host itself has no Node dependency. A built-in user-facing service installer is part of the future guided-setup work, not a completed UI control.
-- For 1301 adoption, create configuration with `cleanupOn: false` before the first connected launch. Preserve the existing stock-stack jobs and seeding policy.
-- Automated tests use mocks and dry-run service operations. Actual reboot/fresh-login behavior must be checked at a quiet point before claiming unattended recovery.
+Automatic startup does not enable macOS automatic login or change FileVault, firewall, Tailscale, NAS credentials or privacy permissions. Windows/Linux login-job installation is explicitly unsupported. Automated checks use fake commands and temporary homes; a real login/reboot and OS approval remain separate quiet-point checks.

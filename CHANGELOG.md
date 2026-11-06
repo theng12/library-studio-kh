@@ -1,5 +1,14 @@
 # What's new in Library Studio KH
 
+## 0.7.0 — 2026-11-07
+
+- Guided core-app setup on Apple Silicon Macs resolves current official packages, verifies published checksums, preserves existing apps and keeps first opening under normal macOS approval.
+- Set up private native connections, folders, categories and Prowlarr links with tests and saved-setting checks. New music folders use live Lidarr quality and metadata choices; TV renaming starts on and stays editable.
+- Review, retry and resume setup with explicit blocked or unchecked states. Existing native settings and Library accounts are preserved, and generated credentials stay private.
+- Optional packaged at-login startup needs no Node, Go or Homebrew. A client can use an existing host, with native Restart Library and Use this Mac as host controls.
+- My library filters by actual genres and years, combines them with existing filters and offers newest/oldest-year sorting with unknown metadata kept distinct.
+- Subtitle details accept Bazarr's current audio-language lists and display/filter every reported audio language separately from subtitle languages.
+
 ## 0.6.0 — 2026-11-07
 
 - Copy the host and Tailscale webpage addresses from Activity. Connection pills stay visible with green or red dots, and download filters no longer hide behind a dropdown.

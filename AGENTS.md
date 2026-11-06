@@ -4,7 +4,7 @@ Direct instructions from the owner (theng12) override this file. If it disagrees
 
 ## What this is
 
-A thin desktop layer over the stock qBittorrent, Sonarr, Radarr, Lidarr and Prowlarr apps, using their official APIs. Never add a downloader or indexer of our own. See [README.md](README.md) for the removal safety rule; never weaken it.
+A media management application over separate official qBittorrent, Sonarr, Radarr, Lidarr and Prowlarr apps, using their supported APIs. Guided setup downloads and verifies official companion packages; never implement a media downloader or indexer of our own. Cover installation, configuration, readiness and recovery rather than stopping at wrappers. See [README.md](README.md) for the removal safety rule; never weaken it.
 
 ## Layout
 

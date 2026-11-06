@@ -1,6 +1,6 @@
 # Library Studio KH
 
-The owner's media library manager. It does not download or search anything itself: the stock apps do that.
+The owner's media library manager. Media downloads and searches run in the stock apps. Library also resolves and downloads verified official companion packages for setup.
 
 - **qBittorrent** downloads.
 - **Sonarr** (TV), **Radarr** (films), **Lidarr** (music) and **Prowlarr** (search sites) find and import into the library on the NAS.
@@ -40,7 +40,9 @@ Downloads supports title search, status/app filters with counts, and display sor
 
 App ownership comes from each library app's queue and available import history. Unknown/unmatched ownership stays explicit. My library matches in-flight downloads using the owning app and parent IDs, never title guesses. Its current-download percentage is not whole-series completion. Both views refresh every 30 seconds while visible; expanded items remain open. Search/status/app filter changes clear selection so hidden items cannot be paused accidentally.
 
-A fresh Library installation currently needs separately installed and configured companions. The guided host/client installer remains planned. Item details now show reported metadata and original language; optional Bazarr controls report file audio/subtitles and request standard English subtitle searches. The existing 1301 stack is already configured independently.
+Setup & help guides a fresh Apple Silicon Mac through current official companion packages, checksum verification, explicit macOS first opening, private profiles, native folders/categories/links and connection checks. It preserves existing installations and reports conflicting or unverified settings. Optional at-login startup uses the packaged server without Node, Go or Homebrew. An existing-host client uses a normal webpage URL and the native menu can switch back to this Mac. See [guided setup](docs/SETUP.md).
+
+My library combines live genre/year choices with type, original language and title search, and sorts by newest or oldest year. Missing metadata stays selectable as Not reported. Item details show reported metadata; optional Bazarr controls display all reported audio languages separately from subtitle languages and request standard English subtitle searches. The existing 1301 stack remains independently configured.
 
 See [metadata and subtitle setup](docs/SUBTITLES.md) for language meanings, profile/provider requirements and the initial1301 manual-search configuration. Subtitle downloads need imported/indexed files; a successful request is not a completed download.
 

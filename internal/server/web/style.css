@@ -315,7 +315,9 @@ dialog::backdrop { background: rgba(14, 18, 32, 0.45); }
 .setup-fieldset .check { min-height: 44px; margin-top: 0; }
 #show-client, #show-owner { min-height: 44px; }
 #setup-plan-form label input, #setup-client-form input, #setup-client-form button,
-#setup-plan-form button, .setup-app button, .setup-actions button { min-height: 44px; }
+#setup-plan-form button, .setup-app button, .setup-actions button,
+.setup-preferences select, .setup-preferences button { min-height: 44px; }
+.setup-preferences select { font-size: 1rem; }
 #setup-job { display: grid; gap: 0.75rem; }
 .setup-job { display: grid; gap: 0.85rem; border-top: 1px solid var(--line); padding-top: 1rem; }
 .setup-job-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }

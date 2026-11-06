@@ -39,9 +39,14 @@ func runHostControl(command string, svc *platform.HostService, spec platform.Hos
 	case "start":
 		st, err = svc.Start(spec)
 	case "stop":
-		st, err = svc.Stop()
+		checked := svc.Status(platform.HostServiceSpec{Home: spec.Home})
+		if checked.State == platform.HostServiceBlocked {
+			st, err = checked, fmt.Errorf("%s", checked.Detail)
+		} else {
+			st, err = svc.Stop()
+		}
 	case "status":
-		st = svc.Status(spec)
+		st = svc.Status(platform.HostServiceSpec{Home: spec.Home})
 	default:
 		return hostControlOutput{
 			Supported: true,

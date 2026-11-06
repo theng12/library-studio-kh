@@ -71,6 +71,9 @@ func (s *CompanionService) Status(spec CompanionServiceSpec) CompanionServiceSta
 	if !ours {
 		return companionBlocked(spec, "Another login job uses this Library companion name; refusing to change it.")
 	}
+	if err := checkJobHome(path, spec.Home); err != nil {
+		return companionBlocked(spec, err.Error())
+	}
 	st := CompanionServiceStatus{
 		Supported: true,
 		State:     HostServiceInstalled,
@@ -287,6 +290,10 @@ func companionPlist(spec CompanionServiceSpec, app companionApp, label string) s
 		b.WriteString("</string>\n")
 	}
 	b.WriteString(`	</array>
+	<key>EnvironmentVariables</key>
+	<dict><key>LIBRARY_STUDIO_HOME</key><string>`)
+	b.WriteString(xmlEscape(spec.Home))
+	b.WriteString(`</string></dict>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>StandardOutPath</key>
@@ -362,6 +369,11 @@ func (s *CompanionService) Install(spec CompanionServiceSpec) (CompanionServiceS
 		err := errors.New("another login job uses this Library companion name; not changing it")
 		return companionBlocked(spec, err.Error()), err
 	}
+	if exists {
+		if err := checkJobHome(path, spec.Home); err != nil {
+			return companionBlocked(spec, err.Error()), err
+		}
+	}
 	plist := companionPlist(spec, app, label)
 	changed := true
 	var old []byte
@@ -426,6 +438,9 @@ func (s *CompanionService) Remove(spec CompanionServiceSpec) (CompanionServiceSt
 	}
 	if !ours {
 		err := errors.New("refusing to remove another login job")
+		return companionBlocked(spec, err.Error()), err
+	}
+	if err := checkJobHome(path, spec.Home); err != nil {
 		return companionBlocked(spec, err.Error()), err
 	}
 	if s.isLoaded(label) {

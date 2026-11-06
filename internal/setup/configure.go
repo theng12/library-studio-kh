@@ -18,7 +18,10 @@ func (m *Manager) configure() {
 	req := m.job.View.Request
 	blocked := false
 	for index, app := range m.job.View.Apps {
-		err := nativePing(c, app)
+		err := m.checkManagedProfile(app, &c)
+		if err == nil {
+			err = nativePing(c, app)
+		}
 		state := "passed"
 		detail := "Native API answered with the saved account."
 		if err != nil {
@@ -132,10 +135,6 @@ func (m *Manager) configure() {
 			return
 		}
 		if app.Managed {
-			if err := a.DisableRemoveCompletedDownloads(client.ClientID); err != nil {
-				m.block(app.Name, "Local-copy preservation", err, c)
-				return
-			}
 			on, off := true, false
 			patch := library.CompanionPatch{App: app.Name, EnableCompletedDownloadHandling: &on, RemoveCompletedDownloads: &off, ClientID: &client.ClientID}
 			if app.ID == companioninstall.Sonarr {

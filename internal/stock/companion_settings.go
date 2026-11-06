@@ -91,13 +91,20 @@ func (a *Arr) DisableRemoveCompletedDownloads(id int) error {
 	}
 	found := false
 	for _, c := range clients {
-		if c["implementation"] != "QBittorrent" || c["removeCompletedDownloads"] != true {
+		if c["implementation"] != "QBittorrent" {
 			continue
 		}
 		if id > 0 && asInt(c["id"]) != id {
 			continue
 		}
 		found = true
+		on, reported := c["removeCompletedDownloads"].(bool)
+		if !reported {
+			return fmt.Errorf("%s did not report the qBittorrent client's removal setting", a.Name)
+		}
+		if !on {
+			continue
+		}
 		clientID := asInt(c["id"])
 		if clientID == 0 {
 			return fmt.Errorf("%s did not report a download client id", a.Name)
@@ -108,7 +115,7 @@ func (a *Arr) DisableRemoveCompletedDownloads(id int) error {
 		}
 	}
 	if id > 0 && !found {
-		return fmt.Errorf("%s has no qBittorrent client with removal switched on under id %d", a.Name, id)
+		return fmt.Errorf("%s has no qBittorrent client under id %d", a.Name, id)
 	}
 	return nil
 }
