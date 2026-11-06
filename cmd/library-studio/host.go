@@ -21,7 +21,11 @@ import (
 
 const defaultServicePort = 7881
 
-var errNoHost = errors.New("no background host is configured")
+var (
+	errNoHost      = errors.New("no background host is configured")
+	errHostUnsafe  = errors.New("the background host descriptor is not safe to use")
+	errHostVersion = errors.New("the background host version does not match")
+)
 
 // runtimeInfo is the private handshake between the background host and a desktop shell.
 // It lives only in this configuration home and is never printed or logged.
@@ -61,10 +65,10 @@ func readRuntime(home string) (runtimeInfo, error) {
 		return runtimeInfo{}, err
 	}
 	if !fi.Mode().IsRegular() {
-		return runtimeInfo{}, fmt.Errorf("%s is not a regular file; the background host descriptor must be private", path)
+		return runtimeInfo{}, fmt.Errorf("%w: %s is not a regular file; the background host descriptor must be private", errHostUnsafe, path)
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
-		return runtimeInfo{}, fmt.Errorf("%s is readable by other users; run chmod 600 on it or reinstall the background host", path)
+		return runtimeInfo{}, fmt.Errorf("%w: %s is readable by other users; run chmod 600 on it or reinstall the background host", errHostUnsafe, path)
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -72,13 +76,13 @@ func readRuntime(home string) (runtimeInfo, error) {
 	}
 	var info runtimeInfo
 	if err := json.Unmarshal(b, &info); err != nil {
-		return runtimeInfo{}, fmt.Errorf("%s is damaged: %w", path, err)
+		return runtimeInfo{}, fmt.Errorf("%w: %s is damaged: %v", errHostUnsafe, path, err)
 	}
 	if info.PID <= 0 || info.Token == "" {
-		return runtimeInfo{}, fmt.Errorf("%s is incomplete; restart the background host", path)
+		return runtimeInfo{}, fmt.Errorf("%w: %s is incomplete; restart the background host", errHostUnsafe, path)
 	}
 	if err := checkLoopbackAddress(info.Address); err != nil {
-		return runtimeInfo{}, fmt.Errorf("%s is not safe to attach to: %w", path, err)
+		return runtimeInfo{}, fmt.Errorf("%w: %s is not safe to attach to: %v", errHostUnsafe, path, err)
 	}
 	return info, nil
 }
@@ -112,9 +116,30 @@ func attach(home string) (runtimeInfo, error) {
 	}
 	current := librarystudio.Version()
 	if got != current || info.Version != current {
-		return runtimeInfo{}, fmt.Errorf("Library Studio KH background host is version %s but this app is %s. Quit the background host, then reopen Library Studio KH", got, current)
+		return runtimeInfo{}, fmt.Errorf("%w: the host is %s but this app is %s. Quit the background host, then reopen Library Studio KH", errHostVersion, got, current)
 	}
 	return info, nil
+}
+
+// waitForHost waits a bounded time for a just-started service to publish and
+// prove its private descriptor. It never falls back to a second server.
+func waitForHost(home string, timeout time.Duration) (runtimeInfo, error) {
+	deadline := time.Now().Add(timeout)
+	var last error
+	for {
+		info, err := attach(home)
+		if err == nil {
+			return info, nil
+		}
+		last = err
+		if errors.Is(err, errHostVersion) || errors.Is(err, errHostUnsafe) {
+			return runtimeInfo{}, err
+		}
+		if time.Now().After(deadline) {
+			return runtimeInfo{}, last
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func probe(info runtimeInfo) (string, error) {

@@ -27,29 +27,81 @@ func main() {
 	service := flag.Bool("service", false, "run the background host on a fixed loopback port")
 	port := flag.Int("port", defaultServicePort, "port for -service (this computer only)")
 	withShell := flag.Bool("with-shell", false, "exit when the desktop shell closes our stdin")
+	hostControl := flag.String("host-control", "", "manage the macOS background host: install, start, stop or status")
+	hostHome := flag.String("host-home", "", "configuration home for -host-control (default: the app's config folder)")
+	serverExe := flag.String("exe", "", "trusted local server path for -host-control install (default: this executable)")
+	clientHost := flag.String("client-host", "", "use another Library host webpage URL, or clear this desktop's saved host")
 	flag.Parse()
 
 	home, err := config.Dir()
 	if err != nil {
 		log.Fatal(err)
 	}
+	if *clientHost != "" {
+		out, code := runClientHost(*clientHost, home)
+		printClientHost(out)
+		os.Exit(code)
+	}
+	if *hostControl != "" {
+		if *hostHome != "" {
+			home = *hostHome
+		}
+		exe := *serverExe
+		if exe == "" {
+			exe, _ = os.Executable()
+		}
+		out, code := runHostControl(*hostControl, hostControlService(), platform.HostServiceSpec{Exe: exe, Home: home, Port: *port})
+		printHostControl(out)
+		os.Exit(code)
+	}
 	if *service {
 		runService(home, *port) // never returns
 	}
 	if *withShell {
+		// A saved client host wins before any local attach, server start or
+		// owner creation. It is only the normal webpage URL, never a token.
+		handled, err := remoteShell(home, os.Stdin, os.Stdout)
+		if err != nil {
+			log.Fatalf("Library Studio KH could not read this desktop's saved host: %v", err)
+		}
+		if handled {
+			return
+		}
 		info, err := attach(home)
-		switch {
-		case err == nil:
+		if err == nil {
 			// The service outlives this helper; the shell only owns the window.
 			fmt.Printf("LISTENING http://%s/#%s\n", info.Address, info.Token)
 			waitShell(os.Stdin)
 			return
-		case errors.Is(err, errNoHost):
-			// No background host configured: the old desktop lifecycle.
-			go func() { waitShell(os.Stdin); os.Exit(0) }()
-		default:
+		}
+		if !errors.Is(err, errNoHost) {
 			log.Fatal(err)
 		}
+		// Only the installed job is started here; it may use a different port
+		// or executable than this process's flags.
+		spec := platform.HostServiceSpec{Home: home}
+		svc := hostControlService()
+		st := svc.Status(spec)
+		if st.Supported && st.Installed {
+			// A login job is wanted: start it and wait for its proof instead of
+			// silently starting another desktop server.
+			started, startErr := svc.Start(spec)
+			if startErr != nil {
+				log.Fatalf("Library Studio KH could not start its background host: %v", startErr)
+			}
+			info, err = waitForHost(home, 10*time.Second)
+			if err != nil {
+				if started.State == platform.HostServiceNeedsRestart {
+					log.Fatalf("Library Studio KH's background host did not start cleanly. Another Library Studio KH server may already be using %s. Quit it, then reopen Library Studio KH.", home)
+				}
+				log.Fatalf("Library Studio KH's background host did not become ready: %v", err)
+			}
+			fmt.Printf("LISTENING http://%s/#%s\n", info.Address, info.Token)
+			waitShell(os.Stdin)
+			return
+		}
+		// No background host configured: the old desktop lifecycle.
+		go func() { waitShell(os.Stdin); os.Exit(0) }()
 	}
 
 	release, err := platform.LockConfigHome(home)
