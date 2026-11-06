@@ -1,6 +1,7 @@
 package stock
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -115,9 +116,16 @@ type rawCollection struct {
 }
 
 type rawCatalogMovie struct {
-	ID      int  `json:"id"`
-	TMDBID  int  `json:"tmdbId"`
-	HasFile bool `json:"hasFile"`
+	ID      int   `json:"id"`
+	TMDBID  int   `json:"tmdbId"`
+	HasFile *bool `json:"hasFile"`
+}
+
+// catalogEntry is one validated row. Rows without an id, tmdbId or hasFile are
+// refused as an incomplete list rather than guessed at.
+type catalogEntry struct {
+	ID      int
+	HasFile bool
 }
 
 var ratingSources = []struct{ key, label string }{
@@ -215,17 +223,26 @@ func (a *Arr) MovieExtras(id int) (MovieExtras, error) {
 	return x, nil
 }
 
-// movieCatalog maps tmdbId to the library id and file flag Radarr reports.
-func (a *Arr) movieCatalog() (map[int]rawCatalogMovie, error) {
-	var raw []rawCatalogMovie
+// movieCatalog maps tmdbId to the library id and file flag Radarr reports. A
+// nil or incomplete list is an error so callers never read it as "all missing".
+func (a *Arr) movieCatalog() (map[int]catalogEntry, error) {
+	var raw json.RawMessage
 	if err := a.do("GET", "/movie", nil, &raw); err != nil {
 		return nil, err
 	}
-	out := make(map[int]rawCatalogMovie, len(raw))
-	for _, m := range raw {
-		if m.TMDBID > 0 {
-			out[m.TMDBID] = m
+	var rows []rawCatalogMovie
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		return nil, err
+	}
+	if rows == nil { // JSON null is not an empty, valid library
+		return nil, errors.New("Radarr sent no movie list")
+	}
+	out := make(map[int]catalogEntry, len(rows))
+	for _, m := range rows {
+		if m.ID <= 0 || m.TMDBID <= 0 || m.HasFile == nil {
+			return nil, errors.New("Radarr sent an incomplete movie list")
 		}
+		out[m.TMDBID] = catalogEntry{ID: m.ID, HasFile: *m.HasFile}
 	}
 	return out, nil
 }

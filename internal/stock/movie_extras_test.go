@@ -216,3 +216,61 @@ func TestArtworkRefusesNonImageAndOversize(t *testing.T) {
 		t.Fatal("artwork over the bound must be refused")
 	}
 }
+
+func movieExtrasWithCatalog(t *testing.T, catalog string) MovieExtras {
+	srv := movieExtrasServer(t, catalog)
+	defer srv.Close()
+	x, err := NewArr("Radarr", srv.URL, "k").MovieExtras(13)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return x
+}
+
+func TestMovieExtrasNullCatalogIsUnknown(t *testing.T) {
+	x := movieExtrasWithCatalog(t, `null`)
+	if x.CatalogKnown || !strings.Contains(strings.Join(x.Problems, " "), "unknown") {
+		t.Fatalf("a null catalog must stay unknown: %+v", x)
+	}
+	for _, m := range x.Collection.Members {
+		if m.HaveFile != nil || m.InLibrary {
+			t.Fatalf("member state must stay unknown: %+v", m)
+		}
+	}
+	if x.Collection.OwnedCount+x.Collection.NoFileCount+x.Collection.Missing != 0 {
+		t.Fatalf("unknown members must not be counted: %+v", x.Collection)
+	}
+}
+
+func TestMovieExtrasIncompleteCatalogFailsClosed(t *testing.T) {
+	for _, catalog := range []string{
+		`[{"id":13,"tmdbId":297802}]`,                  // hasFile missing
+		`[{"id":13,"hasFile":true}]`,                   // tmdbId missing
+		`[{"id":0,"tmdbId":297802,"hasFile":true}]`,    // id missing
+		`[{"id":13,"tmdbId":297802,"hasFile":null}]`,   // hasFile null
+		`[{"id":"13","tmdbId":297802,"hasFile":true}]`, // malformed row
+	} {
+		x := movieExtrasWithCatalog(t, catalog)
+		if x.CatalogKnown || !strings.Contains(strings.Join(x.Problems, " "), "unknown") {
+			t.Fatalf("incomplete catalog %s must stay unknown: %+v", catalog, x)
+		}
+		if x.Collection.OwnedCount+x.Collection.NoFileCount+x.Collection.Missing != 0 {
+			t.Fatalf("incomplete catalog must not count members: %s %+v", catalog, x.Collection)
+		}
+	}
+}
+
+func TestMovieExtrasEmptyCatalogIsKnownEmpty(t *testing.T) {
+	x := movieExtrasWithCatalog(t, `[]`)
+	if !x.CatalogKnown || len(x.Problems) != 0 {
+		t.Fatalf("an empty array is a known empty library: %+v", x)
+	}
+	if x.Collection.Missing != 3 || x.Collection.OwnedCount != 0 || x.Collection.NoFileCount != 0 {
+		t.Fatalf("counts wrong for empty catalog: %+v", x.Collection)
+	}
+	for _, m := range x.Collection.Members {
+		if m.HaveFile == nil || *m.HaveFile || m.InLibrary {
+			t.Fatalf("known-empty catalog means definitely missing: %+v", m)
+		}
+	}
+}

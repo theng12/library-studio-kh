@@ -18,12 +18,37 @@
  */
 
 let movieExtrasRequest = 0;
+let movieExtrasObjectURL = "";
 
 function movieExtrasNode(tag, text, className) {
   const n = document.createElement(tag);
   if (text != null) n.textContent = text;
   if (className) n.className = className;
   return n;
+}
+
+// The desktop bootstrap/session token is a header, never a query value. Use the
+// host's live token binding when present and fall back to sessionStorage.
+function movieExtrasToken() {
+  try {
+    return typeof token === "string" ? token : sessionStorage.getItem("token") || "";
+  } catch {
+    return "";
+  }
+}
+
+function movieExtrasArtworkRequest(extras) {
+  const url = "/api/media/artwork?" + new URLSearchParams({ app: "Radarr", id: String(extras.id), name: "poster.jpg" });
+  const headers = { "X-Library-Request": "1" };
+  const token = movieExtrasToken();
+  if (token) headers["X-Library-Token"] = token;
+  return { url, init: { headers, credentials: "same-origin" } };
+}
+
+function movieExtrasClearPoster() {
+  if (!movieExtrasObjectURL) return;
+  URL.revokeObjectURL(movieExtrasObjectURL);
+  movieExtrasObjectURL = "";
 }
 
 function movieExtrasDate(value) {
@@ -63,23 +88,45 @@ function movieExtrasPanel() {
   return section;
 }
 
-function movieExtrasPoster(extras, body) {
+async function movieExtrasPoster(extras, body, request) {
   if (!extras.poster) {
     body.classList.add("no-poster");
     return;
   }
   const figure = movieExtrasNode("figure", null, "movie-poster");
   const img = document.createElement("img");
-  img.src = "/api/media/artwork?" + new URLSearchParams({ app: "Radarr", id: String(extras.id), name: "poster.jpg" });
   img.alt = "Poster for " + (extras.title || "this film");
-  img.loading = "lazy";
   img.decoding = "async";
-  img.addEventListener("error", () => {
-    figure.remove();
-    body.classList.add("no-poster");
-  });
   figure.append(img, movieExtrasNode("figcaption", "Poster from Radarr"));
   body.append(figure);
+
+  const artwork = movieExtrasArtworkRequest(extras);
+  try {
+    const response = await fetch(artwork.url, artwork.init);
+    if (request !== movieExtrasRequest || body.isConnected === false) return;
+    if (!response.ok) throw new Error("Radarr artwork is unavailable (" + response.status + ").");
+    const blob = await response.blob();
+    if (request !== movieExtrasRequest || body.isConnected === false) return;
+    if (!blob.type.startsWith("image/")) throw new Error("Radarr sent something that isn't an image.");
+    movieExtrasClearPoster();
+    const objectURL = URL.createObjectURL(blob);
+    movieExtrasObjectURL = objectURL;
+    img.addEventListener("load", () => {
+      if (movieExtrasObjectURL === objectURL) {
+        URL.revokeObjectURL(objectURL);
+        movieExtrasObjectURL = "";
+      }
+    }, { once: true });
+    img.addEventListener("error", () => {
+      movieExtrasClearPoster();
+      figure.remove();
+      body.classList.add("no-poster");
+    }, { once: true });
+    img.src = objectURL;
+  } catch {
+    figure.remove();
+    body.classList.add("no-poster");
+  }
 }
 
 function movieExtrasFacts(extras) {
@@ -128,7 +175,7 @@ function movieExtrasCollection(extras) {
       movieExtrasLibraryState(member) + (member.isExcluded ? " · excluded" : ""),
     ];
     if (showAction) {
-      const td = document.createElement("td");
+      let action = "";
       if (!member.inLibrary && member.tmdbId) {
         const button = movieExtrasNode("button", "Find & add", "small");
         button.type = "button";
@@ -141,12 +188,14 @@ function movieExtrasCollection(extras) {
             status.textContent = "Continue in the Find & add confirmation. Nothing is added until you confirm there.";
           } catch (e) {
             status.textContent = e.message || "Find & add could not be opened.";
+          } finally {
+            // A cancelled confirmation must leave the button usable.
             button.disabled = false;
           }
         });
-        td.append(button);
+        action = button;
       }
-      cells.push(td);
+      cells.push(action);
     }
     cells.forEach((cell, i) => {
       const td = document.createElement("td");
@@ -165,13 +214,14 @@ function movieExtrasCollection(extras) {
 async function loadMovieExtras(detail, container) {
   if (!container || !detail || detail.app !== "Radarr") return;
   const request = ++movieExtrasRequest;
+  movieExtrasClearPoster();
   container.replaceChildren(movieExtrasNode("p", "Reading artwork and collection…", "empty"));
   try {
     const extras = await api("/api/media/movie-extras?" + new URLSearchParams({ app: "Radarr", id: String(detail.id) }));
     if (request !== movieExtrasRequest || container.isConnected === false) return;
     const panel = movieExtrasPanel();
     const body = movieExtrasNode("div", null, "movie-extras-body");
-    movieExtrasPoster(extras, body);
+    movieExtrasPoster(extras, body, request);
     body.append(movieExtrasFacts(extras));
     panel.append(body, movieExtrasCollection(extras));
     if ((extras.problems || []).length) panel.append(movieExtrasNode("p", extras.problems.join(" "), "movie-extras-problems muted"));
