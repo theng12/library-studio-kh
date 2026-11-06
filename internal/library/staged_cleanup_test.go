@@ -62,19 +62,20 @@ type testItem struct {
 }
 
 type harness struct {
-	t        *testing.T
-	cfg      config.Config
-	src      *fakeSource
-	clock    *time.Time
-	download string
-	library  string
-	managed  string
-	trash    string
-	home     string
-	seq      int
-	local    bool
-	trashErr error
-	freeFn   func() int64
+	t          *testing.T
+	cfg        config.Config
+	src        *fakeSource
+	clock      *time.Time
+	download   string
+	library    string
+	managed    string
+	trash      string
+	home       string
+	seq        int
+	local      bool
+	libraryNAS bool
+	trashErr   error
+	freeFn     func() int64
 }
 
 func newHarness(t *testing.T) *harness {
@@ -94,9 +95,10 @@ func newHarness(t *testing.T) *harness {
 			t.Fatal(err)
 		}
 	}
-	h.managed = filepath.Join(h.library, "_trash")
+	h.managed = filepath.Join(h.download, "_trash")
 	h.cfg = config.Default()
 	h.cfg.StagedCleanupOn = true
+	h.cfg.DownloadPath = h.download
 	h.cfg.LibraryPath = h.library
 	h.cfg.PressureFreeGB = 0
 	h.freeFn = func() int64 { return 1 << 40 }
@@ -142,6 +144,9 @@ func (h *harness) engine() *StagedCleanup {
 		LocalVolume: func(path string) (bool, error) {
 			if strings.HasPrefix(path, h.download) {
 				return h.local, nil
+			}
+			if h.libraryNAS && strings.HasPrefix(path, h.library) {
+				return false, nil
 			}
 			return true, nil
 		},
@@ -390,6 +395,7 @@ func TestSourceSymlinkAndExtraUserFileAreRefused(t *testing.T) {
 
 func TestLocalVolumeIsRequired(t *testing.T) {
 	h := newHarness(t)
+	h.cfg.ManagedTrashPath = filepath.Join(h.home, "_trash") // local, so the source check runs
 	importedAt := *h.clock
 	it := h.add("Movie", importedAt)
 	h.local = false
@@ -625,4 +631,44 @@ func TestInterruptedMovesAreRecovered(t *testing.T) {
 			t.Fatalf("an interrupted restore must be finished: %+v", res.Status.Items)
 		}
 	})
+}
+
+func TestManagedTrashDefaultsToLocalDownloadFolderNotNAS(t *testing.T) {
+	h := newHarness(t)
+	importedAt := *h.clock
+	it := h.add("Movie", importedAt)
+	h.clockNow(importedAt.Add(3 * 24 * time.Hour))
+	res := h.run()
+	if phaseOf(t, res, it.hash) != phaseManaged {
+		t.Fatalf("day 3 must move into the managed staging trash: %+v", res.Status.Items)
+	}
+	var managed string
+	for _, name := range trashEntries(t, h.managed) {
+		managed = filepath.Join(h.managed, name)
+	}
+	if managed == "" || !strings.HasPrefix(managed, h.download) {
+		t.Fatalf("managed _trash must default to the local download folder, got %q", managed)
+	}
+	if exists(filepath.Join(h.library, "_trash")) {
+		t.Fatal("managed _trash must never default to the NAS library")
+	}
+}
+
+func TestNASManagedTrashIsRefused(t *testing.T) {
+	h := newHarness(t)
+	h.libraryNAS = true
+	h.cfg.ManagedTrashPath = filepath.Join(h.library, "_trash")
+	importedAt := *h.clock
+	it := h.add("Movie", importedAt)
+	h.clockNow(importedAt.Add(4 * 24 * time.Hour))
+	res := h.run()
+	if res.Status.ManagedTrashLocal || len(res.Status.Items) != 0 {
+		t.Fatalf("a NAS managed _trash must be refused: %+v", res.Status)
+	}
+	if !exists(it.src) || len(h.src.metadataCalls) != 0 {
+		t.Fatal("nothing may be moved when the managed trash is not local")
+	}
+	if !strings.Contains(strings.Join(res.Status.Blocked, " "), "local volume") {
+		t.Fatalf("the refusal must be explicit: %v", res.Status.Blocked)
+	}
 }

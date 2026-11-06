@@ -113,6 +113,7 @@ type CleanupStatus struct {
 	SeedRatio         float64        `json:"seedRatio"`
 	SeedMinutes       int            `json:"seedMinutes"`
 	ManagedTrashPath  string         `json:"managedTrashPath,omitempty"`
+	ManagedTrashLocal bool           `json:"managedTrashLocal"`
 	TrashDir          string         `json:"trashDir,omitempty"`
 	FreeBytes         *int64         `json:"freeBytes"`
 	FreeFrom          string         `json:"freeFrom,omitempty"`
@@ -195,7 +196,7 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 	for _, r := range recs {
 		byHash[strings.ToUpper(r.Hash)] = r
 	}
-	if !st.EngineAvailable || st.ManagedTrashPath == "" || c.LibraryPath == "" {
+	if !st.EngineAvailable || st.ManagedTrashPath == "" || !st.ManagedTrashLocal {
 		// A capability or path problem is reported, never worked around.
 		e.render(&st, recs, c, now)
 		res.Status = st
@@ -410,6 +411,10 @@ func (x *settleCtx) settleStaging(rec *cleanupRecord) {
 		return
 	}
 	dest := filepath.Join(managedRoot(x.c), entryName(rec))
+	if !pathIsLocal(x.e.LocalVolume, managedRoot(x.c)) {
+		x.block(rec, "Library's _trash is not on a local volume; nothing was moved.")
+		return
+	}
 	if !x.execute {
 		x.res.Actions = append(x.res.Actions, "Would move "+rec.Name+" into Library's _trash ("+dest+").")
 		return
@@ -657,13 +662,31 @@ func (e *StagedCleanup) baseStatus(c config.Config) CleanupStatus {
 			st.EngineBlocked = append(st.EngineBlocked, "Free space on the system Trash volume could not be read.")
 		}
 	}
-	if c.LibraryPath == "" {
-		st.Blocked = append(st.Blocked, "Set the Library folder before staged cleanup can run.")
+	st.ManagedTrashLocal = st.ManagedTrashPath != "" && pathIsLocal(e.LocalVolume, st.ManagedTrashPath)
+	if c.DownloadPath == "" && st.ManagedTrashPath == "" {
+		st.Blocked = append(st.Blocked, "Set the local download folder so Library's _trash can live beside the staging copy.")
 	}
-	if st.ManagedTrashPath == "" {
-		st.Blocked = append(st.Blocked, "Set a Library folder or a managed _trash folder.")
+	if st.ManagedTrashPath != "" && !st.ManagedTrashLocal {
+		st.Blocked = append(st.Blocked, "Library's _trash must be on a local volume, never the NAS library.")
 	}
 	return st
+}
+
+// pathIsLocal checks the nearest existing ancestor so a not-yet-created
+// _trash folder inherits the volume of the folder that will hold it.
+func pathIsLocal(local func(string) (bool, error), path string) bool {
+	p := filepath.Clean(path)
+	for {
+		if _, err := os.Lstat(p); err == nil {
+			ok, err := local(p)
+			return err == nil && ok
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return false
+		}
+		p = parent
+	}
 }
 
 func (e *StagedCleanup) render(st *CleanupStatus, recs []*cleanupRecord, c config.Config, now time.Time) {
@@ -789,7 +812,7 @@ func managedRoot(c config.Config) string {
 	if p := strings.TrimSpace(c.ManagedTrashPath); p != "" {
 		return filepath.Clean(p)
 	}
-	if p := strings.TrimSpace(c.LibraryPath); p != "" {
+	if p := strings.TrimSpace(c.DownloadPath); p != "" {
 		return filepath.Join(filepath.Clean(p), "_trash")
 	}
 	return ""

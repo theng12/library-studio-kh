@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -32,7 +33,7 @@ type Config struct {
 	LibraryPath   string `json:"libraryPath"`
 	// Staged local-copy cleanup (docs/STORAGE_POLICY.md). Off unless the owner switches it on.
 	StagedCleanupOn  bool    `json:"stagedCleanupOn"`
-	ManagedTrashPath string  `json:"managedTrashPath"` // empty = LibraryPath/_trash
+	ManagedTrashPath string  `json:"managedTrashPath"` // empty = DownloadPath/_trash; must stay on a local volume, never the NAS library
 	StagedDays       int     `json:"stagedDays"`       // days in the normal download folder after verified import
 	ManagedTrashDays int     `json:"managedTrashDays"` // extra days in Library's _trash
 	NativeTrashDays  int     `json:"nativeTrashDays"`  // days kept in the OS Trash
@@ -86,8 +87,8 @@ func (c Config) Validate() error {
 	if c.SeedMinutes < 0 || c.SeedMinutes > 5_256_000 {
 		return errors.New("seed minutes must be between 0 and 5256000")
 	}
-	if c.StagedCleanupOn && c.LibraryPath == "" {
-		return errors.New("set the Library folder before turning staged cleanup on")
+	if c.StagedCleanupOn && c.DownloadPath == "" && strings.TrimSpace(c.ManagedTrashPath) == "" {
+		return errors.New("set the local download folder or a managed _trash folder before turning staged cleanup on")
 	}
 	for name, u := range map[string]string{"qBittorrent": c.QBit.URL, "Sonarr": c.Sonarr.URL, "Radarr": c.Radarr.URL, "Lidarr": c.Lidarr.URL, "Prowlarr": c.Prowlarr.URL, "Bazarr": c.Bazarr.URL} {
 		if name == "Bazarr" && !c.BazarrOn {

@@ -21,7 +21,8 @@ func TestStagedCleanupDefaultsOffAndSane(t *testing.T) {
 func TestStagedCleanupValidation(t *testing.T) {
 	valid := Default()
 	valid.StagedCleanupOn = true
-	valid.LibraryPath = "/library"
+	valid.DownloadPath = "/downloads"
+	valid.LibraryPath = "/nas/library"
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("enabled policy with a library folder must validate: %v", err)
 	}
@@ -29,7 +30,7 @@ func TestStagedCleanupValidation(t *testing.T) {
 		name string
 		edit func(*Config)
 	}{
-		{"enabled without library", func(c *Config) { c.LibraryPath = "" }},
+		{"enabled without local download or managed trash", func(c *Config) { c.DownloadPath = ""; c.ManagedTrashPath = "" }},
 		{"staged days", func(c *Config) { c.StagedDays = 0 }},
 		{"managed days", func(c *Config) { c.ManagedTrashDays = -1 }},
 		{"native days", func(c *Config) { c.NativeTrashDays = 0 }},
@@ -54,6 +55,7 @@ func TestStagedCleanupSurvivesOpenWithDefaults(t *testing.T) {
 	}
 	c := store.Get()
 	c.StagedCleanupOn = true
+	c.DownloadPath = home
 	c.LibraryPath = home
 	if err := store.Save(c); err != nil {
 		t.Fatal(err)
