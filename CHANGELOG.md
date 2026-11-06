@@ -1,5 +1,13 @@
 # What's new in Library Studio KH
 
+## 0.5.0 — 2026-11-06
+
+- Film, series and artist details show descriptions and reported metadata, including genres, year, runtime, certification/network and original language where applicable.
+- My library can filter original language into English, other reported languages and unknown; original language stays separate from file audio and subtitle languages.
+- Optional Bazarr controls show reported subtitles/audio, English profile assignment and explicit per-file English searches. Search acceptance is shown as requested; a refreshed file report confirms availability.
+- Subtitle controls stay inside an expandable section. Missing files, providers, profiles and companion outages are explicit and never block the main library.
+- Existing downloads, import destinations and cleanup-off policy are preserved. Fresh-computer companion installation remains planned.
+
 ## 0.4.0 — 2026-11-06
 
 - Downloads has title search, counted status and app filters, and sorting by queue position, app, name, progress, date, size or speed. These controls never reorder the actual downloader queue.

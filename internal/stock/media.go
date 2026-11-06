@@ -17,6 +17,7 @@ type Media struct {
 	Added            *time.Time      `json:"added,omitempty"`
 	Status           string          `json:"status,omitempty"`
 	Overview         string          `json:"overview,omitempty"`
+	OriginalLanguage string          `json:"originalLanguage,omitempty"`
 	HaveFiles        bool            `json:"haveFiles"`
 	InLibrary        bool            `json:"inLibrary"`
 	Monitored        bool            `json:"monitored"`
@@ -35,6 +36,7 @@ type rawMedia struct {
 	Added            *time.Time
 	Status           string
 	Overview         string
+	OriginalLanguage *language `json:"originalLanguage"`
 	HasFile          bool
 	Monitored        bool
 	QualityProfileID int `json:"qualityProfileId"`
@@ -45,6 +47,9 @@ func (r rawMedia) media(app string) Media {
 	m := Media{App: app, ID: r.ID, Title: r.Title, Year: r.Year, Status: r.Status, Overview: r.Overview, InLibrary: r.ID > 0, HaveFiles: r.HasFile, Monitored: r.Monitored, QualityProfileID: r.QualityProfileID}
 	if r.ArtistName != "" {
 		m.Title = r.ArtistName
+	}
+	if r.OriginalLanguage != nil {
+		m.OriginalLanguage = r.OriginalLanguage.Name
 	}
 	if r.Added != nil && r.Added.Year() > 1 { // lookups report 0001-01-01
 		m.Added = r.Added

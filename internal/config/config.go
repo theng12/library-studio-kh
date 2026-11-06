@@ -34,6 +34,8 @@ type Config struct {
 	Radarr        App    `json:"radarr"`
 	Lidarr        App    `json:"lidarr"`
 	Prowlarr      App    `json:"prowlarr"`
+	BazarrOn      bool   `json:"bazarrOn"`
+	Bazarr        App    `json:"bazarr"`
 }
 
 const StagedCleanupNotice = "Automatic cleanup is disabled until the staged Trash policy is available."
@@ -50,7 +52,10 @@ func (c Config) Validate() error {
 	if c.CleanupDays < 0 || c.CleanupDays > 3650 {
 		return errors.New("days before removal must be between 0 and 3650")
 	}
-	for name, u := range map[string]string{"qBittorrent": c.QBit.URL, "Sonarr": c.Sonarr.URL, "Radarr": c.Radarr.URL, "Lidarr": c.Lidarr.URL, "Prowlarr": c.Prowlarr.URL} {
+	for name, u := range map[string]string{"qBittorrent": c.QBit.URL, "Sonarr": c.Sonarr.URL, "Radarr": c.Radarr.URL, "Lidarr": c.Lidarr.URL, "Prowlarr": c.Prowlarr.URL, "Bazarr": c.Bazarr.URL} {
+		if name == "Bazarr" && !c.BazarrOn {
+			continue
+		}
 		if u == "" {
 			continue
 		}

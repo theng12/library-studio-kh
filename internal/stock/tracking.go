@@ -23,6 +23,7 @@ type Detail struct {
 	Seasons          []Season  `json:"seasons"`
 	Episodes         []Episode `json:"episodes"`
 	Albums           []Album   `json:"albums"`
+	metadata
 }
 
 type Season struct {
@@ -51,6 +52,7 @@ type Album struct {
 }
 
 type rawDetail struct {
+	rawMetadata
 	Title            string `json:"title"`
 	ArtistName       string `json:"artistName"`
 	Monitored        bool   `json:"monitored"`
@@ -71,6 +73,7 @@ type rawDetail struct {
 // Detail reads one item plus its children. It never searches for releases.
 func (a *Arr) Detail(id int) (Detail, error) {
 	d := Detail{App: a.Name, ID: id, Seasons: []Season{}, Episodes: []Episode{}, Albums: []Album{}}
+	d.Genres = []string{}
 	if id <= 0 {
 		return d, errors.New("choose a library item")
 	}
@@ -79,6 +82,7 @@ func (a *Arr) Detail(id int) (Detail, error) {
 	if err := a.do("GET", path, nil, &r); err != nil {
 		return d, err
 	}
+	d.metadata = r.metadata()
 	d.Title = r.Title
 	if r.ArtistName != "" {
 		d.Title = r.ArtistName

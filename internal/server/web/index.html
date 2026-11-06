@@ -9,6 +9,7 @@
 <script src="download-view.js" defer></script>
 <script src="app.js" defer></script>
 <script src="media.js" defer></script>
+<script src="subtitles.js" defer></script>
 </head>
 <body>
 
@@ -164,6 +165,7 @@
           <label class="search">Search <input type="search" id="lib-q" placeholder="Title"></label>
           <label>Type <select id="lib-type"><option value="">All</option><option value="Sonarr">TV</option><option value="Radarr">Films</option><option value="Lidarr">Music</option></select></label>
           <label>Sort <select id="lib-sort"><option value="title">Title A–Z</option><option value="app">App</option><option value="added">Recently added</option><option value="year">Newest year</option></select></label>
+          <label>Original language <select id="lib-language"><option value="">All</option><option value="english">English</option><option value="other">Other reported languages</option><option value="unknown">Not reported</option></select></label>
         </div>
         <p id="lib-empty" class="empty" hidden></p>
         <div id="lib" class="library-list"></div>
@@ -178,6 +180,11 @@
       </header>
       <p id="media-msg" class="notice" role="status" hidden></p>
       <div id="media-information"></div>
+      <details class="panel help-step" id="media-subtitles" hidden>
+        <summary>Subtitles and file languages <span class="badge" id="subtitle-overview">English</span></summary>
+        <div class="media-padding"><p class="muted">Standard English subtitles through Bazarr. Reported file audio and subtitle languages can differ from the title's original language.</p><button type="button" class="small" id="subtitles-refresh">Refresh subtitle status</button><p class="msg" id="subtitles-message" role="status"></p></div>
+        <div id="subtitles-content"></div>
+      </details>
       <div class="tools panel" id="media-filters" hidden>
         <label class="search">Find an episode or album <input type="search" id="media-child-q"></label>
         <label id="media-season-label">Season <select id="media-season"><option value="">All seasons</option></select></label>
@@ -431,6 +438,16 @@
           <dt>Required</dt><dd>Choose a live profile and root folder for every add. Lidarr also requires a metadata profile.</dd>
           <dt>Check</dt><dd>My library has a Monitored toggle per item. Find &amp; add shows the app's live profiles and folders before you commit.</dd>
           <dt>Fix</dt><dd>Create profiles and root folders in the companion app, then reopen the add dialog. If the list is empty, that app has nothing configured yet.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>Metadata, languages and subtitles</summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>Original language describes the title; reported audio and subtitles describe files. They can differ.</dd>
+          <dt>Required</dt><dd>Metadata comes from the owning library app. Subtitles are optional and need Bazarr, a language profile, a provider and imported/indexed media files.</dd>
+          <dt>Check</dt><dd>Open a film or series and expand Subtitles and file languages. English searches run only when requested here. Search requested is not confirmation of a download; refresh to check availability.</dd>
+          <dt>Fix</dt><dd>Connect and enable Bazarr in Settings. If no files are reported, wait for import and sync/index them in Bazarr. Sync can trigger configured subtitle searches. Library's switch does not stop background work independently enabled in Bazarr.</dd>
         </dl>
       </details>
 

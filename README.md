@@ -38,7 +38,9 @@ Downloads supports title search, status/app filters with counts, and display sor
 
 App ownership comes from each library app's queue and available import history. Unknown/unmatched ownership stays explicit. My library matches in-flight downloads using the owning app and parent IDs, never title guesses. Its current-download percentage is not whole-series completion. Both views refresh every 30 seconds while visible; expanded items remain open. Search/status/app filter changes clear selection so hidden items cannot be paused accidentally.
 
-A fresh Library installation currently needs separately installed and configured companions. The guided host/client installer, richer metadata, Bazarr subtitles and language controls remain planned. The existing 1301 stack is already configured independently.
+A fresh Library installation currently needs separately installed and configured companions. The guided host/client installer remains planned. Item details now show reported metadata and original language; optional Bazarr controls report file audio/subtitles and request standard English subtitle searches. The existing 1301 stack is already configured independently.
+
+See [metadata and subtitle setup](docs/SUBTITLES.md) for language meanings, profile/provider requirements and the initial1301 manual-search configuration. Subtitle downloads need imported/indexed files; a successful request is not a completed download.
 
 ## Develop
 

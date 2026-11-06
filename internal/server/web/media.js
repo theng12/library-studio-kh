@@ -44,6 +44,7 @@ async function openMediaDetails(item) {
   $("#media-meta").textContent = "Loading details…";
   $("#media-information").replaceChildren(); $("#media-children").replaceChildren();
   $("#media-releases").hidden = true; $("#media-filters").hidden = true;
+  $("#media-subtitles").hidden = true;
   $("#media-child-q").value = "";
   $("#media-season").value = "";
   await refreshMediaDetails();
@@ -60,12 +61,20 @@ async function refreshMediaDetails() {
     $("#media-meta").textContent = (TYPE[data.app] || data.app) + " · managed by " + data.app;
     const information = mediaNode("div", null, "panel");
     const dl = mediaNode("dl", null, "facts");
-    facts(dl, [["State", data.status || "Not reported"], ["Files", data.haveFiles ? "In library" : "Not reported in library"],
-      ["Quality profile ID", data.qualityProfileId || "Not reported"], ["Library folder", data.path || "Not reported"]]);
+    const metadata = [["State", data.status || "Not reported"], ["Files", data.haveFiles ? "Files available" : "Not reported in library"], ["Genres", (data.genres || []).join(", ") || "Not reported"]];
+    if (data.app !== "Lidarr") metadata.unshift(["Year", data.year > 0 ? data.year : "Not reported"]);
+    if (data.app !== "Lidarr") metadata.push(["Runtime", data.runtimeMinutes > 0 ? data.runtimeMinutes + " min" : "Not reported"], ["Original language", data.originalLanguage || "Not reported"], ["Certification", data.certification || "Not reported"]);
+    if (data.app === "Sonarr") metadata.push(["Network", data.network || "Not reported"]);
+    facts(dl, metadata);
+    const overview = mediaNode("p", data.overview || "No description reported.", "media-overview");
+    const technical = mediaNode("details", null, "media-technical"), technicalFacts = mediaNode("dl", null, "facts");
+    technical.append(mediaNode("summary", "Folders and tracking settings"));
+    facts(technicalFacts, [["Quality profile ID", data.qualityProfileId || "Not reported"], ["Library folder", data.path || "Not reported"]]);
+    technical.append(technicalFacts);
     const actions = mediaNode("div", null, "media-actions media-padding");
     actions.append(mediaMonitor(data.monitored, { app: data.app, id: data.id }, "Monitor this item", true));
     if (data.app === "Radarr") actions.append(mediaSearchButton("Search releases", {}, data.title));
-    information.append(dl, actions); $("#media-information").replaceChildren(information);
+    information.append(overview, dl, technical, actions); $("#media-information").replaceChildren(information);
     const seasons = $("#media-season"), selectedSeason = seasons.value;
     seasons.replaceChildren(mediaOption("", "All seasons"));
     const numbers = [...new Set((data.episodes || []).map(e => e.seasonNumber))].sort((a, b) => a - b);
@@ -74,6 +83,7 @@ async function refreshMediaDetails() {
     $("#media-season-label").hidden = data.app !== "Sonarr";
     $("#media-filters").hidden = data.app === "Radarr";
     renderMediaChildren();
+    loadMediaSubtitles(data, serial);
   } catch (e) {
     if (serial !== mediaSerial) return;
     $("#media-meta").textContent = "Details unavailable";

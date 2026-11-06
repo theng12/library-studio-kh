@@ -69,18 +69,22 @@ func main() {
 		"/api/v1/metadataprofile": []map[string]any{{"id": 1}},
 	}
 	tracking := newTrackingFixture(media)
+	subtitles := newSubtitleFixture()
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		p := r.URL.Path
 		app := ""
-		for _, name := range []string{"sonarr", "radarr", "lidarr", "prowlarr"} {
+		for _, name := range []string{"sonarr", "radarr", "lidarr", "prowlarr", "bazarr"} {
 			if strings.HasPrefix(p, "/"+name+"/") {
 				app = name
 				p = strings.TrimPrefix(p, "/"+name)
 				r.URL.Path = p
 				break
 			}
+		}
+		if app == "bazarr" && subtitles(w, r) {
+			return
 		}
 		if app != "" && strings.HasSuffix(p, "/queue") {
 			records := []map[string]any{}

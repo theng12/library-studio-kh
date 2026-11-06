@@ -6,9 +6,9 @@ if (location.hash.length > 1) {
 }
 let token = sessionStorage.getItem("token") || "";
 const $ = (s) => document.querySelector(s);
-const ARRS = ["sonarr", "radarr", "lidarr", "prowlarr"];
-const NAMES = { sonarr: "Sonarr (TV)", radarr: "Radarr (films)", lidarr: "Lidarr (music)", prowlarr: "Prowlarr (search sites)" };
-const PORTS = { sonarr: 8989, radarr: 7878, lidarr: 8686, prowlarr: 9696 };
+const ARRS = ["sonarr", "radarr", "lidarr", "prowlarr", "bazarr"];
+const NAMES = { sonarr: "Sonarr (TV)", radarr: "Radarr (films)", lidarr: "Lidarr (music)", prowlarr: "Prowlarr (search sites)", bazarr: "Bazarr (subtitles · optional)" };
+const PORTS = { sonarr: 8989, radarr: 7878, lidarr: 8686, prowlarr: 9696, bazarr: 6767 };
 const AUTH_FORM_PATHS = new Set(["/api/auth/login", "/api/auth/setup", "/api/auth/password"]);
 const AUTH = { available: false, authenticated: false, setupRequired: false, rememberDays: 30, sessionHours: 12, minPasswordLength: 6 };
 let current = null;
@@ -308,7 +308,13 @@ async function toggleMonitor(m, box) {
 function renderLibrary() {
   if (!libItems) return;
   const q = $("#lib-q").value, type = $("#lib-type").value, sort = $("#lib-sort").value;
-  let items = libItems.filter((m) => (!type || m.app === type) && has(m.title, q));
+  const language = $("#lib-language").value;
+  let items = libItems.filter((m) => {
+    const original = (m.originalLanguage || "").trim().toLowerCase();
+    const unknown = !original || original === "unknown" || original === "any";
+    const matchesLanguage = !language || (language === "english" ? original === "english" : language === "other" ? !unknown && original !== "english" : unknown);
+    return (!type || m.app === type) && has(m.title, q) && matchesLanguage;
+  });
   items.sort(sort === "added" ? (a, b) => (b.added || "").localeCompare(a.added || "")
     : sort === "app" ? (a, b) => a.app.localeCompare(b.app) || byTitle(a, b)
     : sort === "year" ? (a, b) => (b.year || 0) - (a.year || 0) || byTitle(a, b) : byTitle);
@@ -331,6 +337,7 @@ function renderLibrary() {
     } else summary.append(mediaNode("span", libraryProgressError ? "Download progress unavailable" : "No matched downloads in the current queue", "muted"));
     const body = mediaNode("div", null, "library-detail");
     if (m.overview) body.append(mediaNode("p", m.overview, "library-overview"));
+    body.append(mediaNode("p", "Original language: " + (m.originalLanguage || "Not reported") + ". Downloaded audio and subtitles may differ.", "muted"));
     if (m.added) body.append(mediaNode("p", "Added " + day(m.added), "muted"));
     if (typeof m.monitored === "boolean") {
       const label = mediaNode("label", null, "check media-monitor"), monitor = document.createElement("input");
@@ -349,7 +356,7 @@ function renderLibrary() {
     details.append(summary, body); return details;
   }));
 }
-for (const id of ["#lib-q", "#lib-type", "#lib-sort"]) $(id).addEventListener("input", renderLibrary);
+for (const id of ["#lib-q", "#lib-type", "#lib-sort", "#lib-language"]) $(id).addEventListener("input", renderLibrary);
 
 $("#find-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -473,6 +480,7 @@ function fillForm(st) {
   $("#remote-status").textContent = remote.error || (remote.on ? "Ready for Tailscale connections." : "Tailscale access is off.");
   $("#remote-link-box").hidden = !remote.url;
   $("#remote-link").value = remote.url || "";
+  f.bazarrOn.checked = !!c.bazarrOn;
   f.cleanupOn.checked = c.cleanupOn;
   f.cleanupDays.value = c.cleanupDays;
   f.downloadPath.value = c.downloadPath;
@@ -480,7 +488,7 @@ function fillForm(st) {
   f["qbittorrent.url"].value = c.qbittorrent.url;
   f["qbittorrent.username"].value = c.qbittorrent.username;
   for (const a of ARRS) {
-    f[a + ".url"].value = c[a].url;
+    f[a + ".url"].value = c[a]?.url || "";
   }
   for (const el of f.querySelectorAll("[data-secret]")) {
     el.value = "";
@@ -493,6 +501,7 @@ function buildArrFields() {
   for (const a of ARRS) {
     box.insertAdjacentHTML("beforeend",
       `<fieldset class="panel"><legend>${NAMES[a]}</legend>` +
+      (a === "bazarr" ? `<label class="check"><input type="checkbox" name="bazarrOn"> Enable subtitle controls</label><p class="muted">English searches run when you request them in Library. Bazarr's own background tasks are controlled separately.</p>` : "") +
       `<label>Address <input name="${a}.url" placeholder="http://127.0.0.1:${PORTS[a]}" inputmode="url"></label>` +
       `<label>API key <span class="hint">· in ${NAMES[a].split(" ")[0]}, Settings → General</span><input name="${a}.apiKey" type="password" autocomplete="off" data-secret="${a}"></label></fieldset>`);
   }
@@ -867,7 +876,7 @@ $("#form").addEventListener("submit", async (ev) => {
   }
   const body = {
     tailscaleOn: f.tailscaleOn.checked, tailscalePort: Number(f.tailscalePort.value),
-    cleanupOn: f.cleanupOn.checked, cleanupDays: days,
+    cleanupOn: f.cleanupOn.checked, cleanupDays: days, bazarrOn: f.bazarrOn.checked,
     downloadPath: f.downloadPath.value.trim(), libraryPath: f.libraryPath.value.trim(),
     qbittorrent: { url: f["qbittorrent.url"].value.trim(), username: f["qbittorrent.username"].value.trim(), password: f["qbittorrent.password"].value },
   };

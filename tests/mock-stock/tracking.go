@@ -15,6 +15,18 @@ func newTrackingFixture(media map[string]any) func(http.ResponseWriter, *http.Re
 			item["monitored"] = true
 			item["qualityProfileId"] = 1
 			item["path"] = "/Volumes/NAS/Media/Fixture"
+			item["overview"] = "Sample metadata description for this title."
+			item["genres"] = []string{"Drama", "Mystery"}
+			if !strings.HasSuffix(kind, "artist") {
+				item["runtime"] = 45
+				item["certification"] = "Fixture rating"
+				if item["id"] == 1 {
+					item["originalLanguage"] = map[string]any{"id": 1, "name": "English"}
+				}
+				if strings.HasSuffix(kind, "series") && item["id"] == 2 {
+					item["originalLanguage"] = map[string]any{"id": 8, "name": "Japanese"}
+				}
+			}
 			if strings.HasSuffix(kind, "series") {
 				item["seasons"] = []map[string]any{{"seasonNumber": 0, "monitored": false}, {"seasonNumber": 1, "monitored": true}}
 			}

@@ -62,6 +62,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerControls(mux)
 	s.registerTracking(mux)
 	s.registerSources(mux)
+	s.registerSubtitles(mux)
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/host-proof", s.hostProof)
 	static, _ := fs.Sub(web, "web")
@@ -200,8 +201,8 @@ func (s *Server) guard(next http.Handler) http.Handler {
 
 // public hides the keys and password; the screen only learns whether each one is saved.
 func public(c config.Config) (config.Config, map[string]bool) {
-	saved := map[string]bool{"qbittorrent": c.QBit.Password != "", "sonarr": c.Sonarr.APIKey != "", "radarr": c.Radarr.APIKey != "", "lidarr": c.Lidarr.APIKey != "", "prowlarr": c.Prowlarr.APIKey != ""}
-	c.QBit.Password, c.Sonarr.APIKey, c.Radarr.APIKey, c.Lidarr.APIKey, c.Prowlarr.APIKey = "", "", "", "", ""
+	saved := map[string]bool{"qbittorrent": c.QBit.Password != "", "sonarr": c.Sonarr.APIKey != "", "radarr": c.Radarr.APIKey != "", "lidarr": c.Lidarr.APIKey != "", "prowlarr": c.Prowlarr.APIKey != "", "bazarr": c.Bazarr.APIKey != ""}
+	c.QBit.Password, c.Sonarr.APIKey, c.Radarr.APIKey, c.Lidarr.APIKey, c.Prowlarr.APIKey, c.Bazarr.APIKey = "", "", "", "", "", ""
 	return c, saved
 }
 
@@ -239,6 +240,7 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 	keep(&c.Radarr.APIKey, old.Radarr.APIKey)
 	keep(&c.Lidarr.APIKey, old.Lidarr.APIKey)
 	keep(&c.Prowlarr.APIKey, old.Prowlarr.APIKey)
+	keep(&c.Bazarr.APIKey, old.Bazarr.APIKey)
 	if err := s.Store.Save(c); err != nil {
 		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return
