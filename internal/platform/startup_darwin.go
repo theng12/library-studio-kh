@@ -15,8 +15,12 @@ import (
 const hostSettleTime = 3 * time.Second
 
 func (s *HostService) agentFolder() (string, error) {
-	if s.agentDir != "" {
-		return s.agentDir, nil
+	return launchAgentFolder(s.agentDir)
+}
+
+func launchAgentFolder(override string) (string, error) {
+	if override != "" {
+		return override, nil
 	}
 	if dir := os.Getenv("LIBRARY_STUDIO_LAUNCHAGENT_DIR"); dir != "" {
 		return dir, nil
@@ -121,22 +125,26 @@ func (s *HostService) Status(spec HostServiceSpec) HostServiceStatus {
 }
 
 func inspectExisting(path string) (ours, exists bool, err error) {
+	return inspectLabeledPlist(path, HostServiceLabel)
+}
+
+func inspectLabeledPlist(path, label string) (ours, exists bool, err error) {
 	fi, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, false, nil
 	}
 	if err != nil {
-		return false, true, fmt.Errorf("the background host file could not be read")
+		return false, true, fmt.Errorf("the launch job file could not be read")
 	}
 	if !fi.Mode().IsRegular() {
-		return false, true, fmt.Errorf("the background host file is not a regular file; refusing to use it")
+		return false, true, fmt.Errorf("the launch job file is not a regular file; refusing to use it")
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return false, true, fmt.Errorf("the background host file could not be read")
+		return false, true, fmt.Errorf("the launch job file could not be read")
 	}
 	return strings.Contains(string(b), "<key>Label</key>") &&
-		strings.Contains(string(b), "<string>"+HostServiceLabel+"</string>"), true, nil
+		strings.Contains(string(b), "<string>"+label+"</string>"), true, nil
 }
 
 func validateInstallSpec(spec HostServiceSpec) error {
@@ -252,7 +260,11 @@ func (s *HostService) writeFiles(path string, spec HostServiceSpec, plist string
 }
 
 func (s *HostService) launchctl(args ...string) error {
-	out, err := s.runner.Run("launchctl", args...)
+	return launchctlRun(s.runner, args...)
+}
+
+func launchctlRun(runner CommandRunner, args ...string) error {
+	out, err := runner.Run("launchctl", args...)
 	if err != nil {
 		detail := strings.TrimSpace(string(out))
 		if detail == "" {
