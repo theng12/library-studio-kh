@@ -8,7 +8,10 @@
  *   container = an element the host creates inside the film detail
  *
  * The module only writes inside `container`; the overview and facts that the
- * existing detail view renders stay untouched when this request fails.
+ * existing detail view renders stay untouched when this request fails. The host
+ * may call it for several expanded library rows at once: stale responses and
+ * poster URLs are tracked per container, so rebuilding one row cannot cancel
+ * another.
  *
  * Find & add hook (optional, never called automatically):
  *   globalThis.movieExtrasFindAndAdd = (member, collection) => { ... }
@@ -17,8 +20,29 @@
  * title; it must not add, monitor or search anything until the owner confirms.
  */
 
-let movieExtrasRequest = 0;
-let movieExtrasObjectURL = "";
+// Each expanded row owns its own request token and poster URL. Multiple rows
+// can load at once; rebuilding one row never cancels another.
+const movieExtrasStates = new WeakMap();
+
+function movieExtrasState(container) {
+  let state = movieExtrasStates.get(container);
+  if (!state) {
+    state = { request: 0, posterURL: "" };
+    movieExtrasStates.set(container, state);
+  }
+  return state;
+}
+
+function movieExtrasBegin(container) {
+  const state = movieExtrasState(container);
+  const request = ++state.request;
+  movieExtrasClearPoster(state);
+  return { state, request };
+}
+
+function movieExtrasIsCurrent(state, request, container) {
+  return request === state.request && container.isConnected !== false;
+}
 
 function movieExtrasNode(tag, text, className) {
   const n = document.createElement(tag);
@@ -45,10 +69,10 @@ function movieExtrasArtworkRequest(extras) {
   return { url, init: { headers, credentials: "same-origin" } };
 }
 
-function movieExtrasClearPoster() {
-  if (!movieExtrasObjectURL) return;
-  URL.revokeObjectURL(movieExtrasObjectURL);
-  movieExtrasObjectURL = "";
+function movieExtrasClearPoster(state) {
+  if (!state.posterURL) return;
+  URL.revokeObjectURL(state.posterURL);
+  state.posterURL = "";
 }
 
 function movieExtrasDate(value) {
@@ -88,7 +112,7 @@ function movieExtrasPanel() {
   return section;
 }
 
-async function movieExtrasPoster(extras, body, request) {
+async function movieExtrasPoster(extras, body, state, request, container) {
   if (!extras.poster) {
     body.classList.add("no-poster");
     return;
@@ -103,22 +127,22 @@ async function movieExtrasPoster(extras, body, request) {
   const artwork = movieExtrasArtworkRequest(extras);
   try {
     const response = await fetch(artwork.url, artwork.init);
-    if (request !== movieExtrasRequest || body.isConnected === false) return;
+    if (!movieExtrasIsCurrent(state, request, container)) return;
     if (!response.ok) throw new Error("Radarr artwork is unavailable (" + response.status + ").");
     const blob = await response.blob();
-    if (request !== movieExtrasRequest || body.isConnected === false) return;
+    if (!movieExtrasIsCurrent(state, request, container)) return;
     if (!blob.type.startsWith("image/")) throw new Error("Radarr sent something that isn't an image.");
-    movieExtrasClearPoster();
+    movieExtrasClearPoster(state);
     const objectURL = URL.createObjectURL(blob);
-    movieExtrasObjectURL = objectURL;
+    state.posterURL = objectURL;
     img.addEventListener("load", () => {
-      if (movieExtrasObjectURL === objectURL) {
+      if (state.posterURL === objectURL) {
         URL.revokeObjectURL(objectURL);
-        movieExtrasObjectURL = "";
+        state.posterURL = "";
       }
     }, { once: true });
     img.addEventListener("error", () => {
-      movieExtrasClearPoster();
+      if (state.posterURL === objectURL) movieExtrasClearPoster(state);
       figure.remove();
       body.classList.add("no-poster");
     }, { once: true });
@@ -135,14 +159,23 @@ function movieExtrasFacts(extras) {
   const pairs = [
     ["Studio", extras.studio || ""],
     ["Certification", extras.certification || ""],
+    ["Genres", (extras.genres || []).join(", ")],
     ["Runtime", extras.runtimeMinutes > 0 ? extras.runtimeMinutes + " min" : ""],
     ["Ratings", (extras.ratings || []).map(r => r.source + " " + Number(r.value).toFixed(1)).join(" · ")],
-    ["TMDb", extras.tmdbId ? String(extras.tmdbId) : ""],
-    ["IMDb", extras.imdbId || ""],
   ];
   facts(dl, pairs); // existing app helper; skips empty values
   wrap.append(dl);
   if (!dl.childNodes.length) wrap.append(movieExtrasNode("p", "Radarr didn't report extra facts for this film.", "empty"));
+
+  // Technical ids stay out of the prominent facts.
+  const ids = [["TMDb", extras.tmdbId ? String(extras.tmdbId) : ""], ["IMDb", extras.imdbId || ""]];
+  if (ids.some(([, value]) => value)) {
+    const details = movieExtrasNode("details", null, "movie-identifiers");
+    const idList = document.createElement("dl"); idList.className = "facts";
+    facts(idList, ids);
+    details.append(movieExtrasNode("summary", "Identifiers"), idList);
+    wrap.append(details);
+  }
   return wrap;
 }
 
@@ -212,22 +245,21 @@ function movieExtrasCollection(extras) {
 }
 
 async function loadMovieExtras(detail, container) {
-  if (!container || !detail || detail.app !== "Radarr") return;
-  const request = ++movieExtrasRequest;
-  movieExtrasClearPoster();
+  if (!container || !detail || detail.app !== "Radarr" || container.isConnected === false) return;
+  const { state, request } = movieExtrasBegin(container);
   container.replaceChildren(movieExtrasNode("p", "Reading artwork and collection…", "empty"));
   try {
     const extras = await api("/api/media/movie-extras?" + new URLSearchParams({ app: "Radarr", id: String(detail.id) }));
-    if (request !== movieExtrasRequest || container.isConnected === false) return;
+    if (!movieExtrasIsCurrent(state, request, container)) return;
     const panel = movieExtrasPanel();
     const body = movieExtrasNode("div", null, "movie-extras-body");
-    movieExtrasPoster(extras, body, request);
+    movieExtrasPoster(extras, body, state, request, container);
     body.append(movieExtrasFacts(extras));
     panel.append(body, movieExtrasCollection(extras));
     if ((extras.problems || []).length) panel.append(movieExtrasNode("p", extras.problems.join(" "), "movie-extras-problems muted"));
     container.replaceChildren(panel);
   } catch (e) {
-    if (request !== movieExtrasRequest || container.isConnected === false) return;
+    if (!movieExtrasIsCurrent(state, request, container)) return;
     container.replaceChildren(movieExtrasNode("p", "Artwork and collection unavailable. " + e.message + " The film details above are still shown.", "notice"));
   }
 }

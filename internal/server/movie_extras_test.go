@@ -14,7 +14,7 @@ func TestMovieExtrasRoutes(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v3/movie/13":
-			w.Write([]byte(`{"id":13,"title":"Aquaman","tmdbId":297802,"studio":"Warner Bros.","images":[{"coverType":"poster"}],"collection":{"title":"Aquaman Collection","tmdbId":573693}}`))
+			w.Write([]byte(`{"id":13,"title":"Aquaman","tmdbId":297802,"studio":"Warner Bros.","genres":["Action"],"images":[{"coverType":"poster"}],"collection":{"title":"Aquaman Collection","tmdbId":573693}}`))
 		case "/api/v3/collection":
 			w.Write([]byte(`[{"tmdbId":573693,"title":"Aquaman Collection","movies":[{"tmdbId":297802,"title":"Aquaman","year":2018,"isExisting":true}]}]`))
 		case "/api/v3/movie":
@@ -48,7 +48,7 @@ func TestMovieExtrasRoutes(t *testing.T) {
 	}
 
 	w := do("/api/media/movie-extras?app=Radarr&id=13")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"title":"Aquaman Collection"`) || !strings.Contains(w.Body.String(), `"ownedCount":1`) {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"title":"Aquaman Collection"`) || !strings.Contains(w.Body.String(), `"ownedCount":1`) || !strings.Contains(w.Body.String(), `"genres":["Action"]`) {
 		t.Fatalf("extras route: %d %s", w.Code, w.Body.String())
 	}
 	if w := do("/api/media/movie-extras?app=Sonarr&id=13"); w.Code != 400 {

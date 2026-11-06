@@ -8,3 +8,4 @@ src-tauri/gen/
 *.log
 _trash
 CLAUDE.local.md
+.claude/launch.json

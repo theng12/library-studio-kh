@@ -33,10 +33,6 @@ async function api(path, body, write) {
 }
 
 const day = (iso) => new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
-function inDays(iso) {
-  const d = Math.ceil((new Date(iso) - Date.now()) / 86400000);
-  return d <= 0 ? "at the next check" : d === 1 ? "tomorrow" : "in " + d + " days";
-}
 const time = (iso) => new Date(iso).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
 function gb(n) {
   return n >= 1e12 ? (n / 1e12).toFixed(1) + " TB" : Math.round(n / 1e9) + " GB";
@@ -46,7 +42,7 @@ function stateOf(it, cleanupOn) {
   switch (it.kind) {
     case "downloading": return ["Downloading", downloadProgressText(it.progress)];
     case "waiting": return ["Waiting for import", it.app || ""];
-    case "imported": return ["In library", cleanupOn ? "Local copy goes " + inDays(it.when) : "Local copy kept"];
+    case "imported": return ["In library", cleanupOn ? "Local copy: check Cleanup for verified status" : "Local copy kept"];
     case "unmanaged": return ["Downloaded", "Not from Sonarr, Radarr or Lidarr, so it stays"];
     case "upcoming": return ["Coming up", day(it.when)];
     case "removed": return ["In library", "Local copy removed " + day(it.when)];
@@ -77,9 +73,9 @@ function render(st) {
 
   const parts = [];
   parts.push(s.freeBytes == null ? "Free space on this computer: not known yet." : "<strong>" + gb(s.freeBytes) + "</strong> free on this computer.");
-  parts.push(cfg.cleanupOn
-    ? "Local copies are removed <strong>" + cfg.cleanupDays + " days</strong> after they reach the library."
-    : "Local copies are <strong>kept</strong>. Removal is switched off.");
+  parts.push(cfg.stagedCleanupOn
+    ? "Staged cleanup is <strong>on</strong> for verified imports. Check Cleanup for eligibility and blockers."
+    : "Local copies are <strong>kept</strong>. Staged cleanup is off.");
   if (s.library === "missing") parts.push("<span class=off>The NAS library folder can't be found.</span>");
   $("#summary").innerHTML = parts.join(" ");
 
@@ -99,20 +95,6 @@ function render(st) {
   renderActivity();
 
   $("#cleanup-lede").innerHTML = parts.slice(0, 2).join(" ");
-  const last = st.lastClean;
-  $("#last-run").textContent = !last ? "Not checked yet since the app started."
-    : last.blocked ? "Last check " + time(last.at) + ": nothing removed. " + last.blocked
-    : "Last check " + time(last.at) + ": " + (last.removed === 1 ? "1 local copy" : last.removed + " local copies") + " removed."
-      + (last.errors && last.errors.length ? " Problems: " + last.errors.join("; ") : "");
-  const hasStock = s.settings && s.settings.length > 0;
-  $("#stock-empty").hidden = hasStock;
-  $("#stock").hidden = !hasStock;
-  $("#stock tbody").replaceChildren(...(s.settings || []).map((x) => {
-    const now = document.createElement("span");
-    now.textContent = x.value || "Unknown";
-    if (!x.ok) now.className = "off";
-    return row([x.app, x.name, now, x.want], "stock");
-  }));
 
   $("#releases").replaceChildren(...st.releases.map((r) => {
     const box = document.createElement("div");
@@ -144,7 +126,7 @@ function renderActivity() {
   if (s.apps.length > 0) empty.textContent = s.items.length ? "Nothing matches." : "Nothing downloading, in the library or coming up yet.";
   $("#list").hidden = items.length === 0;
   $("#list tbody").replaceChildren(...items.map((it) => {
-    const [label, when] = stateOf(it, current.settings.cleanupOn);
+    const [label, when] = stateOf(it, current.settings.stagedCleanupOn);
     const tag = document.createElement("span");
     tag.className = "state " + it.kind;
     const word = document.createElement("span");
@@ -325,7 +307,18 @@ function renderLibrary() {
   $("#lib").replaceChildren(...items.map((m) => {
     const key = m.app + ":" + m.id, details = mediaNode("details", null, "library-item");
     details.open = openLibraryItems.has(key);
-    details.addEventListener("toggle", () => { if (details.open) openLibraryItems.add(key); else openLibraryItems.delete(key); });
+    let extrasLoaded = false;
+    const extras = m.app === "Radarr" ? mediaNode("div") : null;
+    const loadExtras = () => {
+      if (!details.open || !extras || extrasLoaded || !details.isConnected) return;
+      extrasLoaded = true;
+      loadMovieExtras(m, extras);
+    };
+    details.addEventListener("toggle", () => {
+      if (details.open) { openLibraryItems.add(key); loadExtras(); }
+      else openLibraryItems.delete(key);
+    });
+    if (details.open) queueMicrotask(loadExtras);
     const summary = mediaNode("summary", null, "download-summary");
     summary.append(mediaNode("span", m.title + (m.year ? " (" + m.year + ")" : ""), "download-title"));
     summary.append(mediaNode("span", (TYPE[m.app] || m.app) + " · " + (m.haveFiles ? "Files available" : "Waiting for files"), "download-status"));
@@ -353,6 +346,7 @@ function renderLibrary() {
     }
     const open = mediaNode("button", "Open " + (m.app === "Sonarr" ? "series" : m.app === "Radarr" ? "film" : "artist") + " details", "small");
     open.type = "button"; open.addEventListener("click", () => openMediaDetails(m)); body.append(open);
+    if (extras) body.append(extras);
     details.append(summary, body); return details;
   }));
 }
@@ -481,8 +475,6 @@ function fillForm(st) {
   $("#remote-link-box").hidden = !remote.url;
   $("#remote-link").value = remote.url || "";
   f.bazarrOn.checked = !!c.bazarrOn;
-  f.cleanupOn.checked = c.cleanupOn;
-  f.cleanupDays.value = c.cleanupDays;
   f.downloadPath.value = c.downloadPath;
   f.libraryPath.value = c.libraryPath;
   f["qbittorrent.url"].value = c.qbittorrent.url;
@@ -532,7 +524,15 @@ function show(view) {
   if (view === "settings" && current) { fillForm(current); loadSessions(); }
   if (view === "browse") loadLibrary();
   if (view === "downloads") loadDownloads();
-  if (view === "sources") loadSources();
+  if (view === "sources") {
+    if (!$("#source-manager").childNodes.length) mountSourceManager($("#source-manager"), loadSources);
+    else refreshSourceManager();
+    loadSources();
+  }
+  if (view === "cleanup") {
+    loadCleanup();
+    mountCompanionSettings($("#companion-settings"));
+  }
   if (view === "find") $("#find-q").focus();
   $(".content").scrollTo?.(0, 0);
   window.scrollTo(0, 0);
@@ -868,13 +868,9 @@ $("#logout").addEventListener("click", async () => {
 $("#form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const f = ev.target, msg = $("#form-msg"), btn = f.querySelector("button.primary");
-  const days = Number(f.cleanupDays.value);
-  if (!Number.isInteger(days) || days < 0 || days > 3650) {
-    msg.hidden = false; msg.textContent = "Days must be a whole number from 0 to 3650."; f.cleanupDays.focus(); return;
-  }
   const body = {
     tailscaleOn: f.tailscaleOn.checked, tailscalePort: Number(f.tailscalePort.value),
-    cleanupOn: f.cleanupOn.checked, cleanupDays: days, bazarrOn: f.bazarrOn.checked,
+    bazarrOn: f.bazarrOn.checked,
     downloadPath: f.downloadPath.value.trim(), libraryPath: f.libraryPath.value.trim(),
     qbittorrent: { url: f["qbittorrent.url"].value.trim(), username: f["qbittorrent.username"].value.trim(), password: f["qbittorrent.password"].value },
   };

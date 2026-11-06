@@ -1,6 +1,6 @@
 # Staged local-copy policy — owner specification, 2026-11-06
 
-This module is planned, not enabled or implemented by the tracking/source batch. Preserve cleanup OFF on1301 until the staged behavior and a dry-run eligibility preview are verified.
+The staged engine and Cleanup controls are implemented in 0.6.0. It starts off; deployment preserves cleanup OFF on1301. Preview is read-only and available while off. Enabling the saved policy is a deliberate action. Native Trash support is macOS only; other platforms report that the engine is unavailable.
 
 ## Editable defaults confirmed by the owner
 

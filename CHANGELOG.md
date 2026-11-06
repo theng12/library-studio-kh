@@ -1,5 +1,14 @@
 # What's new in Library Studio KH
 
+## 0.6.0 — 2026-11-07
+
+- Copy the host and Tailscale webpage addresses from Activity. Connection pills stay visible with green or red dots, and download filters no longer hide behind a dropdown.
+- Activity shows zero progress correctly and says when a percentage is unavailable.
+- Films show Radarr artwork, ratings and collection lineups with owned and missing states. Find & add opens a confirmation for the exact film.
+- Add, edit, test and save sources using Prowlarr’s live provider catalog; saved credentials stay private.
+- Edit supported companion settings with explicit Apply controls and clear reports of any partial failure.
+- Optional staged cleanup has editable retention, an eligibility preview, import evidence and local-copy restore controls. It starts off and protects NAS files, unverified downloads and unrelated Trash.
+
 ## 0.5.0 — 2026-11-06
 
 - Film, series and artist details show descriptions and reported metadata, including genres, year, runtime, certification/network and original language where applicable.

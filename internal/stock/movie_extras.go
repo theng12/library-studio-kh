@@ -29,6 +29,7 @@ type MovieExtras struct {
 	IMDbID         string           `json:"imdbId,omitempty"`
 	Studio         string           `json:"studio,omitempty"`
 	Certification  string           `json:"certification,omitempty"`
+	Genres         []string         `json:"genres"`
 	RuntimeMinutes *int             `json:"runtimeMinutes,omitempty"`
 	Ratings        []Rating         `json:"ratings"`
 	Poster         bool             `json:"poster"`
@@ -72,13 +73,14 @@ type CollectionMember struct {
 }
 
 type rawMovieExtras struct {
-	ID            int    `json:"id"`
-	Title         string `json:"title"`
-	TMDBID        int    `json:"tmdbId"`
-	IMDbID        string `json:"imdbId"`
-	Studio        string `json:"studio"`
-	Certification string `json:"certification"`
-	Runtime       *int   `json:"runtime"`
+	ID            int      `json:"id"`
+	Title         string   `json:"title"`
+	TMDBID        int      `json:"tmdbId"`
+	IMDbID        string   `json:"imdbId"`
+	Studio        string   `json:"studio"`
+	Certification string   `json:"certification"`
+	Genres        []string `json:"genres"`
+	Runtime       *int     `json:"runtime"`
 	Images        []struct {
 		CoverType string `json:"coverType"`
 	} `json:"images"`
@@ -136,7 +138,7 @@ var ratingSources = []struct{ key, label string }{
 // MovieExtras reads one Radarr film's artwork facts and, when it belongs to a
 // collection, the collection's members joined to Radarr's own movie list.
 func (a *Arr) MovieExtras(id int) (MovieExtras, error) {
-	x := MovieExtras{App: a.Name, ID: id, Ratings: []Rating{}, Problems: []string{}}
+	x := MovieExtras{App: a.Name, ID: id, Ratings: []Rating{}, Genres: []string{}, Problems: []string{}}
 	if a.Name != "Radarr" {
 		return x, errors.New("movie extras are available for Radarr films")
 	}
@@ -149,6 +151,9 @@ func (a *Arr) MovieExtras(id int) (MovieExtras, error) {
 	}
 	x.Title, x.TMDBID, x.IMDbID = m.Title, m.TMDBID, m.IMDbID
 	x.Studio, x.Certification, x.RuntimeMinutes = m.Studio, m.Certification, m.Runtime
+	if m.Genres != nil {
+		x.Genres = m.Genres
+	}
 	for _, img := range m.Images {
 		if img.CoverType == "poster" {
 			x.Poster = true

@@ -69,6 +69,7 @@ func main() {
 		"/api/v1/metadataprofile": []map[string]any{{"id": 1}},
 	}
 	tracking := newTrackingFixture(media)
+	feature := newFeatureFixture(media)
 	subtitles := newSubtitleFixture()
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -110,6 +111,9 @@ func main() {
 				records = []map[string]any{{"eventType": "downloadImported", "downloadId": hashOf("A3"), "date": ago(6)}}
 			}
 			json.NewEncoder(w).Encode(map[string]any{"records": records, "totalRecords": len(records)})
+			return
+		}
+		if feature.handle(w, r, app) {
 			return
 		}
 		if tracking(w, r) {

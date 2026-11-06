@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -29,18 +31,33 @@ type Config struct {
 	CleanupDays   int    `json:"cleanupDays"`
 	DownloadPath  string `json:"downloadPath"`
 	LibraryPath   string `json:"libraryPath"`
-	QBit          QBit   `json:"qbittorrent"`
-	Sonarr        App    `json:"sonarr"`
-	Radarr        App    `json:"radarr"`
-	Lidarr        App    `json:"lidarr"`
-	Prowlarr      App    `json:"prowlarr"`
-	BazarrOn      bool   `json:"bazarrOn"`
-	Bazarr        App    `json:"bazarr"`
+	// Staged local-copy cleanup (docs/STORAGE_POLICY.md). Off unless the owner switches it on.
+	StagedCleanupOn  bool    `json:"stagedCleanupOn"`
+	ManagedTrashPath string  `json:"managedTrashPath"` // empty = DownloadPath/_trash; must stay on a local volume, never the NAS library
+	StagedDays       int     `json:"stagedDays"`       // days in the normal download folder after verified import
+	ManagedTrashDays int     `json:"managedTrashDays"` // extra days in Library's _trash
+	NativeTrashDays  int     `json:"nativeTrashDays"`  // days kept in the OS Trash
+	PressureFreeGB   int     `json:"pressureFreeGB"`   // purge eligible native-Trash items below this; 0 = no pressure purge
+	SeedRatio        float64 `json:"seedRatio"`
+	SeedMinutes      int     `json:"seedMinutes"`
+	QBit             QBit    `json:"qbittorrent"`
+	Sonarr           App     `json:"sonarr"`
+	Radarr           App     `json:"radarr"`
+	Lidarr           App     `json:"lidarr"`
+	Prowlarr         App     `json:"prowlarr"`
+	BazarrOn         bool    `json:"bazarrOn"`
+	Bazarr           App     `json:"bazarr"`
 }
 
-const StagedCleanupNotice = "Automatic cleanup is disabled until the staged Trash policy is available."
+const StagedCleanupNotice = "The old permanent-delete cleanup is retired. Use the staged cleanup switch instead."
 
-func Default() Config { return Config{CleanupOn: false, CleanupDays: 7, TailscalePort: 7882} }
+func Default() Config {
+	return Config{
+		CleanupOn: false, CleanupDays: 7, TailscalePort: 7882,
+		StagedCleanupOn: false, StagedDays: 3, ManagedTrashDays: 4, NativeTrashDays: 30,
+		PressureFreeGB: 50, SeedRatio: 2, SeedMinutes: 2880,
+	}
+}
 
 func (c Config) Validate() error {
 	if c.CleanupOn {
@@ -51,6 +68,27 @@ func (c Config) Validate() error {
 	}
 	if c.CleanupDays < 0 || c.CleanupDays > 3650 {
 		return errors.New("days before removal must be between 0 and 3650")
+	}
+	if c.StagedDays < 1 || c.StagedDays > 365 {
+		return errors.New("days in the download folder must be between 1 and 365")
+	}
+	if c.ManagedTrashDays < 0 || c.ManagedTrashDays > 365 {
+		return errors.New("days in Library's _trash must be between 0 and 365")
+	}
+	if c.NativeTrashDays < 1 || c.NativeTrashDays > 3650 {
+		return errors.New("days in the system Trash must be between 1 and 3650")
+	}
+	if c.PressureFreeGB < 0 || c.PressureFreeGB > 10_000_000 {
+		return errors.New("free-space pressure threshold must be between 0 and 10000000 GB")
+	}
+	if math.IsNaN(c.SeedRatio) || math.IsInf(c.SeedRatio, 0) || c.SeedRatio < 0 || c.SeedRatio > 1_000_000 {
+		return errors.New("seed ratio must be between 0 and 1000000")
+	}
+	if c.SeedMinutes < 0 || c.SeedMinutes > 5_256_000 {
+		return errors.New("seed minutes must be between 0 and 5256000")
+	}
+	if c.StagedCleanupOn && c.DownloadPath == "" && strings.TrimSpace(c.ManagedTrashPath) == "" {
+		return errors.New("set the local download folder or a managed _trash folder before turning staged cleanup on")
 	}
 	for name, u := range map[string]string{"qBittorrent": c.QBit.URL, "Sonarr": c.Sonarr.URL, "Radarr": c.Radarr.URL, "Lidarr": c.Lidarr.URL, "Prowlarr": c.Prowlarr.URL, "Bazarr": c.Bazarr.URL} {
 		if name == "Bazarr" && !c.BazarrOn {
