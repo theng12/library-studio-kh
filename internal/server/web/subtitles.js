@@ -5,6 +5,17 @@ let subtitleRequest = 0;
 let subtitleAudioFilter = "";
 let subtitleLanguageFilter = "";
 
+function subtitleAudioLanguages(item) {
+  const reported = item.audioLanguages?.length ? item.audioLanguages : [item.audioLanguage];
+  return [...new Set(reported.filter(value => typeof value === "string").map(value => value.trim()).filter(value => value && value.toLowerCase() !== "unknown"))];
+}
+
+function subtitleAudioMatches(item, filter) {
+  const spoken = subtitleAudioLanguages(item).map(value => value.toLowerCase());
+  const english = value => ["english", "en", "eng"].includes(value);
+  return !filter || (filter === "english" ? spoken.some(english) : filter === "other" ? spoken.some(value => !english(value)) : spoken.length === 0);
+}
+
 async function loadMediaSubtitles(detail, serial = mediaSerial) {
   const request = ++subtitleRequest, isCurrent = () => serial === mediaSerial && request === subtitleRequest;
   const panel = $("#media-subtitles"), content = $("#subtitles-content"), message = $("#subtitles-message"), refresh = $("#subtitles-refresh");
@@ -52,9 +63,7 @@ async function loadMediaSubtitles(detail, serial = mediaSerial) {
     function render() {
       subtitleAudioFilter = audio.value; subtitleLanguageFilter = language.value;
       const shown = items.filter(item => {
-        const spoken = (item.audioLanguage || "").toLowerCase(), unknown = !spoken || spoken === "unknown";
-        const audioMatch = !audio.value || (audio.value === "english" ? spoken === "english" || spoken === "en" || spoken === "eng" : audio.value === "other" ? !unknown && !["english", "en", "eng"].includes(spoken) : unknown);
-        return audioMatch && (!language.value || (language.value === "available" ? item.existing.some(isEnglish) : item.missing.some(isEnglish)));
+        return subtitleAudioMatches(item, audio.value) && (!language.value || (language.value === "available" ? item.existing.some(isEnglish) : item.missing.some(isEnglish)));
       });
       list.replaceChildren();
       if (!shown.length) { list.append(mediaNode("p", "No reported files match these language filters.", "empty")); return; }
@@ -62,7 +71,7 @@ async function loadMediaSubtitles(detail, serial = mediaSerial) {
         const row = mediaNode("details", null, "subtitle-row"), summary = document.createElement("summary");
         const available = item.existing.some(isEnglish), missing = item.missing.some(isEnglish);
         const name = detail.app === "Sonarr" ? "S" + String(item.season).padStart(2, "0") + "E" + String(item.episode).padStart(2, "0") + " · " + item.title : item.title;
-        summary.append(mediaNode("span", name, "download-title"), mediaNode("span", "Audio: " + (item.audioLanguage || "Not reported") + " · " + (available ? "English available" : missing ? "English missing" : "English status not reported"), "download-status"));
+        summary.append(mediaNode("span", name, "download-title"), mediaNode("span", "Audio: " + (subtitleAudioLanguages(item).join(", ") || "Not reported") + " · " + (available ? "English available" : missing ? "English missing" : "English status not reported"), "download-status"));
         row.append(summary);
         row.append(mediaNode("p", "Available subtitles: " + (item.existing.map(s => s.name + (s.forced ? " (forced)" : "") + (s.hi ? " (hearing impaired)" : "")).join(", ") || "None reported")));
         if (!item.fileReported) row.append(mediaNode("p", "Waiting for a media file reported by Bazarr."));

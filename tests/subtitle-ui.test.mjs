@@ -15,6 +15,18 @@ function fixture() {
 }
 const empty = { enabled: true, configured: true, version: "1.6.2", problems: [], profiles: [], providers: ["fixture"], items: [] };
 
+test("all reported audio languages participate in display and filters", () => {
+  const { context } = fixture();
+  const item = { audioLanguage: "French", audioLanguages: ["French", "English"] };
+  assert.equal(context.subtitleAudioLanguages(item).join(", "), "French, English");
+  assert.equal(context.subtitleAudioMatches(item, "english"), true);
+  assert.equal(context.subtitleAudioMatches(item, "other"), true);
+  assert.equal(context.subtitleAudioMatches(item, "unknown"), false);
+  assert.equal(context.subtitleAudioMatches({ audioLanguage: "English" }, "english"), true);
+  assert.equal(context.subtitleAudioMatches({ audioLanguages: ["Unknown", ""] }, "unknown"), true);
+  assert.equal(context.subtitleAudioMatches({}, "english"), false);
+});
+
 test("overlapping status reads render only the latest result", async () => {
   const { context, $, pending } = fixture();
   const old = context.loadMediaSubtitles({ app: "Radarr", id: 1 });
