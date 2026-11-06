@@ -45,10 +45,18 @@ async function smApi(path, body) {
   return window.api(path, body, !!body);
 }
 
-function smFormatDisabled(until) {
-  if (!until) return "";
+function smFormatWhen(until) {
   const when = new Date(until);
-  return Number.isNaN(when.getTime()) ? "" : " until " + when.toLocaleString();
+  return Number.isNaN(when.getTime()) ? "Reported, date not readable" : when.toLocaleString();
+}
+
+// Report exactly what Prowlarr observed. Enabled never means healthy, and a
+// missing disabledUntil is "not reported", never an inferred good state.
+function sourceAvailability(x) {
+  return {
+    setting: x.enabled == null ? "Not reported" : x.enabled ? "Enabled" : "Disabled",
+    disabledUntil: x.disabledUntil ? smFormatWhen(x.disabledUntil) : "Not reported",
+  };
 }
 
 window.mountSourceManager = function (container, refreshCallback) {
@@ -70,6 +78,12 @@ window.mountSourceManager = function (container, refreshCallback) {
   loadConfiguredSources();
 };
 
+// Main can call this from the existing Refresh status button. Mount already
+// loads every configured row itself, and Add/Save reload it automatically.
+window.refreshSourceManager = function () {
+  return loadConfiguredSources();
+};
+
 async function loadConfiguredSources() {
   if (!sourceRoot || sourceBusy) return;
   sourceBusy = true;
@@ -78,17 +92,18 @@ async function loadConfiguredSources() {
   try {
     const data = await smApi("/api/sources");
     const rows = (data.indexers || []).map((x) => {
-      const status = x.enabled == null ? "Not reported" : x.enabled ? "Enabled" : "Disabled" + smFormatDisabled(x.disabledUntil);
+      const availability = sourceAvailability(x);
       const actions = smNode("div", null, "media-actions");
       actions.append(
         smButton("Edit", () => openSourceForm(x.id)),
         smButton("Test", () => testConfiguredSource(x.id, x.name))
       );
       const tr = document.createElement("tr");
-      for (const [i, value] of [x.name, status, x.protocol || "Not reported", x.priority == null ? "Not reported" : String(x.priority), actions].entries()) {
+      const cells = [x.name, availability.setting, availability.disabledUntil, x.protocol || "Not reported", x.priority == null ? "Not reported" : String(x.priority), actions];
+      for (const [i, value] of cells.entries()) {
         const td = document.createElement("td");
-        if (i === 4) td.append(value); else td.textContent = value;
-        const labels = ["Source", "Status", "Protocol", "Priority", "Actions"];
+        if (i === 5) td.append(value); else td.textContent = value;
+        const labels = ["Source", "Availability", "Disabled until", "Protocol", "Priority", "Actions"];
         td.dataset.label = labels[i];
         tr.append(td);
       }
@@ -98,7 +113,7 @@ async function loadConfiguredSources() {
     const table = smNode("table", null, "list");
     const thead = document.createElement("thead");
     const head = document.createElement("tr");
-    for (const name of ["Source", "Status", "Protocol", "Priority", "Actions"]) {
+    for (const name of ["Source", "Availability", "Disabled until", "Protocol", "Priority", "Actions"]) {
       const th = smNode("th", name);
       th.scope = "col";
       head.append(th);

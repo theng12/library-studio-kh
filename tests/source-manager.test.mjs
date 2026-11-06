@@ -28,3 +28,16 @@ test("a successful add or save reloads the configured list and the existing stat
   await context.reloadAfterSourceChange(async () => calls.push("list"), async () => calls.push("status"));
   assert.deepEqual(calls, ["list", "status"]);
 });
+
+test("configured rows report availability and disabledUntil without inferring health", () => {
+  const context = load();
+  const enabled = context.sourceAvailability({ enabled: true });
+  assert.equal(enabled.setting, "Enabled");
+  assert.equal(enabled.disabledUntil, "Not reported");
+  const paused = context.sourceAvailability({ enabled: true, disabledUntil: "2026-11-06T10:00:00Z" });
+  assert.equal(paused.setting, "Enabled");
+  assert.notEqual(paused.disabledUntil, "Not reported");
+  assert.deepEqual({ ...context.sourceAvailability({ enabled: null }) }, { setting: "Not reported", disabledUntil: "Not reported" });
+  assert.deepEqual({ ...context.sourceAvailability({ enabled: false }) }, { setting: "Disabled", disabledUntil: "Not reported" });
+  assert.ok(!JSON.stringify([enabled, paused]).toLowerCase().includes("healthy"));
+});
