@@ -52,8 +52,14 @@ func TestSourcesRoute(t *testing.T) {
 		t.Fatalf("response leaked url or key: %s", w.Body.String())
 	}
 
-	// GET only: no mutation endpoints in this batch.
-	for _, method := range []string{"POST", "PUT", "DELETE", "PATCH"} {
+	// POST is an explicit action route; other mutations stay refused.
+	post := httptest.NewRequest("POST", "/api/sources", strings.NewReader("{}"))
+	postRec := httptest.NewRecorder()
+	mux.ServeHTTP(postRec, post)
+	if postRec.Code != http.StatusBadRequest {
+		t.Fatalf("empty add must be refused with a readable error: %d", postRec.Code)
+	}
+	for _, method := range []string{"PUT", "DELETE", "PATCH"} {
 		req := httptest.NewRequest(method, "/api/sources", strings.NewReader("{}"))
 		rw := httptest.NewRecorder()
 		mux.ServeHTTP(rw, req)
