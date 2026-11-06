@@ -26,6 +26,36 @@
 .movie-extras-facts .facts { padding: 0; }
 .movie-extras-facts .empty { padding: 0; }
 
+.movie-identifiers { margin-top: 0.5rem; }
+.movie-identifiers > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+}
+.movie-identifiers .facts { padding: 0.25rem 0 0; }
+
+/* Expanded My Library rows already sit inside the library panel. */
+.library-detail .movie-extras {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.library-detail .movie-extras > .panel-head { padding: 0.5rem 0 0.75rem; border-bottom: 0; }
+.library-detail .movie-extras-body { padding: 0 0 0.75rem; }
+.library-detail .movie-collection h3,
+.library-detail .movie-collection-summary,
+.library-detail .movie-collection-msg,
+.library-detail .movie-collection-empty,
+.library-detail .movie-extras-problems { padding-left: 0; padding-right: 0; }
+.library-detail .movie-collection .list th,
+.library-detail .movie-collection .list td { padding-left: 0; padding-right: 0.75rem; }
+.library-detail .movie-collection .list th:last-child,
+.library-detail .movie-collection .list td:last-child { padding-right: 0; }
+
 .movie-collection { border-top: 1px solid var(--line); }
 .movie-collection h3 { margin: 0; padding: 1rem 1.25rem 0.15rem; font-size: 0.95rem; }
 .movie-collection-summary { margin: 0; padding: 0.3rem 1.25rem 1rem; color: var(--ink-2); font-size: 0.9rem; }

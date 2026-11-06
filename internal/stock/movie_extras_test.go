@@ -1,6 +1,7 @@
 package stock
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,7 +10,7 @@ import (
 
 const movieExtrasMovie = `{
 	"id":13,"title":"Aquaman","tmdbId":297802,"imdbId":"tt1477834","studio":"Warner Bros.",
-	"certification":"PG-13","runtime":143,"status":"released",
+	"certification":"PG-13","runtime":143,"status":"released","genres":["Action","Adventure"],
 	"images":[{"coverType":"poster","url":"/MediaCover/13/poster.jpg?lastWrite=1","remoteUrl":"https://image.tmdb.org/x.jpg"}],
 	"ratings":{"imdb":{"value":6.9,"votes":450000},"tmdb":{"value":7.1,"votes":1200},"rottenTomatoes":{"value":6.5,"votes":0}},
 	"collection":{"title":"Aquaman Collection","tmdbId":573693}
@@ -55,6 +56,9 @@ func TestMovieExtrasJoinsCollectionToOwnMovieList(t *testing.T) {
 	}
 	if x.Studio != "Warner Bros." || x.Certification != "PG-13" || x.RuntimeMinutes == nil || *x.RuntimeMinutes != 143 {
 		t.Fatalf("reported facts wrong: %+v", x)
+	}
+	if len(x.Genres) != 2 || x.Genres[0] != "Action" || x.Genres[1] != "Adventure" {
+		t.Fatalf("genres wrong: %+v", x.Genres)
 	}
 	if !x.Poster || x.TMDBID != 297802 || x.IMDbID != "tt1477834" {
 		t.Fatalf("artwork identity wrong: %+v", x)
@@ -137,6 +141,9 @@ func TestMovieExtrasWithoutCollectionKeepsFacts(t *testing.T) {
 	}
 	if x.Collection != nil || x.Title != "Solo Film" || x.Poster {
 		t.Fatalf("absent collection and poster must stay explicit: %+v", x)
+	}
+	if len(x.Genres) != 1 || x.Genres[0] != "Drama" {
+		t.Fatalf("reported genres must survive without a collection: %+v", x.Genres)
 	}
 }
 
@@ -272,5 +279,28 @@ func TestMovieExtrasEmptyCatalogIsKnownEmpty(t *testing.T) {
 		if m.HaveFile == nil || *m.HaveFile || m.InLibrary {
 			t.Fatalf("known-empty catalog means definitely missing: %+v", m)
 		}
+	}
+}
+
+func TestMovieExtrasGenresAbsentIsEmptyList(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v3/movie/13" {
+			w.Write([]byte(`{"id":13,"title":"No Genres"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	x, err := NewArr("Radarr", srv.URL, "k").MovieExtras(13)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(mustJSON(t, x), &fields); err != nil {
+		t.Fatal(err)
+	}
+	if genres, ok := fields["genres"].([]any); !ok || len(genres) != 0 {
+		t.Fatalf("absent genres must serialize as []: %v", fields["genres"])
 	}
 }
