@@ -28,10 +28,11 @@ type Server struct {
 	LocalURL string
 	Now      func() time.Time
 
-	mu     sync.Mutex
-	last   *lastRun
-	remote remoteAccess
-	access accessState
+	mu      sync.Mutex
+	last    *lastRun
+	remote  remoteAccess
+	access  accessState
+	cleanup *library.StagedCleanup
 }
 
 type lastRun struct {
@@ -43,20 +44,14 @@ type lastRun struct {
 
 func New(store *config.Store, home string) *Server {
 	s := &Server{Store: store, Home: home, Now: time.Now}
+	s.cleanup = library.NewStagedCleanup(store.Get, home)
 	s.initAccess()
 	return s
 }
 
-// RunCleanup is called hourly by main.
-func (s *Server) RunCleanup() {
-	c := s.Store.Get()
-	now := s.Now()
-	snap := library.Gather(c, s.Home, now)
-	n, errs := library.Cleanup(c, s.Home, snap, now)
-	s.mu.Lock()
-	s.last = &lastRun{At: now, Removed: n, Errors: errs, Blocked: snap.Blocked}
-	s.mu.Unlock()
-}
+// RunCleanup is called hourly by main. It only acts when the owner has
+// switched the staged policy on; the retired permanent-delete path is unused.
+func (s *Server) RunCleanup() { s.runStagedCleanup() }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -65,6 +60,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerTracking(mux)
 	s.registerSources(mux)
 	s.registerSubtitles(mux)
+	s.registerCleanup(mux)
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/host-proof", s.hostProof)
 	static, _ := fs.Sub(web, "web")

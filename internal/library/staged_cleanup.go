@@ -1,0 +1,941 @@
+package library
+
+import (
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"librarystudio/internal/config"
+	"librarystudio/internal/platform"
+	"librarystudio/internal/stock"
+)
+
+// ErrCleanupDisabled means the owner has not switched staged cleanup on.
+var ErrCleanupDisabled = errors.New("staged cleanup is off")
+
+const cleanupStateFile = "staged_cleanup.json"
+
+const (
+	phaseStaging = "staging"
+	phaseManaged = "managed_trash"
+	phaseNative  = "native_trash"
+	phaseRemoved = "removed"
+	phaseRestore = "restored"
+)
+
+// CleanupSource is the live stock-app surface. Tests replace it with fakes.
+type CleanupSource interface {
+	Torrents() ([]stock.CleanupTorrent, error)
+	Files(hash string) ([]stock.TorrentFile, error)
+	Proofs() (map[string][]stock.ImportProof, []string, error)
+	Queued() (map[string]string, []string, error)
+	Stop(hash string) error
+	RemoveMetadata(hash string) error
+}
+
+type cleanupRecord struct {
+	Hash         string        `json:"hash"`
+	Name         string        `json:"name"`
+	App          string        `json:"app"`
+	DownloadID   string        `json:"downloadId"`
+	ImportedAt   time.Time     `json:"importedAt"`
+	ImportedPath string        `json:"importedPath,omitempty"`
+	VerifiedAt   time.Time     `json:"verifiedAt"`
+	State        string        `json:"state"`
+	SavePath     string        `json:"savePath"`
+	MoveRoot     string        `json:"moveRoot"`
+	Label        string        `json:"label"`
+	Files        []CleanupFile `json:"files"`
+	Bytes        int64         `json:"bytes"`
+
+	MetadataRemoved bool      `json:"metadataRemoved,omitempty"`
+	StagedAt        time.Time `json:"stagedAt,omitempty"`
+	ManagedPath     string    `json:"managedPath,omitempty"`
+	NativeAt        time.Time `json:"nativeAt,omitempty"`
+	NativeName      string    `json:"nativeName,omitempty"`
+	RestoredAt      time.Time `json:"restoredAt,omitempty"`
+	RemovedAt       time.Time `json:"removedAt,omitempty"`
+	LastBlocked     string    `json:"lastBlocked,omitempty"`
+}
+
+type cleanupStore struct {
+	Version int              `json:"version"`
+	Items   []*cleanupRecord `json:"items"`
+}
+
+// CleanupPhase describes one policy stage for the dashboard.
+type CleanupPhase struct {
+	Name string `json:"name"`
+	Days int    `json:"days"`
+	Note string `json:"note"`
+}
+
+// CleanupItem is one tracked download as shown to the owner.
+type CleanupItem struct {
+	Hash           string     `json:"hash"`
+	Name           string     `json:"name"`
+	App            string     `json:"app"`
+	Phase          string     `json:"phase"`
+	VerifiedImport time.Time  `json:"verifiedImport"`
+	ImportPath     string     `json:"importPath,omitempty"`
+	NextDue        *time.Time `json:"nextDue,omitempty"`
+	Proposed       string     `json:"proposed"`
+	Blocked        []string   `json:"blocked,omitempty"`
+	RestorePath    string     `json:"restorePath,omitempty"`
+	SourcePath     string     `json:"sourcePath,omitempty"`
+	ManagedPath    string     `json:"managedPath,omitempty"`
+	NativePath     string     `json:"nativePath,omitempty"`
+	Files          int        `json:"files"`
+	Bytes          int64      `json:"bytes"`
+}
+
+// CleanupStatus is the read-only contract for GET /api/cleanup/status.
+// FreeBytes is nil when unknown, never 0; all byte values are bytes and the
+// threshold is also shown in GB so the unit is explicit.
+type CleanupStatus struct {
+	Enabled           bool           `json:"enabled"`
+	EngineAvailable   bool           `json:"engineAvailable"`
+	NativeTrash       bool           `json:"nativeTrash"`
+	EngineBlocked     []string       `json:"engineBlocked,omitempty"`
+	StagedDays        int            `json:"stagedDays"`
+	ManagedTrashDays  int            `json:"managedTrashDays"`
+	TotalDays         int            `json:"totalDays"`
+	NativeTrashDays   int            `json:"nativeTrashDays"`
+	PressureFreeGB    int            `json:"pressureFreeGB"`
+	PressureFreeBytes int64          `json:"pressureFreeBytes"`
+	SeedRatio         float64        `json:"seedRatio"`
+	SeedMinutes       int            `json:"seedMinutes"`
+	ManagedTrashPath  string         `json:"managedTrashPath,omitempty"`
+	TrashDir          string         `json:"trashDir,omitempty"`
+	FreeBytes         *int64         `json:"freeBytes"`
+	FreeFrom          string         `json:"freeFrom,omitempty"`
+	Phases            []CleanupPhase `json:"phases"`
+	Items             []CleanupItem  `json:"items"`
+	Blocked           []string       `json:"blocked"`
+	NextDue           *time.Time     `json:"nextDue,omitempty"`
+}
+
+// CleanupResult is returned by preview, run and restore.
+type CleanupResult struct {
+	Status   CleanupStatus `json:"status"`
+	Actions  []string      `json:"actions"`
+	Purged   int           `json:"purged"`
+	Problems []string      `json:"problems,omitempty"`
+}
+
+// StagedCleanup runs the owner-approved staged local-copy policy. The default
+// source reads the real apps; tests inject a fake and a virtual free-space
+// reading, and never touch real downloads or Trash.
+type StagedCleanup struct {
+	Home        string
+	Now         func() time.Time
+	Source      CleanupSource
+	FreeBytes   func(string) (int64, error)
+	LocalVolume func(string) (bool, error)
+	TrashDir    func() (string, error)
+
+	mu sync.Mutex
+}
+
+func NewStagedCleanup(get func() config.Config, home string) *StagedCleanup {
+	return &StagedCleanup{
+		Home: home, Now: time.Now, Source: liveCleanupSource{get: get},
+		FreeBytes: platform.FreeBytes, LocalVolume: platform.LocalVolume, TrashDir: platform.TrashDir,
+	}
+}
+
+// Status is local-only: it reports saved state and capabilities without
+// contacting any stock app.
+func (e *StagedCleanup) Status(c config.Config) CleanupStatus {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	st := e.baseStatus(c)
+	recs, err := e.load()
+	if err != nil {
+		st.Blocked = append(st.Blocked, "Saved cleanup state could not be read: "+err.Error())
+		return st
+	}
+	e.render(&st, recs, c, e.Now())
+	return st
+}
+
+// Preview is the dry run: it reads the apps and verifies candidates, but never
+// stops a torrent, moves a file or changes saved state.
+func (e *StagedCleanup) Preview(c config.Config) (CleanupResult, error) {
+	return e.plan(c, false)
+}
+
+// Run applies every stage that is due, and refuses when the owner has not
+// switched the policy on.
+func (e *StagedCleanup) Run(c config.Config) (CleanupResult, error) {
+	if !c.StagedCleanupOn {
+		return CleanupResult{Status: e.Status(c)}, ErrCleanupDisabled
+	}
+	return e.plan(c, true)
+}
+
+func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	now := e.Now()
+	st := e.baseStatus(c)
+	res := CleanupResult{Status: st, Actions: []string{}}
+	recs, err := e.load()
+	if err != nil {
+		return res, err
+	}
+	byHash := map[string]*cleanupRecord{}
+	for _, r := range recs {
+		byHash[strings.ToUpper(r.Hash)] = r
+	}
+	if !st.EngineAvailable || st.ManagedTrashPath == "" || c.LibraryPath == "" {
+		// A capability or path problem is reported, never worked around.
+		e.render(&st, recs, c, now)
+		res.Status = st
+		return res, nil
+	}
+
+	block := func(reason string) { st.Blocked = append(st.Blocked, reason) }
+	torrents, err := e.Source.Torrents()
+	if err != nil {
+		block("qBittorrent could not be read, so nothing is changed this round.")
+	}
+	byTorrent := map[string]stock.CleanupTorrent{}
+	for _, t := range torrents {
+		byTorrent[strings.ToUpper(t.Hash)] = t
+	}
+	proofs, proofProblems, err := e.Source.Proofs()
+	if err != nil {
+		block("Library history could not be read, so nothing is changed this round.")
+	}
+	for _, p := range proofProblems {
+		block(p)
+	}
+	queued, queueProblems, err := e.Source.Queued()
+	if err != nil {
+		block("Library queues could not be read, so nothing is changed this round.")
+	}
+	for _, p := range queueProblems {
+		block(p)
+	}
+	global := len(st.Blocked) > 0
+
+	// Verify new whole imports only when every connected app answered. A
+	// partial answer never becomes an eligible deletion.
+	if !global {
+		for _, t := range torrents {
+			h := strings.ToUpper(t.Hash)
+			if !validCleanupHash(h) || byHash[h] != nil {
+				continue
+			}
+			if t.Progress < 1 {
+				continue
+			}
+			if app, ok := queued[h]; ok {
+				_ = app // still being handled: protected until the app finishes it
+				continue
+			}
+			ps := proofs[h]
+			if len(ps) == 0 {
+				continue // untracked or not wholly imported: never guessed
+			}
+			if len(ps) > 1 {
+				res.Problems = append(res.Problems, shortHash(h)+" is reported imported by several apps; it is left protected.")
+				continue
+			}
+			p := ps[0]
+			fs, err := e.Source.Files(h)
+			if err != nil || !allFilesComplete(fs) {
+				res.Problems = append(res.Problems, shortHash(h)+" files could not be verified, so it is left protected.")
+				continue
+			}
+			root, files, bytes, err := sourceLayout(t, fs, e.LocalVolume)
+			if err != nil {
+				res.Problems = append(res.Problems, shortHash(h)+" is left protected: "+err.Error())
+				continue
+			}
+			if err := proveImported(p.ImportedPath, files); err != nil {
+				res.Problems = append(res.Problems, shortHash(h)+" import isn't fully proven: "+err.Error())
+				continue
+			}
+			rec := &cleanupRecord{
+				Hash: h, Name: t.Name, App: p.App, DownloadID: p.DownloadID,
+				ImportedAt: p.ImportedAt, ImportedPath: p.ImportedPath, VerifiedAt: now, State: phaseStaging,
+				SavePath: t.SavePath, MoveRoot: root, Label: filepath.Base(root),
+				Files: files, Bytes: bytes,
+			}
+			recs = append(recs, rec)
+			byHash[h] = rec
+			if execute {
+				res.Actions = append(res.Actions, "Verified whole import of "+rec.Name+" ("+fmt.Sprintf("%s", humanBytes(bytes))+").")
+			} else {
+				res.Actions = append(res.Actions, "Would track "+rec.Name+" from its import at "+rec.ImportedAt.Format(time.RFC3339)+".")
+			}
+		}
+	}
+
+	if !global {
+		ctx := &settleCtx{e: e, c: c, now: now, execute: execute, torrents: byTorrent, queued: queued, res: &res}
+		for _, rec := range recs {
+			switch rec.State {
+			case phaseStaging, phaseManaged, phaseNative:
+				ctx.settle(rec)
+			}
+		}
+		ctx.purge(recs)
+		if len(ctx.problems) > 0 {
+			res.Problems = append(res.Problems, ctx.problems...)
+		}
+	}
+	if execute {
+		if err := e.save(recs); err != nil {
+			return res, fmt.Errorf("cleanup state could not be saved: %w", err)
+		}
+	}
+	e.render(&st, recs, c, now)
+	res.Status = st
+	return res, nil
+}
+
+type settleCtx struct {
+	e        *StagedCleanup
+	c        config.Config
+	now      time.Time
+	execute  bool
+	torrents map[string]stock.CleanupTorrent
+	queued   map[string]string
+	res      *CleanupResult
+	problems []string
+}
+
+func (x *settleCtx) block(rec *cleanupRecord, reason string) {
+	rec.LastBlocked = reason
+	x.problems = append(x.problems, rec.Name+": "+reason)
+}
+
+func (x *settleCtx) settle(rec *cleanupRecord) {
+	if app, ok := x.queued[strings.ToUpper(rec.Hash)]; ok {
+		x.block(rec, "still handled by "+app+", so it stays protected.")
+		return
+	}
+	rec.LastBlocked = ""
+	switch rec.State {
+	case phaseStaging:
+		x.settleStaging(rec)
+	case phaseManaged:
+		x.settleManaged(rec)
+	case phaseNative:
+		x.settleNative(rec)
+	}
+}
+
+func (x *settleCtx) settleStaging(rec *cleanupRecord) {
+	due := rec.ImportedAt.Add(days(x.c.StagedDays))
+	if x.now.Before(due) {
+		return
+	}
+	if err := verifyTree(rec.MoveRoot, rec.Files); err != nil {
+		// A crash after the move but before saving state is adopted only when
+		// the destination holds exactly the verified bytes.
+		dest := filepath.Join(managedRoot(x.c), entryName(rec))
+		if verifyTree(dest, rec.Files) == nil {
+			rec.State, rec.ManagedPath, rec.StagedAt, rec.MetadataRemoved, rec.LastBlocked = phaseManaged, dest, x.now, true, ""
+			x.res.Actions = append(x.res.Actions, "Recovered an interrupted move of "+rec.Name+" into Library's _trash.")
+			return
+		}
+		x.block(rec, "the local copy can't be verified: "+err.Error())
+		return
+	}
+	ok, err := x.e.LocalVolume(filepath.Dir(rec.MoveRoot))
+	if err != nil || !ok {
+		x.block(rec, "the local copy is not on a proven local volume.")
+		return
+	}
+	t, listed := x.torrents[strings.ToUpper(rec.Hash)]
+	if listed {
+		if torrentStateError(t.State) {
+			x.block(rec, "qBittorrent reports an error for this torrent; it is left protected.")
+			return
+		}
+		if !seedRuleMet(x.c, t) {
+			x.block(rec, fmt.Sprintf("still seeding (ratio %.2f of %g, %d of %d minutes).", t.Ratio, x.c.SeedRatio, t.SeedingTime/60, x.c.SeedMinutes))
+			return
+		}
+		if !torrentStopped(t.State) {
+			if !x.execute {
+				x.res.Actions = append(x.res.Actions, "Would stop seeding "+rec.Name+" once its limit is met.")
+				return
+			}
+			if err := x.e.Source.Stop(rec.Hash); err != nil {
+				x.block(rec, "seeding could not be stopped, so no local copy was moved.")
+				return
+			}
+			after, err := x.e.Source.Torrents()
+			if err != nil {
+				x.block(rec, "qBittorrent could not be re-read after stopping; no local copy was moved.")
+				return
+			}
+			confirmed := false
+			for _, t2 := range after {
+				if strings.EqualFold(t2.Hash, rec.Hash) && torrentStopped(t2.State) {
+					confirmed = true
+					break
+				}
+			}
+			if !confirmed {
+				x.block(rec, "stopped seeding could not be confirmed; no local copy was moved.")
+				return
+			}
+		}
+		if !rec.MetadataRemoved {
+			if !x.execute {
+				x.res.Actions = append(x.res.Actions, "Would remove qBittorrent metadata only (files kept) for "+rec.Name+".")
+				return
+			}
+			if err := x.e.Source.RemoveMetadata(rec.Hash); err != nil {
+				x.block(rec, "qBittorrent metadata could not be removed; files were not moved.")
+				return
+			}
+			rec.MetadataRemoved = true
+		}
+	} else if !rec.MetadataRemoved {
+		x.block(rec, "qBittorrent no longer lists this torrent, so its seeding state can't be verified.")
+		return
+	}
+	dest := filepath.Join(managedRoot(x.c), entryName(rec))
+	if !x.execute {
+		x.res.Actions = append(x.res.Actions, "Would move "+rec.Name+" into Library's _trash ("+dest+").")
+		return
+	}
+	if err := moveVerified(rec.MoveRoot, dest, rec.Files); err != nil {
+		x.block(rec, "moving to Library's _trash failed: "+err.Error())
+		return
+	}
+	rec.State, rec.ManagedPath, rec.StagedAt, rec.LastBlocked = phaseManaged, dest, x.now, ""
+	x.res.Actions = append(x.res.Actions, "Moved "+rec.Name+" into Library's _trash.")
+}
+
+func (x *settleCtx) settleManaged(rec *cleanupRecord) {
+	due := rec.ImportedAt.Add(days(x.c.StagedDays + x.c.ManagedTrashDays))
+	if x.now.Before(due) {
+		return
+	}
+	if err := verifyTree(rec.ManagedPath, rec.Files); err != nil {
+		// Adopt a completed but unsaved move into the system Trash.
+		if trash, terr := x.e.TrashDir(); terr == nil {
+			dest := filepath.Join(trash, entryName(rec))
+			if verifyTree(dest, rec.Files) == nil {
+				rec.State, rec.NativeName, rec.NativeAt, rec.ManagedPath, rec.LastBlocked = phaseNative, filepath.Base(dest), x.now, "", ""
+				x.res.Actions = append(x.res.Actions, "Recovered an interrupted move of "+rec.Name+" into the system Trash.")
+				return
+			}
+		}
+		x.block(rec, "the managed _trash copy can't be verified: "+err.Error())
+		return
+	}
+	trash, err := x.e.TrashDir()
+	if err != nil {
+		x.block(rec, "the system Trash isn't available: "+err.Error())
+		return
+	}
+	dest := filepath.Join(trash, entryName(rec))
+	if !x.execute {
+		x.res.Actions = append(x.res.Actions, "Would move "+rec.Name+" into the system Trash.")
+		return
+	}
+	if err := moveVerified(rec.ManagedPath, dest, rec.Files); err != nil {
+		x.block(rec, "moving to the system Trash failed: "+err.Error())
+		return
+	}
+	rec.State, rec.NativeName, rec.NativeAt, rec.ManagedPath, rec.LastBlocked = phaseNative, filepath.Base(dest), x.now, "", ""
+	x.res.Actions = append(x.res.Actions, "Moved "+rec.Name+" into the system Trash.")
+}
+
+func (x *settleCtx) settleNative(rec *cleanupRecord) {
+	if rec.NativeAt.IsZero() || x.now.Before(rec.NativeAt.Add(days(x.c.NativeTrashDays))) {
+		return
+	}
+	x.purgeOne(rec, fmt.Sprintf("its %d-day system Trash retention ended", x.c.NativeTrashDays))
+}
+
+// purge removes only saved, identity-and-content-verified Library-owned entries
+// from this user's own Trash. Oldest verified import first, re-measuring free
+// space after each removal and stopping at the threshold.
+func (x *settleCtx) purge(recs []*cleanupRecord) {
+	if x.c.PressureFreeGB <= 0 {
+		return
+	}
+	trash, err := x.e.TrashDir()
+	if err != nil {
+		return
+	}
+	threshold := int64(x.c.PressureFreeGB) << 30
+	free, err := x.e.FreeBytes(trash)
+	if err != nil {
+		x.problems = append(x.problems, "Free space on the system Trash volume could not be read, so no pressure purge ran.")
+		return
+	}
+	if free >= threshold {
+		return
+	}
+	eligible := []*cleanupRecord{}
+	for _, r := range recs {
+		if r.State == phaseNative && r.NativeName != "" {
+			eligible = append(eligible, r)
+		}
+	}
+	sort.SliceStable(eligible, func(i, j int) bool {
+		if !eligible[i].ImportedAt.Equal(eligible[j].ImportedAt) {
+			return eligible[i].ImportedAt.Before(eligible[j].ImportedAt)
+		}
+		return eligible[i].NativeAt.Before(eligible[j].NativeAt)
+	})
+	for _, rec := range eligible {
+		if free >= threshold {
+			break
+		}
+		if !x.execute {
+			x.res.Actions = append(x.res.Actions, "Low space: would permanently remove "+rec.Name+" (oldest verified import first).")
+			break
+		}
+		path := filepath.Join(trash, rec.NativeName)
+		if err := verifyTree(path, rec.Files); err != nil {
+			x.block(rec, "the system Trash entry can't be verified: "+err.Error())
+			continue
+		}
+		if err := os.RemoveAll(path); err != nil {
+			x.block(rec, "the system Trash entry could not be removed: "+err.Error())
+			continue
+		}
+		rec.State, rec.RemovedAt, rec.LastBlocked = phaseRemoved, x.now, ""
+		x.res.Purged++
+		x.res.Actions = append(x.res.Actions, fmt.Sprintf("Low space (%s free, below %s): permanently removed %s.", humanBytes(free), humanBytes(threshold), rec.Name))
+		free, err = x.e.FreeBytes(trash)
+		if err != nil {
+			x.problems = append(x.problems, "Free space could not be re-measured after a removal; the pressure purge stopped.")
+			return
+		}
+	}
+	if free < threshold {
+		x.problems = append(x.problems, fmt.Sprintf("Free space is %s, below the %s threshold; no more eligible Library-owned Trash items can be removed.", humanBytes(free), humanBytes(threshold)))
+	}
+}
+
+func (x *settleCtx) purgeOne(rec *cleanupRecord, why string) {
+	trash, err := x.e.TrashDir()
+	if err != nil {
+		x.block(rec, "the system Trash isn't available: "+err.Error())
+		return
+	}
+	path := filepath.Join(trash, rec.NativeName)
+	if rec.NativeName == "" || filepath.Base(rec.NativeName) != rec.NativeName {
+		x.block(rec, "the saved Trash name is unsafe; nothing was removed.")
+		return
+	}
+	if err := verifyTree(path, rec.Files); err != nil {
+		x.block(rec, "the system Trash entry can't be verified: "+err.Error())
+		return
+	}
+	if !x.execute {
+		x.res.Actions = append(x.res.Actions, "Would permanently remove "+rec.Name+" from the system Trash because "+why+".")
+		return
+	}
+	if err := os.RemoveAll(path); err != nil {
+		x.block(rec, "the system Trash entry could not be removed: "+err.Error())
+		return
+	}
+	rec.State, rec.RemovedAt, rec.LastBlocked = phaseRemoved, x.now, ""
+	x.res.Purged++
+	x.res.Actions = append(x.res.Actions, "Permanently removed "+rec.Name+" from the system Trash because "+why+".")
+}
+
+// Restore puts one managed or native-Trash item back at its original download
+// path. It never overwrites something already there.
+func (e *StagedCleanup) Restore(c config.Config, hash string) (CleanupResult, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	now := e.Now()
+	hash = strings.ToUpper(strings.TrimSpace(hash))
+	st := e.baseStatus(c)
+	res := CleanupResult{Status: st, Actions: []string{}}
+	recs, err := e.load()
+	if err != nil {
+		return res, err
+	}
+	var rec *cleanupRecord
+	for _, r := range recs {
+		if strings.EqualFold(r.Hash, hash) {
+			rec = r
+			break
+		}
+	}
+	if rec == nil {
+		return res, errors.New("that download isn't tracked")
+	}
+	var src string
+	switch rec.State {
+	case phaseManaged:
+		src = rec.ManagedPath
+	case phaseNative:
+		trash, err := e.TrashDir()
+		if err != nil {
+			return res, err
+		}
+		if rec.NativeName == "" || filepath.Base(rec.NativeName) != rec.NativeName {
+			return res, errors.New("the saved Trash name is unsafe")
+		}
+		src = filepath.Join(trash, rec.NativeName)
+	default:
+		return res, errors.New("that item isn't in Library's _trash or the system Trash")
+	}
+	if err := verifyTree(src, rec.Files); err != nil {
+		return res, fmt.Errorf("the stored copy can't be verified: %w", err)
+	}
+	if _, err := os.Lstat(rec.MoveRoot); err == nil {
+		if verifyTree(rec.MoveRoot, rec.Files) != nil {
+			return res, errors.New("its original download location already exists with different content; nothing was overwritten")
+		}
+		// Finish a restore that was interrupted after the copy but before the
+		// saved state changed.
+		if err := removeVerified(src, rec.Files); err != nil {
+			return res, err
+		}
+		rec.State, rec.RestoredAt, rec.ManagedPath, rec.NativeName, rec.LastBlocked = phaseRestore, now, "", "", ""
+		res.Actions = append(res.Actions, "Finished restoring "+rec.Name+" to "+rec.MoveRoot+".")
+		if err := e.save(recs); err != nil {
+			return res, err
+		}
+		e.render(&st, recs, c, now)
+		res.Status = st
+		return res, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return res, err
+	}
+	if err := moveVerified(src, rec.MoveRoot, rec.Files); err != nil {
+		return res, err
+	}
+	rec.State, rec.RestoredAt, rec.ManagedPath, rec.NativeName, rec.LastBlocked = phaseRestore, now, "", "", ""
+	res.Actions = append(res.Actions, "Restored "+rec.Name+" to "+rec.MoveRoot+".")
+	if err := e.save(recs); err != nil {
+		return res, err
+	}
+	e.render(&st, recs, c, now)
+	res.Status = st
+	return res, nil
+}
+
+func (e *StagedCleanup) baseStatus(c config.Config) CleanupStatus {
+	st := CleanupStatus{
+		Enabled: c.StagedCleanupOn, StagedDays: c.StagedDays, ManagedTrashDays: c.ManagedTrashDays,
+		TotalDays: c.StagedDays + c.ManagedTrashDays, NativeTrashDays: c.NativeTrashDays,
+		PressureFreeGB: c.PressureFreeGB, PressureFreeBytes: int64(c.PressureFreeGB) << 30,
+		SeedRatio: c.SeedRatio, SeedMinutes: c.SeedMinutes, ManagedTrashPath: managedRoot(c),
+		Phases: []CleanupPhase{
+			{Name: phaseStaging, Days: c.StagedDays, Note: "In the normal download folder after a verified whole import."},
+			{Name: phaseManaged, Days: c.StagedDays + c.ManagedTrashDays, Note: "Moved to Library's _trash; permanent deadline counted from the verified import."},
+			{Name: phaseNative, Days: c.NativeTrashDays, Note: "In the system Trash; kept this many more days before permanent removal."},
+		},
+		Items: []CleanupItem{}, Blocked: []string{},
+	}
+	trash, err := e.TrashDir()
+	if err != nil {
+		st.EngineBlocked = append(st.EngineBlocked, "Native Trash isn't available on this system: "+err.Error())
+	} else if ok, err := e.LocalVolume(trash); err != nil || !ok {
+		st.EngineBlocked = append(st.EngineBlocked, "The user's Trash is not on a proven local volume.")
+	} else {
+		st.EngineAvailable, st.NativeTrash, st.TrashDir = true, true, trash
+		if f, err := e.FreeBytes(trash); err == nil {
+			st.FreeBytes, st.FreeFrom = &f, trash
+		} else {
+			st.EngineBlocked = append(st.EngineBlocked, "Free space on the system Trash volume could not be read.")
+		}
+	}
+	if c.LibraryPath == "" {
+		st.Blocked = append(st.Blocked, "Set the Library folder before staged cleanup can run.")
+	}
+	if st.ManagedTrashPath == "" {
+		st.Blocked = append(st.Blocked, "Set a Library folder or a managed _trash folder.")
+	}
+	return st
+}
+
+func (e *StagedCleanup) render(st *CleanupStatus, recs []*cleanupRecord, c config.Config, now time.Time) {
+	items := make([]CleanupItem, 0, len(recs))
+	for _, rec := range recs {
+		it := CleanupItem{
+			Hash: rec.Hash, Name: rec.Name, App: rec.App, Phase: rec.State,
+			VerifiedImport: rec.ImportedAt, Files: len(rec.Files), Bytes: rec.Bytes,
+			ImportPath: rec.ImportedPath, SourcePath: rec.SavePath, ManagedPath: rec.ManagedPath,
+		}
+		if rec.LastBlocked != "" {
+			it.Blocked = append(it.Blocked, rec.LastBlocked)
+		}
+		switch rec.State {
+		case phaseStaging:
+			due := rec.ImportedAt.Add(days(c.StagedDays))
+			it.NextDue = &due
+			if now.Before(due) {
+				it.Proposed = "Keep in the download folder."
+			} else {
+				it.Proposed = "Move to Library's _trash once seeding has stopped."
+			}
+		case phaseManaged:
+			due := rec.ImportedAt.Add(days(c.StagedDays + c.ManagedTrashDays))
+			it.NextDue = &due
+			it.RestorePath = rec.MoveRoot
+			if err := verifyTreeLite(rec.ManagedPath); err != nil {
+				it.Blocked = append(it.Blocked, "The managed _trash copy is missing or unreadable.")
+			}
+			if now.Before(due) {
+				it.Proposed = "Keep in Library's _trash."
+			} else {
+				it.Proposed = "Move to the system Trash."
+			}
+		case phaseNative:
+			due := rec.NativeAt.Add(days(c.NativeTrashDays))
+			it.NextDue = &due
+			it.RestorePath = rec.MoveRoot
+			if st.TrashDir != "" && rec.NativeName != "" {
+				it.NativePath = filepath.Join(st.TrashDir, rec.NativeName)
+				if err := verifyTreeLite(it.NativePath); err != nil {
+					it.Blocked = append(it.Blocked, "The system Trash copy is missing or unreadable.")
+				}
+			}
+			if now.Before(due) {
+				it.Proposed = "Keep in the system Trash."
+			} else {
+				it.Proposed = "Permanently remove from the system Trash."
+			}
+		case phaseRemoved:
+			it.Proposed = "Permanently removed."
+		case phaseRestore:
+			it.Proposed = "Restored by the owner; kept."
+			it.RestorePath = rec.MoveRoot
+		}
+		items = append(items, it)
+	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].VerifiedImport.Before(items[j].VerifiedImport) })
+	st.Items = items
+	st.NextDue = nil
+	for _, it := range items {
+		if it.NextDue == nil || it.Phase == phaseRemoved || it.Phase == phaseRestore {
+			continue
+		}
+		if st.NextDue == nil || it.NextDue.Before(*st.NextDue) {
+			d := *it.NextDue
+			st.NextDue = &d
+		}
+	}
+}
+
+func verifyTreeLite(path string) error {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return errors.New("symlink")
+	}
+	return nil
+}
+
+func (e *StagedCleanup) load() ([]*cleanupRecord, error) {
+	b, err := os.ReadFile(filepath.Join(e.Home, cleanupStateFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return []*cleanupRecord{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var s cleanupStore
+	if err := json.Unmarshal(b, &s); err != nil {
+		return nil, fmt.Errorf("%s is damaged: %w", cleanupStateFile, err)
+	}
+	out := make([]*cleanupRecord, 0, len(s.Items))
+	for _, r := range s.Items {
+		if r == nil || strings.TrimSpace(r.Hash) == "" || len(r.Files) == 0 {
+			continue
+		}
+		r.Hash = strings.ToUpper(r.Hash)
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (e *StagedCleanup) save(recs []*cleanupRecord) error {
+	if err := os.MkdirAll(e.Home, 0o700); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(cleanupStore{Version: 1, Items: recs}, "", "  ")
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(e.Home, cleanupStateFile)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+func managedRoot(c config.Config) string {
+	if p := strings.TrimSpace(c.ManagedTrashPath); p != "" {
+		return filepath.Clean(p)
+	}
+	if p := strings.TrimSpace(c.LibraryPath); p != "" {
+		return filepath.Join(filepath.Clean(p), "_trash")
+	}
+	return ""
+}
+
+func entryName(rec *cleanupRecord) string {
+	h := strings.ToLower(rec.Hash)
+	if len(h) > 12 {
+		h = h[:12]
+	}
+	label := filepath.Base(rec.Label)
+	if label == "" || label == "." || label == ".." || label == string(os.PathSeparator) {
+		label = "item"
+	}
+	label = strings.Map(func(r rune) rune {
+		if r == '/' || r == '\\' || r == 0 {
+			return '-'
+		}
+		return r
+	}, label)
+	return "library-studio-" + h + "-" + label
+}
+
+func days(n int) time.Duration { return time.Duration(n) * 24 * time.Hour }
+
+func allFilesComplete(fs []stock.TorrentFile) bool {
+	if len(fs) == 0 {
+		return false
+	}
+	for _, f := range fs {
+		if f.Progress < 1 {
+			return false
+		}
+	}
+	return true
+}
+
+func seedRuleMet(c config.Config, t stock.CleanupTorrent) bool {
+	if c.SeedRatio <= 0 && c.SeedMinutes <= 0 {
+		return true // both limits off: only a confirmed stop is required
+	}
+	if c.SeedRatio > 0 && t.Ratio >= c.SeedRatio {
+		return true
+	}
+	return c.SeedMinutes > 0 && t.SeedingTime >= int64(c.SeedMinutes)*60
+}
+
+func torrentStopped(state string) bool {
+	s := strings.ToLower(state)
+	return strings.Contains(s, "stopped") || strings.Contains(s, "paused")
+}
+
+func torrentStateError(state string) bool {
+	s := strings.ToLower(state)
+	return strings.Contains(s, "error") || strings.Contains(s, "missing")
+}
+
+func validCleanupHash(h string) bool {
+	if len(h) != 40 && len(h) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(h)
+	return err == nil
+}
+
+func shortHash(h string) string {
+	if len(h) > 12 {
+		return h[:12]
+	}
+	return h
+}
+
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+// liveCleanupSource wires the real stock clients behind the engine.
+type liveCleanupSource struct{ get func() config.Config }
+
+func (l liveCleanupSource) Torrents() ([]stock.CleanupTorrent, error) {
+	qb, err := qbit(l.get())
+	if err != nil {
+		return nil, err
+	}
+	return qb.CleanupTorrents()
+}
+
+func (l liveCleanupSource) Files(hash string) ([]stock.TorrentFile, error) {
+	qb, err := qbit(l.get())
+	if err != nil {
+		return nil, err
+	}
+	return qb.TorrentFiles(hash)
+}
+
+func (l liveCleanupSource) Proofs() (map[string][]stock.ImportProof, []string, error) {
+	out, problems := map[string][]stock.ImportProof{}, []string{}
+	for _, a := range arrs(l.get()) {
+		imports, err := a.WholeImports()
+		if err != nil {
+			problems = append(problems, sourceError(a.Name+" history", err))
+			continue
+		}
+		for id, p := range imports {
+			out[id] = append(out[id], p)
+		}
+	}
+	return out, problems, nil
+}
+
+func (l liveCleanupSource) Queued() (map[string]string, []string, error) {
+	out, problems := map[string]string{}, []string{}
+	for _, a := range arrs(l.get()) {
+		entries, err := a.QueueEntries()
+		if err != nil {
+			problems = append(problems, sourceError(a.Name+" queue", err))
+			continue
+		}
+		for _, e := range entries {
+			out[e.DownloadID] = a.Name
+		}
+	}
+	return out, problems, nil
+}
+
+func (l liveCleanupSource) Stop(hash string) error {
+	qb, err := qbit(l.get())
+	if err != nil {
+		return err
+	}
+	return qb.TorrentAction([]string{hash}, "pause")
+}
+
+func (l liveCleanupSource) RemoveMetadata(hash string) error {
+	qb, err := qbit(l.get())
+	if err != nil {
+		return err
+	}
+	return qb.RemoveMetadata(hash)
+}
