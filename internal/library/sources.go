@@ -1,6 +1,7 @@
 package library
 
 import (
+	"errors"
 	"strings"
 
 	"librarystudio/internal/config"
@@ -110,6 +111,60 @@ func appConfig(c config.Config, name string) config.App {
 	default:
 		return c.Lidarr
 	}
+}
+
+// prowlarrClient is the one place source actions get their connection. It never
+// returns a URL or key in its error.
+func prowlarrClient(c config.Config) (*stock.Arr, error) {
+	if c.Prowlarr.URL == "" || c.Prowlarr.APIKey == "" {
+		return nil, errors.New("Prowlarr isn't connected. Add it in Settings first.")
+	}
+	return stock.NewArr("Prowlarr", c.Prowlarr.URL, c.Prowlarr.APIKey), nil
+}
+
+// SourceCatalog reads the live provider list Prowlarr publishes.
+func SourceCatalog(c config.Config) ([]stock.SourceCatalogEntry, error) {
+	p, err := prowlarrClient(c)
+	if err != nil {
+		return nil, err
+	}
+	return p.IndexerCatalog()
+}
+
+// SourceEdit reads one configured source for its edit form.
+func SourceEdit(c config.Config, id int) (stock.SourceEdit, error) {
+	p, err := prowlarrClient(c)
+	if err != nil {
+		return stock.SourceEdit{}, err
+	}
+	return p.IndexerForEdit(id)
+}
+
+// AddSource is the owner's explicit add; it never enables a new source on its own.
+func AddSource(c config.Config, in stock.SourceInput) (int, error) {
+	p, err := prowlarrClient(c)
+	if err != nil {
+		return 0, err
+	}
+	return p.CreateIndexer(in)
+}
+
+// SaveSource is the owner's explicit save; untouched fields and secrets stay as they were.
+func SaveSource(c config.Config, in stock.SourceInput) error {
+	p, err := prowlarrClient(c)
+	if err != nil {
+		return err
+	}
+	return p.UpdateIndexer(in)
+}
+
+// TestSource asks Prowlarr to test the settings without saving them.
+func TestSource(c config.Config, in stock.SourceInput) error {
+	p, err := prowlarrClient(c)
+	if err != nil {
+		return err
+	}
+	return p.TestIndexer(in)
 }
 
 // sourceError turns an upstream error into safe text: the app's own name only,

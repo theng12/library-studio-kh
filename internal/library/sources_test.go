@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"librarystudio/internal/config"
+	"librarystudio/internal/stock"
 )
 
 func newApp(t *testing.T, h http.HandlerFunc) *httptest.Server {
@@ -133,5 +134,55 @@ func TestSourcesDisabledStatusAndSanitizedHealth(t *testing.T) {
 		if strings.Contains(string(body), leak) {
 			t.Fatalf("response leaked %q: %s", leak, body)
 		}
+	}
+}
+
+func TestSourceActionsNeedProwlarrAndStaySafe(t *testing.T) {
+	c := config.Default()
+	if _, err := SourceCatalog(c); err == nil || !strings.Contains(err.Error(), "isn't connected") {
+		t.Fatalf("catalog without Prowlarr: %v", err)
+	}
+	if _, err := SourceEdit(c, 7); err == nil || !strings.Contains(err.Error(), "isn't connected") {
+		t.Fatalf("edit without Prowlarr: %v", err)
+	}
+	if _, err := AddSource(c, stock.SourceInput{Key: "definition:x", Name: "x"}); err == nil || !strings.Contains(err.Error(), "isn't connected") {
+		t.Fatalf("add without Prowlarr: %v", err)
+	}
+	if err := SaveSource(c, stock.SourceInput{ID: 7}); err == nil || !strings.Contains(err.Error(), "isn't connected") {
+		t.Fatalf("save without Prowlarr: %v", err)
+	}
+	if err := TestSource(c, stock.SourceInput{ID: 7}); err == nil || !strings.Contains(err.Error(), "isn't connected") {
+		t.Fatalf("test without Prowlarr: %v", err)
+	}
+}
+
+func TestSourceCatalogThroughLibraryHidesSavedSecrets(t *testing.T) {
+	const key = "{{KEY_1ce1a07b}}"
+	srv := newApp(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/indexer/schema" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(`[{"name":"NZBgeek","definitionName":"nzbgeek","implementation":"Cardigann","protocol":"usenet","fields":[
+			{"name":"apiKey","label":"API Key","type":"textbox","value":"saved-secret","required":true},
+			{"name":"baseUrl","label":"Base URL","type":"textbox","value":"http://private.example:8080"},
+			{"name":"categories","label":"Categories","type":"select","selectOptions":[{"value":1,"label":"TV"}]}
+		]}]`))
+	})
+	defer srv.Close()
+	c := config.Default()
+	c.Prowlarr = config.App{URL: srv.URL, APIKey: key}
+	items, err := SourceCatalog(c)
+	if err != nil || len(items) != 1 {
+		t.Fatal(err, items)
+	}
+	body, _ := json.Marshal(items)
+	for _, leak := range []string{"saved-secret", "http://", "private.example", key} {
+		if strings.Contains(string(body), leak) {
+			t.Fatalf("catalog leaked %q: %s", leak, body)
+		}
+	}
+	if len(items[0].Fields) != 3 {
+		t.Fatalf("fields: %+v", items[0].Fields)
 	}
 }
