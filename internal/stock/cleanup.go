@@ -78,6 +78,7 @@ type ImportProof struct {
 func (a *Arr) WholeImports() (map[string]ImportProof, error) {
 	out := map[string]ImportProof{}
 	read := 0
+	now := time.Now()
 	for page := 1; page <= maxQueuePages; page++ {
 		var p struct {
 			Page         int  `json:"page"`
@@ -106,6 +107,11 @@ func (a *Arr) WholeImports() (map[string]ImportProof, error) {
 			path, _ := r.Data["importedPath"].(string)
 			if strings.TrimSpace(path) == "" {
 				return nil, fmt.Errorf("%s reported an import for download %s without its library path", a.Name, id)
+			}
+			// A missing/zero date would make the item immediately eligible; a
+			// date beyond a small clock-skew allowance is not a real import.
+			if r.Date.IsZero() || r.Date.After(now.Add(5*time.Minute)) {
+				return nil, fmt.Errorf("%s reported an import for download %s without a valid import date", a.Name, id)
 			}
 			if prev, ok := out[id]; !ok || r.Date.After(prev.ImportedAt) {
 				out[id] = ImportProof{App: a.Name, DownloadID: id, ImportedAt: r.Date, ImportedPath: strings.TrimSpace(path)}

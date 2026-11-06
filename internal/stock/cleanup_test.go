@@ -65,6 +65,15 @@ func TestWholeImportsReadsEveryPageAndFailsClosedOnGaps(t *testing.T) {
 		{"missing library path", []string{
 			`{"page":1,"totalRecords":1,"records":[{"eventType":"downloadFolderImported","downloadId":"` + hashA + `","date":"2026-01-01T10:00:00Z","data":{}}]}`,
 		}, "without its library path"},
+		{"missing import date", []string{
+			`{"page":1,"totalRecords":1,"records":[{"eventType":"downloadFolderImported","downloadId":"` + hashA + `","data":{"importedPath":"/library/Movie"}}]}`,
+		}, "valid import date"},
+		{"zero import date", []string{
+			`{"page":1,"totalRecords":1,"records":[{"eventType":"downloadFolderImported","downloadId":"` + hashA + `","date":"0001-01-01T00:00:00Z","data":{"importedPath":"/library/Movie"}}]}`,
+		}, "valid import date"},
+		{"future import date", []string{
+			`{"page":1,"totalRecords":1,"records":[{"eventType":"downloadFolderImported","downloadId":"` + hashA + `","date":"` + time.Now().Add(48*time.Hour).UTC().Format(time.RFC3339) + `","data":{"importedPath":"/library/Movie"}}]}`,
+		}, "valid import date"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -58,6 +58,7 @@ type cleanupRecord struct {
 	MetadataRemoved bool      `json:"metadataRemoved,omitempty"`
 	StagedAt        time.Time `json:"stagedAt,omitempty"`
 	ManagedPath     string    `json:"managedPath,omitempty"`
+	ManagedRoot     string    `json:"managedRoot,omitempty"`
 	NativeAt        time.Time `json:"nativeAt,omitempty"`
 	NativeName      string    `json:"nativeName,omitempty"`
 	RestoredAt      time.Time `json:"restoredAt,omitempty"`
@@ -165,7 +166,7 @@ func (e *StagedCleanup) Status(c config.Config) CleanupStatus {
 		st.Blocked = append(st.Blocked, "Saved cleanup state could not be read: "+err.Error())
 		return st
 	}
-	if err := validateRecords(recs, c, managedRoot(c)); err != nil {
+	if err := validateRecords(recs, managedRoot(c), e.LocalVolume); err != nil {
 		st.Blocked = append(st.Blocked, "Saved cleanup state is unsafe: "+err.Error())
 		return st
 	}
@@ -199,7 +200,7 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 		return res, err
 	}
 	// Corrupt or hand-edited state must never steer a filesystem write.
-	if err := validateRecords(recs, c, managedRoot(c)); err != nil {
+	if err := validateRecords(recs, managedRoot(c), e.LocalVolume); err != nil {
 		return res, fmt.Errorf("saved cleanup state is unsafe, so nothing was changed: %w", err)
 	}
 	byHash := map[string]*cleanupRecord{}
@@ -263,6 +264,12 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 				continue
 			}
 			p := ps[0]
+			// A missing or future import time would skip or misplace every
+			// retention wait, so it is never guessed.
+			if p.ImportedAt.IsZero() || p.ImportedAt.After(now.Add(5*time.Minute)) {
+				res.Problems = append(res.Problems, shortHash(h)+" has no valid import date, so it is left protected.")
+				continue
+			}
 			fs, err := e.Source.Files(h)
 			if err != nil || !allFilesComplete(fs) {
 				res.Problems = append(res.Problems, shortHash(h)+" files could not be verified, so it is left protected.")
@@ -395,7 +402,7 @@ func (x *settleCtx) settleStaging(rec *cleanupRecord) {
 		// the destination holds exactly the verified bytes.
 		dest := filepath.Join(managedRoot(x.c), entryName(rec))
 		if verifyTree(dest, rec.Files) == nil {
-			rec.State, rec.ManagedPath, rec.StagedAt, rec.MetadataRemoved, rec.LastBlocked = phaseManaged, dest, x.now, true, ""
+			rec.State, rec.ManagedPath, rec.ManagedRoot, rec.StagedAt, rec.MetadataRemoved, rec.LastBlocked = phaseManaged, dest, managedRoot(x.c), x.now, true, ""
 			x.res.Actions = append(x.res.Actions, "Recovered an interrupted move of "+rec.Name+" into Library's _trash.")
 			return
 		}
@@ -446,7 +453,7 @@ func (x *settleCtx) settleStaging(rec *cleanupRecord) {
 		x.block(rec, "moving to Library's _trash failed: "+err.Error())
 		return
 	}
-	rec.State, rec.ManagedPath, rec.StagedAt, rec.LastBlocked = phaseManaged, dest, x.now, ""
+	rec.State, rec.ManagedPath, rec.ManagedRoot, rec.StagedAt, rec.LastBlocked = phaseManaged, dest, managedRoot(x.c), x.now, ""
 	x.res.Actions = append(x.res.Actions, "Moved "+rec.Name+" into Library's _trash.")
 }
 
@@ -460,7 +467,7 @@ func (x *settleCtx) settleManaged(rec *cleanupRecord) {
 		if trash, terr := x.e.TrashDir(); terr == nil {
 			dest := filepath.Join(trash, entryName(rec))
 			if verifyTree(dest, rec.Files) == nil {
-				rec.State, rec.NativeName, rec.NativeAt, rec.ManagedPath, rec.LastBlocked = phaseNative, filepath.Base(dest), x.now, "", ""
+				rec.State, rec.NativeName, rec.NativeAt, rec.ManagedPath, rec.ManagedRoot, rec.LastBlocked = phaseNative, filepath.Base(dest), x.now, "", "", ""
 				x.res.Actions = append(x.res.Actions, "Recovered an interrupted move of "+rec.Name+" into the system Trash.")
 				return
 			}
@@ -482,7 +489,7 @@ func (x *settleCtx) settleManaged(rec *cleanupRecord) {
 		x.block(rec, "moving to the system Trash failed: "+err.Error())
 		return
 	}
-	rec.State, rec.NativeName, rec.NativeAt, rec.ManagedPath, rec.LastBlocked = phaseNative, filepath.Base(dest), x.now, "", ""
+	rec.State, rec.NativeName, rec.NativeAt, rec.ManagedPath, rec.ManagedRoot, rec.LastBlocked = phaseNative, filepath.Base(dest), x.now, "", "", ""
 	x.res.Actions = append(x.res.Actions, "Moved "+rec.Name+" into the system Trash.")
 }
 
@@ -639,7 +646,7 @@ func (e *StagedCleanup) Restore(c config.Config, hash string) (CleanupResult, er
 	if err != nil {
 		return res, err
 	}
-	if err := validateRecords(recs, c, managedRoot(c)); err != nil {
+	if err := validateRecords(recs, managedRoot(c), e.LocalVolume); err != nil {
 		return res, fmt.Errorf("saved cleanup state is unsafe, so nothing was changed: %w", err)
 	}
 	var rec *cleanupRecord
@@ -681,7 +688,7 @@ func (e *StagedCleanup) Restore(c config.Config, hash string) (CleanupResult, er
 		} else if !errors.Is(serr, os.ErrNotExist) {
 			return res, serr
 		}
-		rec.State, rec.RestoredAt, rec.ManagedPath, rec.NativeName, rec.LastBlocked = phaseRestore, now, "", "", ""
+		rec.State, rec.RestoredAt, rec.ManagedPath, rec.ManagedRoot, rec.NativeName, rec.LastBlocked = phaseRestore, now, "", "", "", ""
 		res.Actions = append(res.Actions, "Finished restoring "+rec.Name+" to "+rec.MoveRoot+".")
 		if err := e.save(recs); err != nil {
 			return res, err
@@ -698,7 +705,7 @@ func (e *StagedCleanup) Restore(c config.Config, hash string) (CleanupResult, er
 	if err := moveVerified(src, rec.MoveRoot, rec.Files); err != nil {
 		return res, err
 	}
-	rec.State, rec.RestoredAt, rec.ManagedPath, rec.NativeName, rec.LastBlocked = phaseRestore, now, "", "", ""
+	rec.State, rec.RestoredAt, rec.ManagedPath, rec.ManagedRoot, rec.NativeName, rec.LastBlocked = phaseRestore, now, "", "", "", ""
 	res.Actions = append(res.Actions, "Restored "+rec.Name+" to "+rec.MoveRoot+".")
 	if err := e.save(recs); err != nil {
 		return res, err
@@ -870,12 +877,16 @@ func (e *StagedCleanup) load() ([]*cleanupRecord, error) {
 }
 
 // validateRecords refuses corrupt or hand-edited saved state before any
-// filesystem write. It also keeps every saved path inside the folders the
-// engine created it in.
-func validateRecords(recs []*cleanupRecord, c config.Config, managed string) error {
+// filesystem write. A managed path may live under the root that was current
+// when it was moved, because DownloadPath and ManagedTrashPath can change
+// later, but only with a proven local, symlink-free Library-owned entry.
+func validateRecords(recs []*cleanupRecord, managed string, local func(string) (bool, error)) error {
 	for _, r := range recs {
 		if !validCleanupHash(r.Hash) {
 			return fmt.Errorf("record %q has an invalid download ID", shortHash(r.Hash))
+		}
+		if r.ImportedAt.IsZero() {
+			return fmt.Errorf("record %s has no verified import time", shortHash(r.Hash))
 		}
 		if r.SavePath == "" || !filepath.IsAbs(r.SavePath) || r.MoveRoot == "" || !filepath.IsAbs(r.MoveRoot) {
 			return fmt.Errorf("record %s has an unsafe source path", shortHash(r.Hash))
@@ -897,8 +908,8 @@ func validateRecords(recs []*cleanupRecord, c config.Config, managed string) err
 		switch r.State {
 		case phaseStaging:
 		case phaseManaged:
-			if managed == "" || filepath.Dir(filepath.Clean(r.ManagedPath)) != filepath.Clean(managed) || !strings.HasPrefix(filepath.Base(r.ManagedPath), "library-studio-") {
-				return fmt.Errorf("record %s has an unsafe managed _trash path", shortHash(r.Hash))
+			if err := validateManagedPath(r, managed, local); err != nil {
+				return err
 			}
 		case phaseNative:
 			if !safeNativeName(r.NativeName) {
@@ -907,6 +918,47 @@ func validateRecords(recs []*cleanupRecord, c config.Config, managed string) err
 		case phaseRemoved, phaseRestore:
 		default:
 			return fmt.Errorf("record %s has an unknown state", shortHash(r.Hash))
+		}
+	}
+	return nil
+}
+
+// validateManagedPath accepts the root recorded at move time, or the current
+// root for older state, so a settings change cannot brick a safe stored copy.
+// The item's exact Library-owned name and a local, symlink-free ancestor are
+// required; the content itself is verified again before every move or restore.
+func validateManagedPath(r *cleanupRecord, current string, local func(string) (bool, error)) error {
+	if !filepath.IsAbs(r.ManagedPath) {
+		return fmt.Errorf("record %s has an unsafe managed _trash path", shortHash(r.Hash))
+	}
+	root := filepath.Clean(strings.TrimSpace(r.ManagedRoot))
+	if strings.TrimSpace(r.ManagedRoot) == "" {
+		// Older state has no recorded root: only the current root or the
+		// default DownloadPath/_trash layout can be proven.
+		parent := filepath.Dir(filepath.Clean(r.ManagedPath))
+		if parent != filepath.Clean(current) && filepath.Base(parent) != "_trash" {
+			return fmt.Errorf("record %s has an unsafe managed _trash root", shortHash(r.Hash))
+		}
+		root = parent
+	} else if !filepath.IsAbs(root) || root != strings.TrimSpace(r.ManagedRoot) {
+		return fmt.Errorf("record %s has an unsafe managed _trash root", shortHash(r.Hash))
+	}
+	if r.ManagedPath != filepath.Join(root, entryName(r)) {
+		return fmt.Errorf("record %s has an unsafe managed _trash path", shortHash(r.Hash))
+	}
+	if local == nil || !pathIsLocal(local, root) {
+		return fmt.Errorf("record %s has a managed _trash path outside a local volume", shortHash(r.Hash))
+	}
+	for i, p := range []string{root, r.ManagedPath} {
+		fi, err := os.Lstat(p)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return fmt.Errorf("record %s managed _trash path can't be read: %w", shortHash(r.Hash), err)
+		}
+		if fi.Mode()&os.ModeSymlink != 0 || (i == 0 && !fi.IsDir()) {
+			return fmt.Errorf("record %s has an unsafe managed _trash entry", shortHash(r.Hash))
 		}
 	}
 	return nil
@@ -922,12 +974,12 @@ func (e *StagedCleanup) reconcile(recs []*cleanupRecord, c config.Config, now ti
 				continue
 			}
 			if verifyTree(r.MoveRoot, r.Files) == nil {
-				r.State, r.RestoredAt, r.ManagedPath, r.LastBlocked = phaseRestore, now, "", "Restored outside Library Studio; state reconciled."
+				r.State, r.RestoredAt, r.ManagedPath, r.ManagedRoot, r.LastBlocked = phaseRestore, now, "", "", "Restored outside Library Studio; state reconciled."
 				continue
 			}
 			if trash, err := e.TrashDir(); err == nil && safeNativeName(entryName(r)) {
 				if verifyTree(filepath.Join(trash, entryName(r)), r.Files) == nil {
-					r.State, r.NativeName, r.NativeAt, r.ManagedPath = phaseNative, entryName(r), now, ""
+					r.State, r.NativeName, r.NativeAt, r.ManagedPath, r.ManagedRoot = phaseNative, entryName(r), now, "", ""
 				}
 			}
 		case phaseNative:

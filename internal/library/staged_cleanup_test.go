@@ -291,6 +291,44 @@ func TestDisabledDoesNothingAndRunRefuses(t *testing.T) {
 
 func (h *harness) clockNowAdd(d time.Duration) time.Time { return h.clock.Add(d) }
 
+// rewriteState edits the saved state the engine just wrote, as a stale or
+// hand-edited file would look.
+func (h *harness) rewriteState(fn func(*cleanupStore)) {
+	h.t.Helper()
+	path := filepath.Join(h.home, cleanupStateFile)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	var s cleanupStore
+	if err := json.Unmarshal(b, &s); err != nil {
+		h.t.Fatal(err)
+	}
+	fn(&s)
+	b, err = json.Marshal(s)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+// atManaged runs the engine through the day-3 move and returns the managed
+// path it created.
+func (h *harness) atManaged(it testItem, importedAt time.Time) string {
+	h.t.Helper()
+	h.clockNow(importedAt.Add(3 * 24 * time.Hour))
+	if phase := phaseOf(h.t, h.run(), it.hash); phase != phaseManaged {
+		h.t.Fatalf("day 3 must move into the managed staging trash, got %s", phase)
+	}
+	names := trashEntries(h.t, h.managed)
+	if len(names) != 1 {
+		h.t.Fatalf("want one managed entry, got %v", names)
+	}
+	return filepath.Join(h.managed, names[0])
+}
+
 func TestPreviewIsReadOnly(t *testing.T) {
 	h := newHarness(t)
 	importedAt := *h.clock
@@ -858,5 +896,134 @@ func TestPressureThresholdAtExactDecimalLimitDoesNotPurge(t *testing.T) {
 	}
 	if res.Status.PressureFreeBytes != 50_000_000_000 {
 		t.Fatalf("threshold must be decimal GB, got %d", res.Status.PressureFreeBytes)
+	}
+}
+
+func TestManagedCopySurvivesLocalPathChanges(t *testing.T) {
+	t.Run("run and later stages", func(t *testing.T) {
+		h := newHarness(t)
+		importedAt := *h.clock
+		it := h.add("Movie", importedAt)
+		managed := h.atManaged(it, importedAt)
+
+		// The owner changes both settings after the item was already staged.
+		h.cfg.DownloadPath = filepath.Join(filepath.Dir(h.download), "downloads2")
+		h.cfg.ManagedTrashPath = filepath.Join(filepath.Dir(h.download), "local-trash2")
+		res := h.run()
+		if phase := phaseOf(t, res, it.hash); phase != phaseManaged {
+			t.Fatalf("a saved managed path must still be accepted, got %s", phase)
+		}
+
+		h.clockNow(importedAt.Add(7 * 24 * time.Hour))
+		res = h.run()
+		if phase := phaseOf(t, res, it.hash); phase != phaseNative {
+			t.Fatalf("the stored copy must still reach the system Trash, got %s: %v", phase, res.Problems)
+		}
+		if exists(managed) || len(trashEntries(t, h.trash)) != 1 {
+			t.Fatal("the historical managed copy must be moved, not stranded")
+		}
+	})
+
+	t.Run("restore", func(t *testing.T) {
+		h := newHarness(t)
+		importedAt := *h.clock
+		it := h.add("Movie", importedAt)
+		managed := h.atManaged(it, importedAt)
+
+		h.cfg.DownloadPath = filepath.Join(filepath.Dir(h.download), "downloads2")
+		res, err := h.engine().Restore(h.cfg, it.hash)
+		if err != nil {
+			t.Fatalf("restore must accept the historical managed path: %v", err)
+		}
+		if phaseOf(t, res, it.hash) != phaseRestore || !exists(it.src) || exists(managed) {
+			t.Fatalf("the stored copy must restore to its original location: %+v", res.Status.Items)
+		}
+	})
+}
+
+func TestUnsafeManagedStateFailsClosed(t *testing.T) {
+	cases := []struct {
+		name   string
+		setup  func(*harness)
+		tamper func(*harness, *cleanupRecord)
+	}{
+		{"wrong root", nil, func(h *harness, r *cleanupRecord) {
+			r.ManagedRoot = filepath.Join(filepath.Dir(h.download), "elsewhere")
+		}},
+		{"NAS root", func(h *harness) { h.libraryNAS = true }, func(h *harness, r *cleanupRecord) {
+			r.ManagedRoot = h.library
+			r.ManagedPath = filepath.Join(h.library, entryName(r))
+		}},
+		{"corrupt name", nil, func(h *harness, r *cleanupRecord) {
+			r.ManagedPath = filepath.Join(r.ManagedRoot, "library-studio-evil")
+		}},
+		{"symlink", nil, func(h *harness, r *cleanupRecord) {
+			real := r.ManagedPath + ".real"
+			if err := os.Rename(r.ManagedPath, real); err != nil {
+				h.t.Fatal(err)
+			}
+			if err := os.Symlink(real, r.ManagedPath); err != nil {
+				h.t.Fatal(err)
+			}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			if tc.setup != nil {
+				tc.setup(h)
+			}
+			importedAt := *h.clock
+			it := h.add("Movie", importedAt)
+			managed := h.atManaged(it, importedAt)
+			h.rewriteState(func(s *cleanupStore) {
+				tc.tamper(h, s.Items[0])
+			})
+			if _, err := h.engine().Run(h.cfg); err == nil || !strings.Contains(err.Error(), "unsafe") {
+				t.Fatalf("run must fail closed, got %v", err)
+			}
+			if _, err := h.engine().Restore(h.cfg, it.hash); err == nil || !strings.Contains(err.Error(), "unsafe") {
+				t.Fatalf("restore must fail closed, got %v", err)
+			}
+			if !exists(managed) {
+				t.Fatal("nothing may move or be removed when saved state is unsafe")
+			}
+		})
+	}
+}
+
+func TestZeroImportTimeCannotSkipWaits(t *testing.T) {
+	h := newHarness(t)
+	importedAt := *h.clock
+	it := h.add("Movie", importedAt)
+	h.run() // save the staging record
+	h.rewriteState(func(s *cleanupStore) {
+		for _, r := range s.Items {
+			r.ImportedAt = time.Time{}
+		}
+	})
+	h.clockNow(importedAt.Add(3 * 24 * time.Hour))
+	if _, err := h.engine().Run(h.cfg); err == nil || !strings.Contains(err.Error(), "import time") {
+		t.Fatalf("a zero import time must be refused, got %v", err)
+	}
+	if !exists(it.src) || len(trashEntries(t, h.managed)) != 0 {
+		t.Fatal("a zero import time must never make the copy immediately eligible")
+	}
+}
+
+func TestProofWithoutImportDateIsLeftProtected(t *testing.T) {
+	h := newHarness(t)
+	importedAt := *h.clock
+	it := h.add("Movie", importedAt)
+	h.src.proofs[it.hash] = []stock.ImportProof{{
+		App: "Radarr", DownloadID: it.hash, ImportedAt: time.Time{}, ImportedPath: it.lib,
+	}}
+	h.clockNow(importedAt.Add(4 * 24 * time.Hour))
+	res := h.run()
+	if len(res.Status.Items) != 0 || !strings.Contains(strings.Join(res.Problems, " "), "valid import date") {
+		t.Fatalf("an import without a date must stay untracked: %+v", res)
+	}
+	if !exists(it.src) || len(trashEntries(t, h.managed)) != 0 || len(h.src.metadataCalls) != 0 {
+		t.Fatal("an import without a date must never be moved or removed")
 	}
 }
