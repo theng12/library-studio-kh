@@ -12,6 +12,7 @@ import (
 // registerTracking adds the media detail, child tracking and release routes.
 // The lead calls it from Handler; the existing guard and auth cover all of them.
 func (s *Server) registerTracking(mux *http.ServeMux) {
+	s.registerMovieExtras(mux)
 	mux.HandleFunc("GET /api/media/details", func(w http.ResponseWriter, r *http.Request) {
 		app := r.URL.Query().Get("app")
 		id, err := strconv.Atoi(r.URL.Query().Get("id"))

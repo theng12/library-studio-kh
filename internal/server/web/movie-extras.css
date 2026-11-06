@@ -1,0 +1,44 @@
+/* Film artwork and collection extras. Tokens and components come from style.css. */
+
+.movie-extras-body {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr);
+  gap: 1.1rem 1.25rem;
+  padding: 1.1rem 1.25rem;
+  align-items: start;
+}
+.movie-extras-body.no-poster { grid-template-columns: minmax(0, 1fr); }
+
+.movie-poster { margin: 0; }
+.movie-poster img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--side);
+}
+.movie-poster figcaption { margin-top: 0.4rem; font-size: 0.8rem; color: var(--muted); }
+
+.movie-extras-facts { min-width: 0; }
+.movie-extras-facts .facts { padding: 0; }
+.movie-extras-facts .empty { padding: 0; }
+
+.movie-collection { border-top: 1px solid var(--line); }
+.movie-collection h3 { margin: 0; padding: 1rem 1.25rem 0.15rem; font-size: 0.95rem; }
+.movie-collection-summary { margin: 0; padding: 0.3rem 1.25rem 1rem; color: var(--ink-2); font-size: 0.9rem; }
+.movie-collection .list td { vertical-align: middle; }
+.movie-collection .list td:first-child { font-weight: 500; }
+.movie-collection-msg { margin: 0; padding: 0 1.25rem; color: var(--ink-2); font-size: 0.875rem; }
+.movie-collection-msg:not(:empty) { padding-bottom: 1rem; }
+.movie-collection-empty { margin: 0; padding: 1rem 1.25rem 1.25rem; border-top: 1px solid var(--line); }
+.movie-extras-problems { margin: 0; padding: 0 1.25rem 1.1rem; }
+
+@media (max-width: 640px) {
+  .movie-extras-body { grid-template-columns: 1fr; }
+  .movie-poster { max-width: 9rem; }
+  .movie-collection button { min-height: 44px; }
+  .movie-collection .list td:first-child { min-width: 9rem; }
+}
