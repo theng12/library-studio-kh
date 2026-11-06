@@ -10,6 +10,8 @@
   --accent-soft: #e3e8fb;
   --accent-ink: #ffffff;
   --wait: #9a5b00;
+  --connected: #187746;
+  --disconnected: #c12d35;
   --warn-bg: #fbefd6;
   --warn-ink: #6b4200;
   --shadow: 0 1px 2px rgba(20, 24, 40, 0.06), 0 4px 14px rgba(20, 24, 40, 0.05);
@@ -29,6 +31,8 @@
     --accent-soft: #262d4d;
     --accent-ink: #10142a;
     --wait: #e2b25a;
+    --connected: #69d99c;
+    --disconnected: #ff8585;
     --warn-bg: #3a2c10;
     --warn-ink: #f3d79c;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -100,9 +104,8 @@ button.inline { border: 0; background: none; padding: 0; color: var(--accent); t
 #web-addresses .actions { gap: 0.5rem; }
 #web-addresses input { flex: 1 1 12rem; min-width: 0; min-height: 44px; font: inherit; font-size: 1rem; color: var(--ink); background: var(--ground); border: 1px solid var(--line); border-radius: 8px; padding: 0.5rem 0.7rem; }
 #web-addresses button { min-height: 44px; }
-.connections summary.off { color: var(--warn-ink); }
-.apps .ok::before { background: var(--accent); }
-.apps .bad { color: var(--warn-ink); background: var(--warn-bg); border-color: transparent; }
+.apps .ok::before { background: var(--connected); }
+.apps .bad::before { background: var(--disconnected); }
 .notice { margin: 0; background: var(--warn-bg); color: var(--warn-ink); padding: 0.75rem 1rem; border-radius: 10px; }
 
 .list { width: 100%; border-collapse: collapse; }
@@ -306,8 +309,6 @@ dialog::backdrop { background: rgba(14, 18, 32, 0.45); }
 /* Compact downloads and library summaries */
 .download-filters { display: grid; grid-template-columns: 1fr; align-items: end; }
 .download-filters select { width: 100%; }
-.download-filter-options { grid-column: 1 / -1; min-width: 0; }
-.download-filter-options summary { cursor: pointer; padding: 0.6rem 0; min-height: 44px; color: var(--ink-2); }
 .download-filter-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; padding-bottom: 0.5rem; }
 .dl-tools { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem 1rem; }
 .dl-tools p { margin: 0; }

@@ -118,10 +118,7 @@
         <p class="muted">Ordinary Wi-Fi/LAN access is not enabled. Use Tailscale from another device.</p>
         <p id="web-address-msg" class="msg" role="status" aria-live="polite"></p>
       </details>
-      <details class="connections">
-        <summary id="connections-summary">App connections</summary>
-        <ul id="apps" class="apps" aria-label="Connected apps"></ul>
-      </details>
+      <ul id="apps" class="apps" aria-label="App connections"></ul>
       <p id="notice" class="notice" role="alert" hidden></p>
       <div class="panel">
         <div class="tools">
@@ -146,11 +143,11 @@
       <div class="panel">
         <div class="tools download-filters">
           <label class="search">Search downloads <input type="search" id="dl-q" placeholder="Title"></label>
-          <details class="download-filter-options" id="dl-filter-options"><summary id="dl-filter-summary">Filter and sort</summary><div class="download-filter-grid">
+          <div class="download-filter-grid">
           <label>Status <select id="dl-state"><option value="all">All</option></select></label>
           <label>App <select id="dl-app"><option value="">All apps</option></select></label>
           <label>Sort <select id="dl-sort"><option value="queue">Queue order</option><option value="app">App</option><option value="name">Name A–Z</option><option value="progress">Progress · highest first</option><option value="added">Added · newest first</option><option value="size">Size · largest first</option><option value="speed">Speed · fastest first</option></select></label>
-          </div></details>
+          </div>
         </div>
         <div class="tools dl-tools">
           <div><p id="dl-count" class="muted" role="status">Loading…</p><p id="dl-selected" class="muted" role="status"></p></div>

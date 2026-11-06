@@ -44,7 +44,7 @@ function gb(n) {
 
 function stateOf(it, cleanupOn) {
   switch (it.kind) {
-    case "downloading": return ["Downloading", Math.floor(it.progress * 100) + "%"];
+    case "downloading": return ["Downloading", downloadProgressText(it.progress)];
     case "waiting": return ["Waiting for import", it.app || ""];
     case "imported": return ["In library", cleanupOn ? "Local copy goes " + inDays(it.when) : "Local copy kept"];
     case "unmanaged": return ["Downloaded", "Not from Sonarr, Radarr or Lidarr, so it stays"];
@@ -83,13 +83,12 @@ function render(st) {
   if (s.library === "missing") parts.push("<span class=off>The NAS library folder can't be found.</span>");
   $("#summary").innerHTML = parts.join(" ");
 
-  const connected = s.apps.filter(a => a.ok).length;
-  $("#connections-summary").textContent = s.apps.length ? connected + " of " + s.apps.length + " apps connected" : "No apps connected";
-  $("#connections-summary").classList.toggle("off", connected < s.apps.length);
   $("#apps").replaceChildren(...s.apps.map((a) => {
     const li = document.createElement("li");
     li.className = a.ok ? "ok" : "bad";
-    li.textContent = a.name + (a.ok ? " connected" : ": " + a.error);
+    li.textContent = a.name;
+    li.title = a.ok ? "Connected" : a.error || "Not connected";
+    li.setAttribute("aria-label", a.name + ": " + li.title);
     return li;
   }));
 
@@ -193,7 +192,7 @@ function openDetails(it) {
   $("#d-title").textContent = it.title;
   facts($("#d-facts"), [
     ["Started", added ? stamp(s.added) : "Not known"],
-    ["Finished", done ? stamp(s.completed) : finished ? "Not known" : "Still downloading (" + Math.floor(it.progress * 100) + "%)"],
+    ["Finished", done ? stamp(s.completed) : finished ? "Not known" : "Still downloading (" + downloadProgressText(it.progress) + ")"],
     [finished ? "Took" : "Running for", took ? dur(took) : "Not known"],
     ["Time left", !finished && s.eta ? "About " + dur(s.eta) : ""],
     ["Size", bytes(s.size)],
@@ -349,7 +348,7 @@ function renderLibrary() {
     }
     if (matches.length) {
       const list = mediaNode("ul", null, "source-list");
-      for (const t of matches) list.append(mediaNode("li", t.name + " · " + dlLabel(t.state) + " · " + (Number.isFinite(t.progress) ? Math.floor(t.progress * 100) + "%" : "Progress not reported")));
+      for (const t of matches) list.append(mediaNode("li", t.name + " · " + dlLabel(t.state) + " · " + downloadProgressText(t.progress)));
       body.append(list);
     }
     const open = mediaNode("button", "Open " + (m.app === "Sonarr" ? "series" : m.app === "Radarr" ? "film" : "artist") + " details", "small");
@@ -569,9 +568,9 @@ function progressBlock(t) {
   const box = mediaNode("div", null, "download-progress");
   const progress = document.createElement("progress"); progress.max = 1;
   progress.setAttribute("aria-label", "Download progress");
-  const known = Number.isFinite(t.progress);
-  if (known) progress.value = Math.max(0, Math.min(1, t.progress));
-  box.append(progress, mediaNode("span", known ? Math.floor(t.progress * 100) + "%" : "Not reported"));
+  const known = Number.isFinite(t.progress) && t.progress >= 0 && t.progress <= 1;
+  if (known) progress.value = t.progress;
+  box.append(progress, mediaNode("span", known ? downloadProgressText(t.progress) : "Not reported"));
   return box;
 }
 function downloadCard(t) {
@@ -607,8 +606,6 @@ function renderDownloads() {
   app.replaceChildren(mediaOption("", "All apps"), ...[...new Set(all.map(t => t.app || "Unknown"))].sort().map(name => mediaOption(name, dlApp(name) + " (" + all.filter(t => (t.app || "Unknown") === name).length + ")")));
   if ([...app.options].some(o => o.value === chosenApp)) app.value = chosenApp;
   const sort = $("#dl-sort");
-  const filters = [status.value !== "all" ? status.selectedOptions[0].textContent : "", app.value ? dlApp(app.value) : "", sort.value !== "queue" ? sort.selectedOptions[0].textContent : ""].filter(Boolean);
-  $("#dl-filter-summary").textContent = "Filter and sort" + (filters.length ? " · " + filters.join(" · ") : "");
   const items = downloadRows(all, $("#dl-q").value, status.value, sort.value, app.value);
   const empty = $("#dl-empty"), list = $("#dl");
   list.hidden = items.length === 0; empty.hidden = items.length > 0;

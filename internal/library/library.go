@@ -20,7 +20,7 @@ type Item struct {
 	Kind     string    `json:"kind"` // downloading | waiting | imported | unmanaged | upcoming | removed
 	App      string    `json:"app,omitempty"`
 	When     time.Time `json:"when,omitempty"` // upcoming date, planned removal, or removal done
-	Progress float64   `json:"progress,omitempty"`
+	Progress float64   `json:"progress"`
 	Stats    *Stats    `json:"stats,omitempty"` // downloads in qBittorrent only
 }
 

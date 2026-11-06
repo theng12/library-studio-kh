@@ -5,8 +5,21 @@ import test from "node:test";
 
 const context = {};
 runInNewContext(readFileSync(new URL("../internal/server/web/download-view.js", import.meta.url), "utf8"), context);
-const { downloadMatches, downloadRows } = context;
+const { downloadMatches, downloadRows, downloadProgressText } = context;
 const names = rows => Array.from(rows, x => x.name);
+
+test("progress preserves zero and never invents a percentage for missing or invalid readings", () => {
+  for (const [value, label] of [[0, "0%"], [0.375, "37%"], [1, "100%"]]) assert.equal(downloadProgressText(value), label);
+  for (const value of [undefined, null, "0", NaN, Infinity, -1, 1.1]) assert.equal(downloadProgressText(value), "Progress not reported");
+});
+
+test("Activity renders zero and missing progress without NaN", () => {
+  const source = readFileSync(new URL("../internal/server/web/app.js", import.meta.url), "utf8");
+  const state = source.match(/function stateOf\(it, cleanupOn\) \{[\s\S]*?\n\}/)[0];
+  runInNewContext(state, context);
+  assert.equal(context.stateOf({ kind: "downloading", progress: 0 }, false)[1], "0%");
+  assert.equal(context.stateOf({ kind: "downloading" }, false)[1], "Progress not reported");
+});
 
 test("qBittorrent states remain distinguishable, including completed paused torrents", () => {
   for (const state of ["pausedDL", "stoppedDL", "pausedUP", "stoppedUP"]) assert.equal(downloadMatches({ state }, "paused"), true);

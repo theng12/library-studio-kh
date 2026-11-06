@@ -5,6 +5,10 @@ const DOWNLOAD_FILTERS = [
   ["paused", "Paused"], ["seeding", "Seeding"], ["completed", "Completed"], ["problems", "Problems"],
 ];
 
+function downloadProgressText(progress) {
+  return Number.isFinite(progress) && progress >= 0 && progress <= 1 ? Math.floor(progress * 100) + "%" : "Progress not reported";
+}
+
 function downloadMatches(item, filter) {
   const state = item.state || "";
   switch (filter) {
