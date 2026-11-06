@@ -141,6 +141,8 @@ type StagedCleanup struct {
 	FreeBytes   func(string) (int64, error)
 	LocalVolume func(string) (bool, error)
 	TrashDir    func() (string, error)
+	// SaveFile is replaceable in tests to simulate a state write failure.
+	SaveFile func(string, []byte, os.FileMode) error
 
 	mu sync.Mutex
 }
@@ -161,6 +163,10 @@ func (e *StagedCleanup) Status(c config.Config) CleanupStatus {
 	recs, err := e.load()
 	if err != nil {
 		st.Blocked = append(st.Blocked, "Saved cleanup state could not be read: "+err.Error())
+		return st
+	}
+	if err := validateRecords(recs, c, managedRoot(c)); err != nil {
+		st.Blocked = append(st.Blocked, "Saved cleanup state is unsafe: "+err.Error())
 		return st
 	}
 	e.render(&st, recs, c, e.Now())
@@ -192,6 +198,10 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 	if err != nil {
 		return res, err
 	}
+	// Corrupt or hand-edited state must never steer a filesystem write.
+	if err := validateRecords(recs, c, managedRoot(c)); err != nil {
+		return res, fmt.Errorf("saved cleanup state is unsafe, so nothing was changed: %w", err)
+	}
 	byHash := map[string]*cleanupRecord{}
 	for _, r := range recs {
 		byHash[strings.ToUpper(r.Hash)] = r
@@ -202,6 +212,7 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 		res.Status = st
 		return res, nil
 	}
+	e.reconcile(recs, c, now)
 
 	block := func(reason string) { st.Blocked = append(st.Blocked, reason) }
 	torrents, err := e.Source.Torrents()
@@ -338,9 +349,46 @@ func (x *settleCtx) settle(rec *cleanupRecord) {
 }
 
 func (x *settleCtx) settleStaging(rec *cleanupRecord) {
+	// Stop-seeding is independent of the 3-day local-retention wait. Only a
+	// recorded, verified whole import is touched; untracked torrents are never.
+	t, listed := x.torrents[strings.ToUpper(rec.Hash)]
+	if listed {
+		if torrentStateError(t.State) {
+			x.block(rec, "qBittorrent reports an error for this torrent; it is left protected.")
+			return
+		}
+		if seedRuleMet(x.c, t) && !torrentStopped(t.State) {
+			if !x.execute {
+				x.res.Actions = append(x.res.Actions, "Would stop seeding "+rec.Name+" because its limit is met.")
+			} else {
+				if err := x.e.Source.Stop(rec.Hash); err != nil {
+					x.block(rec, "seeding could not be stopped; nothing was moved.")
+					return
+				}
+				after, err := x.e.Source.Torrents()
+				if err != nil {
+					x.block(rec, "qBittorrent could not be re-read after stopping; nothing was moved.")
+					return
+				}
+				confirmed := false
+				for _, t2 := range after {
+					if strings.EqualFold(t2.Hash, rec.Hash) && torrentStopped(t2.State) {
+						t, confirmed = t2, true
+						break
+					}
+				}
+				if !confirmed {
+					x.block(rec, "stopped seeding could not be confirmed; nothing was moved.")
+					return
+				}
+				x.torrents[strings.ToUpper(rec.Hash)] = t
+				x.res.Actions = append(x.res.Actions, "Stopped seeding "+rec.Name+" because its limit is met.")
+			}
+		}
+	}
 	due := rec.ImportedAt.Add(days(x.c.StagedDays))
 	if x.now.Before(due) {
-		return
+		return // the copy stays in the download folder; no premature removal
 	}
 	if err := verifyTree(rec.MoveRoot, rec.Files); err != nil {
 		// A crash after the move but before saving state is adopted only when
@@ -359,12 +407,7 @@ func (x *settleCtx) settleStaging(rec *cleanupRecord) {
 		x.block(rec, "the local copy is not on a proven local volume.")
 		return
 	}
-	t, listed := x.torrents[strings.ToUpper(rec.Hash)]
 	if listed {
-		if torrentStateError(t.State) {
-			x.block(rec, "qBittorrent reports an error for this torrent; it is left protected.")
-			return
-		}
 		if !seedRuleMet(x.c, t) {
 			x.block(rec, fmt.Sprintf("still seeding (ratio %.2f of %g, %d of %d minutes).", t.Ratio, x.c.SeedRatio, t.SeedingTime/60, x.c.SeedMinutes))
 			return
@@ -372,28 +415,8 @@ func (x *settleCtx) settleStaging(rec *cleanupRecord) {
 		if !torrentStopped(t.State) {
 			if !x.execute {
 				x.res.Actions = append(x.res.Actions, "Would stop seeding "+rec.Name+" once its limit is met.")
-				return
 			}
-			if err := x.e.Source.Stop(rec.Hash); err != nil {
-				x.block(rec, "seeding could not be stopped, so no local copy was moved.")
-				return
-			}
-			after, err := x.e.Source.Torrents()
-			if err != nil {
-				x.block(rec, "qBittorrent could not be re-read after stopping; no local copy was moved.")
-				return
-			}
-			confirmed := false
-			for _, t2 := range after {
-				if strings.EqualFold(t2.Hash, rec.Hash) && torrentStopped(t2.State) {
-					confirmed = true
-					break
-				}
-			}
-			if !confirmed {
-				x.block(rec, "stopped seeding could not be confirmed; no local copy was moved.")
-				return
-			}
+			return
 		}
 		if !rec.MetadataRemoved {
 			if !x.execute {
@@ -481,7 +504,7 @@ func (x *settleCtx) purge(recs []*cleanupRecord) {
 	if err != nil {
 		return
 	}
-	threshold := int64(x.c.PressureFreeGB) << 30
+	threshold := int64(x.c.PressureFreeGB) * 1_000_000_000 // decimal GB, matching the label
 	free, err := x.e.FreeBytes(trash)
 	if err != nil {
 		x.problems = append(x.problems, "Free space on the system Trash volume could not be read, so no pressure purge ran.")
@@ -507,10 +530,23 @@ func (x *settleCtx) purge(recs []*cleanupRecord) {
 			break
 		}
 		if !x.execute {
+			path, perr := x.trashPath(rec)
+			if perr != nil {
+				x.block(rec, perr.Error())
+				continue
+			}
+			if err := verifyTree(path, rec.Files); err != nil {
+				x.block(rec, "the system Trash entry can't be verified: "+err.Error())
+				continue
+			}
 			x.res.Actions = append(x.res.Actions, "Low space: would permanently remove "+rec.Name+" (oldest verified import first).")
 			break
 		}
-		path := filepath.Join(trash, rec.NativeName)
+		path, err := x.trashPath(rec)
+		if err != nil {
+			x.block(rec, err.Error())
+			continue
+		}
 		if err := verifyTree(path, rec.Files); err != nil {
 			x.block(rec, "the system Trash entry can't be verified: "+err.Error())
 			continue
@@ -534,14 +570,9 @@ func (x *settleCtx) purge(recs []*cleanupRecord) {
 }
 
 func (x *settleCtx) purgeOne(rec *cleanupRecord, why string) {
-	trash, err := x.e.TrashDir()
+	path, err := x.trashPath(rec)
 	if err != nil {
-		x.block(rec, "the system Trash isn't available: "+err.Error())
-		return
-	}
-	path := filepath.Join(trash, rec.NativeName)
-	if rec.NativeName == "" || filepath.Base(rec.NativeName) != rec.NativeName {
-		x.block(rec, "the saved Trash name is unsafe; nothing was removed.")
+		x.block(rec, err.Error())
 		return
 	}
 	if err := verifyTree(path, rec.Files); err != nil {
@@ -561,6 +592,40 @@ func (x *settleCtx) purgeOne(rec *cleanupRecord, why string) {
 	x.res.Actions = append(x.res.Actions, "Permanently removed "+rec.Name+" from the system Trash because "+why+".")
 }
 
+// trashPath is the only way a saved Trash name becomes a deletion target. It
+// requires the Library-owned prefix, a plain basename, containment inside this
+// user's Trash, a proven local volume and a non-symlink entry.
+func (x *settleCtx) trashPath(rec *cleanupRecord) (string, error) {
+	trash, err := x.e.TrashDir()
+	if err != nil {
+		return "", errors.New("the system Trash isn't available")
+	}
+	name := rec.NativeName
+	if !safeNativeName(name) {
+		return "", errors.New("the saved Trash name is unsafe; nothing was removed")
+	}
+	path := filepath.Join(trash, name)
+	rel, err := filepath.Rel(trash, path)
+	if err != nil || rel == "." || filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", errors.New("the saved Trash entry is outside this user's Trash; nothing was removed")
+	}
+	if !pathIsLocal(x.e.LocalVolume, path) {
+		return "", errors.New("the system Trash is not on a proven local volume; nothing was removed")
+	}
+	if fi, err := os.Lstat(path); err != nil {
+		return "", errors.New("the saved Trash entry can't be read: " + err.Error())
+	} else if fi.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("the saved Trash entry is a symlink; nothing was removed")
+	}
+	return path, nil
+}
+
+func safeNativeName(name string) bool {
+	return name != "" && name != "." && name != ".." &&
+		!strings.ContainsAny(name, `/\`) && filepath.Base(name) == name &&
+		strings.HasPrefix(name, "library-studio-")
+}
+
 // Restore puts one managed or native-Trash item back at its original download
 // path. It never overwrites something already there.
 func (e *StagedCleanup) Restore(c config.Config, hash string) (CleanupResult, error) {
@@ -573,6 +638,9 @@ func (e *StagedCleanup) Restore(c config.Config, hash string) (CleanupResult, er
 	recs, err := e.load()
 	if err != nil {
 		return res, err
+	}
+	if err := validateRecords(recs, c, managedRoot(c)); err != nil {
+		return res, fmt.Errorf("saved cleanup state is unsafe, so nothing was changed: %w", err)
 	}
 	var rec *cleanupRecord
 	for _, r := range recs {
@@ -600,17 +668,18 @@ func (e *StagedCleanup) Restore(c config.Config, hash string) (CleanupResult, er
 	default:
 		return res, errors.New("that item isn't in Library's _trash or the system Trash")
 	}
-	if err := verifyTree(src, rec.Files); err != nil {
-		return res, fmt.Errorf("the stored copy can't be verified: %w", err)
-	}
 	if _, err := os.Lstat(rec.MoveRoot); err == nil {
 		if verifyTree(rec.MoveRoot, rec.Files) != nil {
 			return res, errors.New("its original download location already exists with different content; nothing was overwritten")
 		}
 		// Finish a restore that was interrupted after the copy but before the
-		// saved state changed.
-		if err := removeVerified(src, rec.Files); err != nil {
-			return res, err
+		// saved state changed. The stored copy may already be gone.
+		if _, serr := os.Lstat(src); serr == nil {
+			if err := removeVerified(src, rec.Files); err != nil {
+				return res, err
+			}
+		} else if !errors.Is(serr, os.ErrNotExist) {
+			return res, serr
 		}
 		rec.State, rec.RestoredAt, rec.ManagedPath, rec.NativeName, rec.LastBlocked = phaseRestore, now, "", "", ""
 		res.Actions = append(res.Actions, "Finished restoring "+rec.Name+" to "+rec.MoveRoot+".")
@@ -622,6 +691,9 @@ func (e *StagedCleanup) Restore(c config.Config, hash string) (CleanupResult, er
 		return res, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return res, err
+	}
+	if err := verifyTree(src, rec.Files); err != nil {
+		return res, fmt.Errorf("the stored copy can't be verified: %w", err)
 	}
 	if err := moveVerified(src, rec.MoveRoot, rec.Files); err != nil {
 		return res, err
@@ -640,7 +712,7 @@ func (e *StagedCleanup) baseStatus(c config.Config) CleanupStatus {
 	st := CleanupStatus{
 		Enabled: c.StagedCleanupOn, StagedDays: c.StagedDays, ManagedTrashDays: c.ManagedTrashDays,
 		TotalDays: c.StagedDays + c.ManagedTrashDays, NativeTrashDays: c.NativeTrashDays,
-		PressureFreeGB: c.PressureFreeGB, PressureFreeBytes: int64(c.PressureFreeGB) << 30,
+		PressureFreeGB: c.PressureFreeGB, PressureFreeBytes: int64(c.PressureFreeGB) * 1_000_000_000,
 		SeedRatio: c.SeedRatio, SeedMinutes: c.SeedMinutes, ManagedTrashPath: managedRoot(c),
 		Phases: []CleanupPhase{
 			{Name: phaseStaging, Days: c.StagedDays, Note: "In the normal download folder after a verified whole import."},
@@ -787,9 +859,105 @@ func (e *StagedCleanup) load() ([]*cleanupRecord, error) {
 			continue
 		}
 		r.Hash = strings.ToUpper(r.Hash)
+		// Old single-file records keyed the item by its original basename; the
+		// identity is now root-independent ("").
+		if len(r.Files) == 1 && r.Files[0].Rel == filepath.Base(r.MoveRoot) {
+			r.Files[0].Rel = ""
+		}
 		out = append(out, r)
 	}
 	return out, nil
+}
+
+// validateRecords refuses corrupt or hand-edited saved state before any
+// filesystem write. It also keeps every saved path inside the folders the
+// engine created it in.
+func validateRecords(recs []*cleanupRecord, c config.Config, managed string) error {
+	for _, r := range recs {
+		if !validCleanupHash(r.Hash) {
+			return fmt.Errorf("record %q has an invalid download ID", shortHash(r.Hash))
+		}
+		if r.SavePath == "" || !filepath.IsAbs(r.SavePath) || r.MoveRoot == "" || !filepath.IsAbs(r.MoveRoot) {
+			return fmt.Errorf("record %s has an unsafe source path", shortHash(r.Hash))
+		}
+		if filepath.Dir(filepath.Clean(r.MoveRoot)) != filepath.Clean(r.SavePath) {
+			return fmt.Errorf("record %s points outside its download folder", shortHash(r.Hash))
+		}
+		if r.Label == "" || filepath.Base(r.Label) != r.Label {
+			return fmt.Errorf("record %s has an unsafe label", shortHash(r.Hash))
+		}
+		for _, f := range r.Files {
+			if f.Rel == "" {
+				continue
+			}
+			if filepath.IsAbs(f.Rel) || f.Rel == ".." || strings.HasPrefix(f.Rel, ".."+string(os.PathSeparator)) || strings.HasPrefix(f.Rel, "../") {
+				return fmt.Errorf("record %s has an unsafe file key", shortHash(r.Hash))
+			}
+		}
+		switch r.State {
+		case phaseStaging:
+		case phaseManaged:
+			if managed == "" || filepath.Dir(filepath.Clean(r.ManagedPath)) != filepath.Clean(managed) || !strings.HasPrefix(filepath.Base(r.ManagedPath), "library-studio-") {
+				return fmt.Errorf("record %s has an unsafe managed _trash path", shortHash(r.Hash))
+			}
+		case phaseNative:
+			if !safeNativeName(r.NativeName) {
+				return fmt.Errorf("record %s has an unsafe system Trash name", shortHash(r.Hash))
+			}
+		case phaseRemoved, phaseRestore:
+		default:
+			return fmt.Errorf("record %s has an unknown state", shortHash(r.Hash))
+		}
+	}
+	return nil
+}
+
+// reconcile repairs only conclusive physical outcomes after a crash or an
+// external restore. It never deletes anything and never guesses about content.
+func (e *StagedCleanup) reconcile(recs []*cleanupRecord, c config.Config, now time.Time) {
+	for _, r := range recs {
+		switch r.State {
+		case phaseManaged:
+			if _, err := os.Lstat(r.ManagedPath); err == nil {
+				continue
+			}
+			if verifyTree(r.MoveRoot, r.Files) == nil {
+				r.State, r.RestoredAt, r.ManagedPath, r.LastBlocked = phaseRestore, now, "", "Restored outside Library Studio; state reconciled."
+				continue
+			}
+			if trash, err := e.TrashDir(); err == nil && safeNativeName(entryName(r)) {
+				if verifyTree(filepath.Join(trash, entryName(r)), r.Files) == nil {
+					r.State, r.NativeName, r.NativeAt, r.ManagedPath = phaseNative, entryName(r), now, ""
+				}
+			}
+		case phaseNative:
+			path, err := e.savedTrashPath(r)
+			if err != nil {
+				continue
+			}
+			if _, err := os.Lstat(path); err == nil {
+				continue
+			}
+			if verifyTree(r.MoveRoot, r.Files) == nil {
+				r.State, r.RestoredAt, r.NativeName, r.LastBlocked = phaseRestore, now, "", "Restored outside Library Studio; state reconciled."
+			} else {
+				r.State, r.RemovedAt, r.LastBlocked = phaseRemoved, now, "The system Trash entry was missing; reconciled as already removed."
+			}
+		}
+	}
+}
+
+// savedTrashPath validates a saved native name without requiring the entry to
+// exist, so recovery can tell "gone" apart from "unsafe".
+func (e *StagedCleanup) savedTrashPath(rec *cleanupRecord) (string, error) {
+	trash, err := e.TrashDir()
+	if err != nil {
+		return "", err
+	}
+	if !safeNativeName(rec.NativeName) {
+		return "", errors.New("unsafe Trash name")
+	}
+	return filepath.Join(trash, rec.NativeName), nil
 }
 
 func (e *StagedCleanup) save(recs []*cleanupRecord) error {
@@ -802,7 +970,11 @@ func (e *StagedCleanup) save(recs []*cleanupRecord) error {
 	}
 	path := filepath.Join(e.Home, cleanupStateFile)
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	write := e.SaveFile
+	if write == nil {
+		write = os.WriteFile
+	}
+	if err := write(tmp, b, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
@@ -810,10 +982,17 @@ func (e *StagedCleanup) save(recs []*cleanupRecord) error {
 
 func managedRoot(c config.Config) string {
 	if p := strings.TrimSpace(c.ManagedTrashPath); p != "" {
+		if abs, err := filepath.Abs(p); err == nil {
+			return abs
+		}
 		return filepath.Clean(p)
 	}
 	if p := strings.TrimSpace(c.DownloadPath); p != "" {
-		return filepath.Join(filepath.Clean(p), "_trash")
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			abs = filepath.Clean(p)
+		}
+		return filepath.Join(abs, "_trash")
 	}
 	return ""
 }
@@ -886,7 +1065,7 @@ func shortHash(h string) string {
 }
 
 func humanBytes(n int64) string {
-	const unit = 1024
+	const unit = 1000
 	if n < unit {
 		return fmt.Sprintf("%d B", n)
 	}

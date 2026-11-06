@@ -52,7 +52,9 @@ func observedTree(root string) (map[string]CleanupFile, error) {
 		if err != nil {
 			return nil, err
 		}
-		return map[string]CleanupFile{filepath.Base(root): {Rel: filepath.Base(root), Size: fi.Size(), SHA256: sum}}, nil
+		// The item itself uses a root-independent key: the destination's
+		// basename changes when it moves into _trash or the system Trash.
+		return map[string]CleanupFile{"": {Rel: "", Size: fi.Size(), SHA256: sum}}, nil
 	}
 	if !fi.IsDir() {
 		return nil, fmt.Errorf("%s is not a regular file or folder", root)
@@ -185,7 +187,7 @@ func sourceLayout(t stock.CleanupTorrent, fs []stock.TorrentFile, local func(str
 	}
 	for i := range items {
 		if items[i].name == top {
-			items[i].rel = filepath.Base(root) // single file at the save-path root
+			items[i].rel = "" // the root item itself; independent of its basename
 		} else {
 			items[i].rel = strings.TrimPrefix(items[i].name, top+"/")
 		}

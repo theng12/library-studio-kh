@@ -80,3 +80,21 @@ func TestCleanupPreviewDoesNothingWhileOff(t *testing.T) {
 		t.Fatalf("preview with no apps configured should be a clean no-op: %d %s", w.Code, body)
 	}
 }
+
+func TestOldSettingsFormStillSavesWhileCleanupIsOff(t *testing.T) {
+	home := t.TempDir()
+	store, err := config.Open(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(store, home)
+	body := `{"tailscalePort":7882,"cleanupDays":7,"cleanupOn":false,"downloadPath":"/tmp/downloads"}`
+	w, resp := cleanupRequest(t, s, "POST", "/api/settings", body)
+	if w.Code != 200 {
+		t.Fatalf("an older settings form must still save: %d %s", w.Code, resp)
+	}
+	c := store.Get()
+	if c.StagedDays != 3 || c.ManagedTrashDays != 4 || c.NativeTrashDays != 30 || c.StagedCleanupOn {
+		t.Fatalf("missing staged fields must keep defaults: %+v", c)
+	}
+}

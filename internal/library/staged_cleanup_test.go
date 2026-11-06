@@ -1,6 +1,7 @@
 package library
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -480,7 +481,7 @@ func TestPressurePurgesOldestLibraryOwnedTrashOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.cfg.PressureFreeGB = 50
-	threshold := int64(50) << 30
+	threshold := int64(50) * 1_000_000_000
 	h.freeFn = func() int64 {
 		n := 0
 		for _, name := range trashEntries(t, h.trash) {
@@ -488,7 +489,7 @@ func TestPressurePurgesOldestLibraryOwnedTrashOnly(t *testing.T) {
 				n++
 			}
 		}
-		return threshold - int64(n-1)*(1<<30)
+		return threshold - int64(n-1)*1_000_000_000
 	}
 	res := h.run()
 	if res.Purged != 1 {
@@ -520,6 +521,174 @@ func TestUnsupportedNativeTrashIsExplicit(t *testing.T) {
 	}
 	if !exists(it.src) || len(h.src.metadataCalls) != 0 {
 		t.Fatal("nothing may move without a supported native Trash")
+	}
+}
+
+func (h *harness) addFile(name string, importedAt time.Time) testItem {
+	h.t.Helper()
+	h.seq++
+	hash := fmt.Sprintf("%040x", h.seq)
+	content := []byte("single file content for " + name)
+	src := filepath.Join(h.download, name+".mkv")
+	if err := os.WriteFile(src, content, 0o600); err != nil {
+		h.t.Fatal(err)
+	}
+	lib := filepath.Join(h.library, name)
+	if err := os.MkdirAll(lib, 0o700); err != nil {
+		h.t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(lib, "renamed.mkv"), content, 0o600); err != nil {
+		h.t.Fatal(err)
+	}
+	h.src.torrents = append(h.src.torrents, stock.CleanupTorrent{
+		Hash: hash, Name: name, SavePath: h.download, State: "stoppedUP",
+		Progress: 1, Ratio: 9, SeedingTime: 999999,
+	})
+	h.src.files[hash] = []stock.TorrentFile{{Name: name + ".mkv", Size: int64(len(content)), Progress: 1}}
+	h.src.proofs[hash] = []stock.ImportProof{{App: "Radarr", DownloadID: hash, ImportedAt: importedAt, ImportedPath: lib}}
+	return testItem{hash: hash, name: name, root: src, src: src, lib: lib}
+}
+
+func TestSingleFileRootSurvivesAllStagesAndRestore(t *testing.T) {
+	h := newHarness(t)
+	importedAt := *h.clock
+	it := h.addFile("Movie", importedAt)
+	h.clockNow(importedAt.Add(3 * 24 * time.Hour))
+	res := h.run()
+	if phaseOf(t, res, it.hash) != phaseManaged {
+		t.Fatalf("single-file torrent must move to managed _trash: %+v", res.Status.Items)
+	}
+	if exists(it.src) || len(trashEntries(t, h.managed)) != 1 {
+		t.Fatal("single-file root identity must survive the managed move")
+	}
+	h.clockNow(importedAt.Add(7 * 24 * time.Hour))
+	res = h.run()
+	if phaseOf(t, res, it.hash) != phaseNative || len(trashEntries(t, h.trash)) != 1 {
+		t.Fatalf("single-file torrent must move to native Trash: %+v", res.Status.Items)
+	}
+	h.clockNow(importedAt.Add(37 * 24 * time.Hour))
+	res = h.run()
+	if phaseOf(t, res, it.hash) != phaseRemoved || len(trashEntries(t, h.trash)) != 0 {
+		t.Fatalf("single-file torrent must reach permanent removal: %+v", res.Status.Items)
+	}
+
+	h2 := newHarness(t)
+	t2 := *h2.clock
+	it2 := h2.addFile("Restore Me", t2)
+	h2.clockNow(t2.Add(3 * 24 * time.Hour))
+	h2.run()
+	res2, err := h2.engine().Restore(h2.cfg, it2.hash)
+	if err != nil || phaseOf(t, res2, it2.hash) != phaseRestore || !exists(it2.src) {
+		t.Fatalf("single-file restore failed: %v %+v", err, res2.Status.Items)
+	}
+}
+
+func TestUnsafeSavedTrashNameCannotDeleteOutsideTrash(t *testing.T) {
+	h := newHarness(t)
+	importedAt := *h.clock
+	h.add("Movie", importedAt)
+	h.clockNow(importedAt.Add(3 * 24 * time.Hour))
+	h.run()
+	h.clockNow(importedAt.Add(7 * 24 * time.Hour))
+	h.run()
+	valuable := filepath.Join(filepath.Dir(h.trash), "valuable")
+	if err := os.WriteFile(valuable, []byte("must survive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(h.home, cleanupStateFile)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var store cleanupStore
+	if err := json.Unmarshal(b, &store); err != nil {
+		t.Fatal(err)
+	}
+	store.Items[0].NativeName = "../valuable"
+	corrupt, _ := json.Marshal(store)
+	if err := os.WriteFile(path, corrupt, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.engine().Run(h.cfg); err == nil {
+		t.Fatal("unsafe saved Trash state must fail closed")
+	}
+	if !exists(valuable) {
+		t.Fatal("state corruption must never delete outside Trash")
+	}
+}
+
+func TestSeedingStopsAtItsLimitBeforeTheThreeDayMove(t *testing.T) {
+	h := newHarness(t)
+	importedAt := *h.clock
+	it := h.add("Movie", importedAt)
+	h.clockNow(importedAt.Add(time.Hour))
+	h.run()
+	h.src.torrents[0].State = "uploading"
+	h.src.torrents[0].Ratio = 2.5
+	h.clockNow(importedAt.Add(2 * time.Hour))
+	res := h.run()
+	if h.src.stopCalls != 1 || len(h.src.metadataCalls) != 0 || !exists(it.src) {
+		t.Fatalf("seeding must stop at its limit before the local move: stop=%d meta=%v src=%v", h.src.stopCalls, h.src.metadataCalls, exists(it.src))
+	}
+	if phaseOf(t, res, it.hash) != phaseStaging {
+		t.Fatalf("the local copy must remain until day 3: %+v", res.Status.Items)
+	}
+	h.clockNow(importedAt.Add(3 * 24 * time.Hour))
+	res = h.run()
+	if phaseOf(t, res, it.hash) != phaseManaged {
+		t.Fatalf("day 3 must move the already-stopped torrent: %+v", res.Status.Items)
+	}
+}
+
+func TestSaveFailureAfterRestoreIsReconciled(t *testing.T) {
+	h := newHarness(t)
+	importedAt := *h.clock
+	it := h.add("Movie", importedAt)
+	h.clockNow(importedAt.Add(3 * 24 * time.Hour))
+	h.run()
+	eng := h.engine()
+	eng.SaveFile = func(string, []byte, os.FileMode) error { return errors.New("disk full") }
+	if _, err := eng.Restore(h.cfg, it.hash); err == nil {
+		t.Fatal("the injected save failure must surface")
+	}
+	if !exists(it.src) {
+		t.Fatal("the physical restore must have happened")
+	}
+	res, err := h.engine().Restore(h.cfg, it.hash)
+	if err != nil || phaseOf(t, res, it.hash) != phaseRestore {
+		t.Fatalf("a later restore must reconcile the physical state: %v %+v", err, res.Status.Items)
+	}
+}
+
+func TestSaveFailureAfterPurgeIsReconciled(t *testing.T) {
+	h := newHarness(t)
+	importedAt := *h.clock
+	it := h.add("Movie", importedAt)
+	h.clockNow(importedAt.Add(3 * 24 * time.Hour))
+	h.run()
+	h.clockNow(importedAt.Add(7 * 24 * time.Hour))
+	h.run()
+	h.clockNow(importedAt.Add(37 * 24 * time.Hour))
+	eng := h.engine()
+	eng.SaveFile = func(string, []byte, os.FileMode) error { return errors.New("disk full") }
+	if _, err := eng.Run(h.cfg); err == nil {
+		t.Fatal("the injected save failure must surface")
+	}
+	if len(trashEntries(t, h.trash)) != 0 {
+		t.Fatal("the verified purge should have completed")
+	}
+	res := h.run()
+	if phaseOf(t, res, it.hash) != phaseRemoved {
+		t.Fatalf("a later run must reconcile the physically removed entry: %+v", res.Status.Items)
+	}
+}
+
+func TestHumanBytesUsesDecimalGB(t *testing.T) {
+	if got := humanBytes(50_000_000_000); got != "50.0 GB" {
+		t.Fatalf("50 GB threshold displayed as %q", got)
+	}
+	if got := humanBytes(1_500_000_000); got != "1.5 GB" {
+		t.Fatalf("decimal units wrong: %q", got)
 	}
 }
 
@@ -670,5 +839,24 @@ func TestNASManagedTrashIsRefused(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(res.Status.Blocked, " "), "local volume") {
 		t.Fatalf("the refusal must be explicit: %v", res.Status.Blocked)
+	}
+}
+
+func TestPressureThresholdAtExactDecimalLimitDoesNotPurge(t *testing.T) {
+	h := newHarness(t)
+	importedAt := *h.clock
+	h.add("Movie", importedAt)
+	h.clockNow(importedAt.Add(7 * 24 * time.Hour))
+	h.run() // move to managed
+	h.clockNow(importedAt.Add(7*24*time.Hour + time.Hour))
+	h.run() // move to native
+	h.cfg.PressureFreeGB = 50
+	h.freeFn = func() int64 { return 50_000_000_000 }
+	res := h.run()
+	if res.Purged != 0 || len(trashEntries(t, h.trash)) != 1 {
+		t.Fatalf("exactly 50 GB must not trigger a purge: purged=%d", res.Purged)
+	}
+	if res.Status.PressureFreeBytes != 50_000_000_000 {
+		t.Fatalf("threshold must be decimal GB, got %d", res.Status.PressureFreeBytes)
 	}
 }

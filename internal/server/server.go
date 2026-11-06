@@ -224,7 +224,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 	old := s.Store.Get()
-	var c config.Config
+	c := old // omitted fields (older forms) keep their saved/default values
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&c); err != nil {
 		writeJSON(w, 400, map[string]string{"error": "Settings could not be read."})
 		return
