@@ -192,3 +192,41 @@ test("owner results are stale-guarded, editable while inactive, and copy never p
   assert.match(html, /id="setup-cancel-edit" hidden/);
   assert.equal((html.match(/type="number" min="1024" max="65535"/g) || []).length, 5);
 });
+
+test("music preferences use only live server profiles and are preserved on edits", () => {
+  const context = helpers();
+  const musicProfiles = {
+    qualityProfiles: [{ id: 7, name: "HD" }, { id: 9, name: "4K" }],
+    metadataProfiles: [{ id: 3, name: "Standard" }],
+    rootFolders: [{ id: 4, path: "/music" }],
+  };
+  const job = { id: "plan-music", state: "needs_preferences", musicProfiles };
+  assert.deepEqual(JSON.parse(JSON.stringify(context.setupPreferencesRequest(job, "7", "3"))), { id: "plan-music", qualityProfileId: 7, metadataProfileId: 3 });
+  assert.throws(() => context.setupPreferencesRequest(job, "", ""), /quality profile/);
+  assert.throws(() => context.setupPreferencesRequest(job, "7", ""), /metadata profile/);
+  assert.throws(() => context.setupPreferencesRequest(job, "99", "3"), /no longer offered/);
+  assert.throws(() => context.setupPreferencesRequest({ id: "plan-music", musicProfiles: {} }, "7", "3"), /no longer offered/);
+
+  const view = context.setupJobView(job);
+  assert.equal(view.preferences, true);
+  assert.equal(view.check, false);
+  assert.equal(view.run, false);
+  assert.equal(view.retry, false);
+  assert.equal(view.edit, true);
+
+  const defaults = {
+    apps: ["sonarr"], roots: {}, categories: {},
+    ports: { qbittorrent: 8080, sonarr: 8989, radarr: 7878, lidarr: 8686, prowlarr: 9696 },
+  };
+  const saved = context.setupRequest({ apps: { qbittorrent: false, sonarr: true, radarr: false, lidarr: false, prowlarr: false }, ports: {}, musicQualityProfileId: 7, musicMetadataProfileId: 3 }, defaults);
+  assert.equal(saved.musicQualityProfileId, 7);
+  assert.equal(saved.musicMetadataProfileId, 3);
+  const fresh = context.setupRequest({ apps: { qbittorrent: false, sonarr: true, radarr: false, lidarr: false, prowlarr: false }, ports: {} }, defaults);
+  assert.equal(fresh.musicQualityProfileId, null);
+  assert.equal(fresh.musicMetadataProfileId, null);
+
+  assert.match(setup, /Music quality profile/);
+  assert.match(setup, /Music metadata profile/);
+  assert.match(setup, /"\/api\/setup\/preferences"/);
+  assert.match(setup, /Choose a " \+ label/);
+});

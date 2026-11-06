@@ -43,6 +43,31 @@ function setupPort(value, fallback) {
   return port;
 }
 
+function setupProfileId(value) {
+  if (value == null || value === "") return null;
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function setupProfileChoice(list, value, label) {
+  const id = Number(value);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Choose a music " + label + ".");
+  if (!Array.isArray(list) || !list.some((profile) => Number(profile.id) === id)) {
+    throw new Error("That music " + label + " is no longer offered. Refresh status and choose again.");
+  }
+  return id;
+}
+
+function setupPreferencesRequest(job, qualityProfileId, metadataProfileId) {
+  if (!job || !job.id) throw new Error("There is no saved setup plan yet.");
+  const music = job.musicProfiles || {};
+  return {
+    id: job.id,
+    qualityProfileId: setupProfileChoice(music.qualityProfiles, qualityProfileId, "quality profile"),
+    metadataProfileId: setupProfileChoice(music.metadataProfiles, metadataProfileId, "metadata profile"),
+  };
+}
+
 function setupRequest(values, defaults) {
   const given = values || {}, server = defaults || {};
   const apps = [];
@@ -72,6 +97,8 @@ function setupRequest(values, defaults) {
     appDir: setupString(given.appDir, server.appDir),
     downloadPath: setupString(given.downloadPath, server.downloadPath),
     roots, ports, categories, renameTV, startAtLogin,
+    musicQualityProfileId: setupProfileId(given.musicQualityProfileId == null ? server.musicQualityProfileId : given.musicQualityProfileId),
+    musicMetadataProfileId: setupProfileId(given.musicMetadataProfileId == null ? server.musicMetadataProfileId : given.musicMetadataProfileId),
   };
 }
 
@@ -86,7 +113,7 @@ function setupSize(bytes) {
 
 function setupJobView(job) {
   if (!job || !job.id) {
-    return { hasJob: false, state: "not_started", active: false, plan: true, run: false, retry: false, check: false, open: [], sources: false, settings: false, restart: false, ready: false, edit: false };
+    return { hasJob: false, state: "not_started", active: false, plan: true, run: false, retry: false, check: false, open: [], sources: false, settings: false, restart: false, ready: false, edit: false, preferences: false };
   }
   const state = String(job.state || "not_started");
   const apps = Array.isArray(job.apps) ? job.apps : [];
@@ -104,6 +131,7 @@ function setupJobView(job) {
     restart: state === "needs_restart" || appState("needs_restart"),
     ready: state === "ready",
     edit: !active,
+    preferences: state === "needs_preferences",
   };
 }
 
@@ -137,7 +165,7 @@ function setupJobRequest(job, action, app) {
 const SETUP_JOB_LABELS = {
   not_started: "Not started", planning: "Planning", planned: "Plan ready", installing: "Installing",
   needs_approval: "Waiting for macOS approval", checking: "Checking connections", configuring: "Configuring",
-  needs_sources: "Needs sources", blocked: "Blocked", interrupted: "Interrupted", failed: "Failed",
+  needs_preferences: "Choose music profiles", needs_sources: "Needs sources", blocked: "Blocked", interrupted: "Interrupted", failed: "Failed",
   ready: "Ready", needs_restart: "Restart needed",
 };
 const SETUP_APP_LABELS = {
@@ -154,6 +182,7 @@ let setupVisible = false;
 let setupBusy = false;
 let setupEditing = false;
 let setupGeneration = 0;
+let setupMusicProfileIds = { quality: null, metadata: null };
 
 const setupForm = document.querySelector("#setup-plan-form");
 const setupJobBox = document.querySelector("#setup-job");
@@ -214,6 +243,13 @@ function fillSetupForm(defaults, force) {
   setupForm.dataset.filled = "1";
 }
 
+function setupRememberMusicProfiles(request) {
+  setupMusicProfileIds = {
+    quality: setupProfileId(request && request.musicQualityProfileId),
+    metadata: setupProfileId(request && request.musicMetadataProfileId),
+  };
+}
+
 function readSetupForm() {
   const apps = {}, roots = {}, categories = {}, ports = {};
   for (const id of SETUP_APP_IDS) {
@@ -232,6 +268,8 @@ function readSetupForm() {
     roots, ports, categories,
     renameTV: !!(setupField("renameTV") && setupField("renameTV").checked),
     startAtLogin: !!(setupField("startAtLogin") && setupField("startAtLogin").checked),
+    musicQualityProfileId: setupMusicProfileIds.quality,
+    musicMetadataProfileId: setupMusicProfileIds.metadata,
   };
 }
 
@@ -278,7 +316,102 @@ function setupAppActions(app, view) {
   return actions.childNodes.length ? actions : null;
 }
 
+function setupPreferenceOptions(select, list, label, saved) {
+  const placeholder = setupNode("option", "Choose a " + label);
+  placeholder.value = "";
+  select.append(placeholder);
+  if (Array.isArray(list)) {
+    for (const profile of list) {
+      const id = Number(profile && profile.id);
+      if (!Number.isInteger(id) || id <= 0) continue;
+      const option = setupNode("option", profile.name || String(id));
+      option.value = String(id);
+      select.append(option);
+    }
+  }
+  const wanted = setupProfileId(saved);
+  if (wanted && Array.from(select.options).some((option) => option.value === String(wanted))) select.value = String(wanted);
+  select.required = true;
+  select.style.width = "100%";
+}
+
+function setupPreferencesForm(job, view) {
+  if (!view.preferences) return null;
+  const music = job.musicProfiles || {};
+  const qualityProfiles = Array.isArray(music.qualityProfiles) ? music.qualityProfiles : [];
+  const metadataProfiles = Array.isArray(music.metadataProfiles) ? music.metadataProfiles : [];
+  const form = setupNode("form", null, "setup-preferences");
+  form.append(setupNode("h3", "Music profiles"));
+  form.append(setupNode("p", "Lidarr needs a live quality profile and metadata profile. Choose both to continue.", "muted"));
+
+  const qualityLabel = setupNode("label", "Music quality profile");
+  const qualitySelect = setupNode("select");
+  qualitySelect.name = "qualityProfileId";
+  setupPreferenceOptions(qualitySelect, qualityProfiles, "quality profile", job.request && job.request.musicQualityProfileId);
+  qualityLabel.append(qualitySelect);
+  const metadataLabel = setupNode("label", "Music metadata profile");
+  const metadataSelect = setupNode("select");
+  metadataSelect.name = "metadataProfileId";
+  setupPreferenceOptions(metadataSelect, metadataProfiles, "metadata profile", job.request && job.request.musicMetadataProfileId);
+  metadataLabel.append(metadataSelect);
+  form.append(qualityLabel, metadataLabel);
+
+  const message = setupNode("p", null, "msg");
+  message.hidden = true;
+  message.setAttribute("role", "alert");
+  form.append(message);
+  const actions = setupNode("div", null, "actions");
+  const submit = setupButton("Continue setup", "primary", () => {});
+  submit.type = "submit";
+  actions.append(submit);
+  form.append(actions);
+  const missing = [];
+  if (!qualityProfiles.length) missing.push("quality profiles");
+  if (!metadataProfiles.length) missing.push("metadata profiles");
+  if (missing.length) {
+    message.hidden = false;
+    message.className = "notice";
+    message.textContent = "The server did not report any music " + missing.join(" or ") + ". Refresh status and try again.";
+    submit.disabled = true;
+  }
+
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (setupBusy || missing.length) return;
+    message.hidden = true;
+    message.className = "msg";
+    let request;
+    try { request = setupPreferencesRequest(job, qualitySelect.value, metadataSelect.value); }
+    catch (e) { message.hidden = false; message.textContent = e.message; return; }
+    const generation = setupGeneration;
+    setupBusy = true;
+    submit.disabled = true;
+    submit.textContent = "Saving…";
+    let failure = "";
+    try {
+      const next = await setupApi("/api/setup/preferences", request, true);
+      if (generation !== setupGeneration) return;
+      if (next && next.id) setupJob = next;
+    } catch (e) {
+      if (generation !== setupGeneration) return;
+      failure = e.message;
+    }
+    setupBusy = false;
+    if (failure) {
+      message.hidden = false;
+      message.textContent = failure;
+      submit.disabled = false;
+      submit.textContent = "Continue setup";
+      return;
+    }
+    renderSetupJob();
+    scheduleSetupPoll();
+  });
+  return form;
+}
+
 function renderSetupJob() {
+  if (setupJob && setupJob.request) setupRememberMusicProfiles(setupJob.request);
   if (!setupJobBox) return;
   setupJobBox.replaceChildren();
   const view = setupJobView(setupJob);
@@ -339,6 +472,11 @@ function renderSetupJob() {
     box.append(checks);
   }
 
+  if (!setupEditing) {
+    const preferences = setupPreferencesForm(job, view);
+    if (preferences) box.append(preferences);
+  }
+
   if (view.open.length) box.append(setupNode("p", "Choose Open, then complete any macOS approval prompts. Check connections afterward.", "muted"));
   if (view.restart) box.append(setupNode("p", "Quit Library Studio KH completely, then reopen it. Start at login takes effect after that. Setup is not ready until the app has reopened.", "notice"));
   if (view.ready) box.append(setupNode("p", "Library's own connection checks passed. This setup is ready.", "muted"));
@@ -368,6 +506,7 @@ async function setupRun(action, app) {
     const job = await setupApi(request.path, request.body, true);
     if (generation !== setupGeneration) return;
     if (job && job.id) setupJob = job;
+    setupRememberMusicProfiles(setupJob && setupJob.request);
   } catch (e) {
     if (generation !== setupGeneration) return;
     failure = e.message;
@@ -416,6 +555,7 @@ async function loadSetupStatus() {
     fillSetupForm(setupDefaults || {});
     const nextJob = status && status.job && status.job.id ? status.job : null;
     if (!(setupEditing && !nextJob)) setupJob = nextJob;
+    setupRememberMusicProfiles(setupJob && setupJob.request);
     renderSetupJob();
     if (setupJob) setupSay("");
     else setupSay(supported ? "Choose what to set up, then review the plan." : "");
@@ -449,6 +589,7 @@ function scheduleSetupPoll() {
       setupDefaults = status && status.defaults ? status.defaults : setupDefaults;
       const nextJob = status && status.job && status.job.id ? status.job : null;
       if (!(setupEditing && !nextJob)) setupJob = nextJob;
+      setupRememberMusicProfiles(setupJob && setupJob.request);
       renderSetupJob();
       scheduleSetupPoll();
     } catch (e) {
@@ -466,6 +607,7 @@ function resetSetup() {
   setupVisible = false;
   setupBusy = false;
   setupEditing = false;
+  setupMusicProfileIds = { quality: null, metadata: null };
   resetPlanButton();
   const cancelEdit = document.querySelector("#setup-cancel-edit");
   if (cancelEdit) cancelEdit.hidden = true;
@@ -529,6 +671,7 @@ if (setupForm) {
       if (generation !== setupGeneration) return;
       if (!job || !job.id) throw new Error("The host did not return a setup plan.");
       setupJob = job;
+      setupRememberMusicProfiles(setupJob.request);
       setupEditing = false;
     } catch (e) {
       if (generation !== setupGeneration) return;
