@@ -199,7 +199,7 @@ func TestNewServerRefusesUnusableSignInStore(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, "access.json"), []byte("not json"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := newServer(home); err == nil {
+	if _, err := newServer(home, "127.0.0.1:7881"); err == nil {
 		t.Fatal("server started with unusable sign-in storage")
 	}
 }

@@ -24,7 +24,7 @@ A thin desktop layer over the stock qBittorrent, Sonarr, Radarr, Lidarr and Prow
 
 ```sh
 go vet ./... && GOOS=windows go vet ./... && GOOS=linux go vet ./... && go test ./...
-node --test tests/download-view.test.mjs tests/subtitle-ui.test.mjs
+node --test tests/*.test.mjs
 npm ci && npm run build:desktop
 ```
 

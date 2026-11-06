@@ -24,7 +24,9 @@ type Server struct {
 	Store *config.Store
 	Home  string
 	Token string
-	Now   func() time.Time
+	// LocalURL is set from the bound loopback listener before serving requests.
+	LocalURL string
+	Now      func() time.Time
 
 	mu     sync.Mutex
 	last   *lastRun
@@ -220,6 +222,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		"snapshot":  library.Gather(c, s.Home, s.Now()),
 		"lastClean": last,
 		"remote":    s.RemoteStatus(),
+		"localUrl":  s.LocalURL,
 	})
 }
 

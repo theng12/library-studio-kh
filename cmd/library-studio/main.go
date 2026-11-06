@@ -65,7 +65,7 @@ func main() {
 	if h, _, _ := net.SplitHostPort(ln.Addr().String()); !net.ParseIP(h).IsLoopback() {
 		log.Fatal("Library Studio KH only listens on this computer (127.0.0.1)")
 	}
-	s, err := newServer(home)
+	s, err := newServer(home, ln.Addr().String())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func runService(home string, port int) {
 	if err != nil {
 		log.Fatalf("Background host could not listen on http://%s: %v. Another program or Library Studio KH may already be using that port; choose another with -port.", addr, err)
 	}
-	s, err := newServer(home)
+	s, err := newServer(home, ln.Addr().String())
 	if err != nil {
 		ln.Close()
 		log.Fatal(err)
@@ -115,12 +115,13 @@ func runService(home string, port int) {
 	}
 }
 
-func newServer(home string) (*server.Server, error) {
+func newServer(home, localAddress string) (*server.Server, error) {
 	store, err := config.Open(home)
 	if err != nil {
 		return nil, err
 	}
 	s := server.New(store, home)
+	s.LocalURL = "http://" + localAddress + "/"
 	if err := s.AccessError(); err != nil {
 		return nil, err
 	}
