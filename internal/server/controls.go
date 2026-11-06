@@ -13,15 +13,15 @@ var mediaApps = map[string]bool{"Sonarr": true, "Radarr": true, "Lidarr": true}
 // registerControls adds the download queue and media choice routes. The lead calls it from Handler.
 func (s *Server) registerControls(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/downloads", func(w http.ResponseWriter, r *http.Request) {
-		items, err := library.Downloads(s.Store.Get())
+		items, problems, err := library.DownloadQueue(s.Store.Get())
 		if err != nil {
 			writeJSON(w, 502, map[string]string{"error": err.Error()})
 			return
 		}
 		if items == nil {
-			items = []stock.Torrent{}
+			items = []library.Download{}
 		}
-		writeJSON(w, 200, map[string]any{"items": items})
+		writeJSON(w, 200, map[string]any{"items": items, "problems": problems})
 	})
 	mux.HandleFunc("POST /api/downloads/action", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {

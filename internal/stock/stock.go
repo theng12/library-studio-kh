@@ -36,6 +36,9 @@ type Torrent struct {
 	Peers        int     `json:"num_leechs"`
 	SavePath     string  `json:"save_path"`
 	Category     string  `json:"category"`
+	// Priority is qBittorrent's queue position: nil when the app does not report it,
+	// 0 for completed/non-queued torrents, >0 for queued ones.
+	Priority *int `json:"priority"`
 }
 
 type QBit struct {

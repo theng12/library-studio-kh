@@ -32,6 +32,14 @@ Remote access starts off and binds only the local Tailscale address. It accepts 
 
 If Tailscale is disconnected when you enable access or start the app, Settings explains the problem. Connect Tailscale and save again. This app does not install, sign in to, or change Tailscale itself.
 
+## Downloads and library progress
+
+Downloads supports title search, status/app filters with counts, and display sorting. Sorting never changes qBittorrent's real queue order. A compact summary shows title, reported app, status and transfer progress; expand it for sizes, ETA, folder and other details. Completed includes finished downloads that are still seeding or paused, and does not mean imported.
+
+App ownership comes from each library app's queue and available import history. Unknown/unmatched ownership stays explicit. My library matches in-flight downloads using the owning app and parent IDs, never title guesses. Its current-download percentage is not whole-series completion. Both views refresh every 30 seconds while visible; expanded items remain open. Search/status/app filter changes clear selection so hidden items cannot be paused accidentally.
+
+A fresh Library installation currently needs separately installed and configured companions. The guided host/client installer, richer metadata, Bazarr subtitles and language controls remain planned. The existing 1301 stack is already configured independently.
+
 ## Develop
 
 ```sh

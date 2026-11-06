@@ -1,5 +1,13 @@
 # What's new in Library Studio KH
 
+## 0.4.0 — 2026-11-06
+
+- Downloads has title search, counted status and app filters, and sorting by queue position, app, name, progress, date, size or speed. These controls never reorder the actual downloader queue.
+- Each download starts with a compact, expandable summary showing its owning app, status and progress; extra transfer and folder details stay inside.
+- My library uses expandable summaries and shows current download progress matched through the owning app's queue IDs. Whole-series completion is not inferred from a season pack.
+- Visible download and library views refresh automatically while preserving expanded items. Filtering clears hidden selections before pause/resume actions.
+- Companion installation, richer metadata, subtitles and language controls remain planned. The installed stack on1301 is unchanged.
+
 ## 0.3.1 — 2026-11-06
 
 - Phone navigation now uses a compact header, four everyday tabs at the bottom and a separate Menu for settings and information.

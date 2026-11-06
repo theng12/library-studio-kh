@@ -73,6 +73,41 @@ func main() {
 		mu.Lock()
 		defer mu.Unlock()
 		p := r.URL.Path
+		app := ""
+		for _, name := range []string{"sonarr", "radarr", "lidarr", "prowlarr"} {
+			if strings.HasPrefix(p, "/"+name+"/") {
+				app = name
+				p = strings.TrimPrefix(p, "/"+name)
+				r.URL.Path = p
+				break
+			}
+		}
+		if app != "" && strings.HasSuffix(p, "/queue") {
+			records := []map[string]any{}
+			switch app {
+			case "sonarr":
+				records = []map[string]any{{"downloadId": hashOf("A1"), "seriesId": 1}, {"downloadId": hashOf("A6"), "seriesId": 1}}
+			case "radarr":
+				records = []map[string]any{{"downloadId": hashOf("A7"), "movieId": 1}}
+			case "lidarr":
+				records = []map[string]any{{"downloadId": hashOf("A8"), "artistId": 1}}
+			}
+			json.NewEncoder(w).Encode(map[string]any{"records": records, "totalRecords": len(records)})
+			return
+		}
+		if app != "" && strings.HasSuffix(p, "/history") {
+			records := []map[string]any{}
+			switch app {
+			case "sonarr":
+				records = []map[string]any{{"eventType": "downloadFolderImported", "downloadId": hashOf("A4"), "date": ago(3)}}
+			case "radarr":
+				records = []map[string]any{{"eventType": "downloadFolderImported", "downloadId": hashOf("A2"), "date": ago(1)}}
+			case "lidarr":
+				records = []map[string]any{{"eventType": "downloadImported", "downloadId": hashOf("A3"), "date": ago(6)}}
+			}
+			json.NewEncoder(w).Encode(map[string]any{"records": records, "totalRecords": len(records)})
+			return
+		}
 		if tracking(w, r) {
 			return
 		}
@@ -122,11 +157,14 @@ func main() {
 			}
 			json.NewEncoder(w).Encode([]map[string]any{
 				{"hash": hashOf("a1"), "name": "Sample Series S02E04 1080p", "progress": 0.62, "state": state, "size": 2.4e9, "downloaded": 1.49e9,
-					"dlspeed": speed, "upspeed": 120e3, "eta": 61, "added_on": unix(0.4), "num_seeds": 14, "num_leechs": 3, "save_path": "/Users/me/Downloads", "category": "tv-sonarr"},
+					"priority": 1, "dlspeed": speed, "upspeed": 120e3, "eta": 61, "added_on": unix(0.4), "num_seeds": 14, "num_leechs": 3, "save_path": "/Users/me/Downloads", "category": "tv-sonarr"},
 				done("a2", "Example Film (2024) 2160p", 18e9, 30, 29.2),
 				done("a3", "Demo Artist - First Album (FLAC)", 0.6e9, 150, 149.9),
 				done("a4", "Sample Series S02E03 1080p", 2.3e9, 80, 79.7),
 				done("a5", "home-videos-backup", 40e9, 300, 290),
+				{"hash": hashOf("a6"), "name": "Sample Series S02E05 queued", "state": "queuedDL", "progress": 0, "priority": 2, "size": 2e9},
+				{"hash": hashOf("a7"), "name": "Example Film paused", "state": "stoppedDL", "progress": 0.35, "priority": 3, "size": 4e9, "downloaded": 1.4e9},
+				{"hash": hashOf("a8"), "name": "Demo Artist missing files", "state": "missingFiles", "progress": 0.4, "priority": 4, "size": 0.8e9},
 			})
 			return
 		}

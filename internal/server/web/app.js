@@ -267,15 +267,27 @@ function titleCell(m) {
 }
 
 let libItems = null;
+let libraryDownloads = [];
+let libraryProgressError = "";
+const openLibraryItems = new Set();
+let libraryLoading = false;
 async function loadLibrary() {
-  $("#lib-empty").hidden = false;
-  $("#lib-empty").textContent = "Loading…";
+  if (libraryLoading) return;
+  libraryLoading = true;
+  if (!libItems) { $("#lib-empty").hidden = false; $("#lib-empty").textContent = "Loading…"; }
   try {
     const r = await api("/api/browse");
     libItems = r.items;
-    $("#browse-notice").hidden = !r.problems || !r.problems.length;
-    $("#browse-notice").textContent = (r.problems || []).join(" ");
+    try {
+      const queue = await api("/api/downloads");
+      libraryDownloads = queue.items || [];
+      libraryProgressError = (queue.problems || []).join(" ");
+    } catch (e) { libraryDownloads = []; libraryProgressError = "Download progress unavailable: " + e.message; }
+    const problems = [...(r.problems || []), libraryProgressError].filter(Boolean);
+    $("#browse-notice").hidden = !problems.length;
+    $("#browse-notice").textContent = problems.join(" ");
   } catch (e) { libItems = []; $("#browse-notice").hidden = false; $("#browse-notice").textContent = e.message; }
+  libraryLoading = false;
   renderLibrary();
 }
 
@@ -298,29 +310,43 @@ function renderLibrary() {
   const q = $("#lib-q").value, type = $("#lib-type").value, sort = $("#lib-sort").value;
   let items = libItems.filter((m) => (!type || m.app === type) && has(m.title, q));
   items.sort(sort === "added" ? (a, b) => (b.added || "").localeCompare(a.added || "")
+    : sort === "app" ? (a, b) => a.app.localeCompare(b.app) || byTitle(a, b)
     : sort === "year" ? (a, b) => (b.year || 0) - (a.year || 0) || byTitle(a, b) : byTitle);
   $("#browse-lede").textContent = libItems.length + (libItems.length === 1 ? " item" : " items") + " looked after by Sonarr, Radarr and Lidarr.";
   $("#lib-empty").hidden = items.length > 0;
   $("#lib-empty").textContent = libItems.length ? "Nothing matches." : "Nothing in the library yet. Use Find & add.";
   $("#lib").hidden = items.length === 0;
-  $("#lib tbody").replaceChildren(...items.map((m) => {
-    let monitor = "—";
-    if (m.id > 0 && typeof m.monitored === "boolean") {
-      monitor = document.createElement("input");
-      monitor.type = "checkbox";
-      monitor.checked = m.monitored;
-      monitor.setAttribute("aria-label", (m.monitored ? "Stop monitoring " : "Monitor ") + m.title);
+  $("#lib").replaceChildren(...items.map((m) => {
+    const key = m.app + ":" + m.id, details = mediaNode("details", null, "library-item");
+    details.open = openLibraryItems.has(key);
+    details.addEventListener("toggle", () => { if (details.open) openLibraryItems.add(key); else openLibraryItems.delete(key); });
+    const summary = mediaNode("summary", null, "download-summary");
+    summary.append(mediaNode("span", m.title + (m.year ? " (" + m.year + ")" : ""), "download-title"));
+    summary.append(mediaNode("span", (TYPE[m.app] || m.app) + " · " + (m.haveFiles ? "Files available" : "Waiting for files"), "download-status"));
+    const matches = libraryDownloads.filter(t => t.app === m.app && (t.mediaIds || []).includes(m.id));
+    if (matches.length) {
+      const active = downloadRows(matches, "", "downloading", "queue")[0] || downloadRows(matches, "", "all", "queue").find(t => Number.isFinite(t.progress) && t.progress < 1);
+      summary.append(mediaNode("span", matches.length + (matches.length === 1 ? " matched download" : " matched downloads") + (active ? " · " + dlLabel(active.state) + " transfer" : ""), "muted"));
+      if (active) summary.append(progressBlock(active));
+    } else summary.append(mediaNode("span", libraryProgressError ? "Download progress unavailable" : "No matched downloads in the current queue", "muted"));
+    const body = mediaNode("div", null, "library-detail");
+    if (m.overview) body.append(mediaNode("p", m.overview, "library-overview"));
+    if (m.added) body.append(mediaNode("p", "Added " + day(m.added), "muted"));
+    if (typeof m.monitored === "boolean") {
+      const label = mediaNode("label", null, "check media-monitor"), monitor = document.createElement("input");
+      monitor.type = "checkbox"; monitor.checked = m.monitored;
+      monitor.setAttribute("aria-label", "Monitor " + m.title);
       monitor.addEventListener("change", () => toggleMonitor(m, monitor));
+      label.append(monitor, mediaNode("span", "Monitored")); body.append(label);
     }
-    const title = titleCell(m);
-    if (m.id > 0) {
-      const open = document.createElement("button");
-      open.type = "button"; open.className = "inline title"; open.textContent = m.title;
-      open.setAttribute("aria-label", "Details for " + m.title);
-      open.addEventListener("click", () => openMediaDetails(m));
-      title.firstChild.replaceWith(open, " ");
+    if (matches.length) {
+      const list = mediaNode("ul", null, "source-list");
+      for (const t of matches) list.append(mediaNode("li", t.name + " · " + dlLabel(t.state) + " · " + (Number.isFinite(t.progress) ? Math.floor(t.progress * 100) + "%" : "Progress not reported")));
+      body.append(list);
     }
-    return row([title, TYPE[m.app] || m.app, m.haveFiles ? "In library" : "Waiting for files", monitor, m.added ? day(m.added) : ""], "lib");
+    const open = mediaNode("button", "Open " + (m.app === "Sonarr" ? "series" : m.app === "Radarr" ? "film" : "artist") + " details", "small");
+    open.type = "button"; open.addEventListener("click", () => openMediaDetails(m)); body.append(open);
+    details.append(summary, body); return details;
   }));
 }
 for (const id of ["#lib-q", "#lib-type", "#lib-sort"]) $(id).addEventListener("input", renderLibrary);
@@ -495,7 +521,7 @@ function show(view) {
     if (b.dataset.view === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   }
   if (view === "settings" && current) { fillForm(current); loadSessions(); }
-  if (view === "browse" && !libItems) loadLibrary();
+  if (view === "browse") loadLibrary();
   if (view === "downloads") loadDownloads();
   if (view === "sources") loadSources();
   if (view === "find") $("#find-q").focus();
@@ -522,61 +548,99 @@ const DL_STATES = {
   moving: "Moving", allocating: "Allocating", error: "Error", missingFiles: "Missing files", unknown: "Unknown",
 };
 const dlLabel = (s) => DL_STATES[s] || s || "Unknown";
+const dlApp = app => ({ Unmatched: "qBittorrent · unmatched", Unknown: "App not verified" }[app] || app || "App not verified");
 const dlPaused = (s) => /^(paused|stopped)/i.test(s || "");
 let downloads = null;
 let dlError = "";
 const selected = new Set();
 
+const openDownloads = new Set();
+function progressBlock(t) {
+  const box = mediaNode("div", null, "download-progress");
+  const progress = document.createElement("progress"); progress.max = 1;
+  progress.setAttribute("aria-label", "Download progress");
+  const known = Number.isFinite(t.progress);
+  if (known) progress.value = Math.max(0, Math.min(1, t.progress));
+  box.append(progress, mediaNode("span", known ? Math.floor(t.progress * 100) + "%" : "Not reported"));
+  return box;
+}
+function downloadCard(t) {
+  const card = mediaNode("article", null, "download-item");
+  const select = mediaNode("label", null, "check-target");
+  const box = document.createElement("input"); box.type = "checkbox"; box.checked = selected.has(t.hash);
+  box.setAttribute("aria-label", "Select " + t.name); select.append(box);
+  box.addEventListener("change", () => { if (box.checked) selected.add(t.hash); else selected.delete(t.hash); updateDlButtons(); });
+  const details = document.createElement("details"); details.open = openDownloads.has(t.hash);
+  details.addEventListener("toggle", () => { if (details.open) openDownloads.add(t.hash); else openDownloads.delete(t.hash); });
+  const summary = mediaNode("summary", null, "download-summary");
+  summary.append(mediaNode("span", t.name, "download-title"));
+  const line = mediaNode("span", null, "download-status");
+  line.append(mediaNode("span", dlApp(t.app)), mediaNode("span", dlLabel(t.state)));
+  if (!dlPaused(t.state)) line.append(mediaNode("span", rate(t.dlspeed || 0) + " down"));
+  summary.append(line, progressBlock(t));
+  const info = mediaNode("dl", null, "facts");
+  const date = n => n > 0 ? stamp(new Date(n * 1000).toISOString()) : "Not reported";
+  facts(info, [["Queue position", t.priority == null ? "Not reported" : t.priority > 0 ? t.priority : "Not queued"],
+    ["Downloaded", bytes(t.downloaded || 0) + " of " + (t.size > 0 ? bytes(t.size) : "size not reported")],
+    ["Time remaining", t.eta >= 0 && t.eta < 8640000 ? dur(t.eta) : "Not available"],
+    ["Upload speed", rate(t.upspeed || 0)], ["Uploaded", bytes(t.uploaded || 0)],
+    ["Ratio", Number.isFinite(t.ratio) ? t.ratio.toFixed(2) : "Not reported"], ["Seeds / peers", t.num_seeds + " / " + t.num_leechs],
+    ["Category", t.category || "None"], ["Save folder", t.save_path || "Not reported"], ["Added", date(t.added_on)], ["Completed", date(t.completion_on)]]);
+  details.append(summary, info); card.append(select, details); return card;
+}
 function renderDownloads() {
-  const items = downloads || [];
-  const empty = $("#dl-empty"), table = $("#dl");
-  table.hidden = items.length === 0;
-  empty.hidden = items.length > 0;
-  if (!items.length) empty.textContent = dlError || "No downloads in qBittorrent right now. Add one in Find & add.";
-  $("#dl-count").textContent = dlError && !items.length ? "Not available"
-    : items.length ? items.length + (items.length === 1 ? " download" : " downloads") : "No downloads";
-  $("#dl tbody").replaceChildren(...items.map((t) => {
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.checked = selected.has(t.hash);
-    box.setAttribute("aria-label", "Select " + t.name);
-    box.addEventListener("change", () => {
-      if (box.checked) selected.add(t.hash); else selected.delete(t.hash);
-      updateDlButtons();
-    });
-    const state = document.createElement("span");
-    const bad = /error|missing/i.test(t.state || "");
-    state.className = "state " + (dlPaused(t.state) ? "paused" : bad ? "error" : "downloading");
-    state.textContent = dlLabel(t.state);
-    const speed = dlPaused(t.state) ? "—" : rate(t.dlspeed || 0) + " down";
-    return row([box, t.name, state, Math.round((t.progress || 0) * 100) + "%", t.size ? bytes(t.size) : "—", speed], "dl");
-  }));
+  const all = downloads || [], filter = $("#dl-state").value;
+  const status = $("#dl-state");
+  status.replaceChildren(...DOWNLOAD_FILTERS.map(([key, name]) => mediaOption(key, name + " (" + all.filter(t => downloadMatches(t, key)).length + ")")));
+  status.value = filter;
+  const app = $("#dl-app"), chosenApp = app.value;
+  app.replaceChildren(mediaOption("", "All apps"), ...[...new Set(all.map(t => t.app || "Unknown"))].sort().map(name => mediaOption(name, dlApp(name) + " (" + all.filter(t => (t.app || "Unknown") === name).length + ")")));
+  if ([...app.options].some(o => o.value === chosenApp)) app.value = chosenApp;
+  const sort = $("#dl-sort");
+  const filters = [status.value !== "all" ? status.selectedOptions[0].textContent : "", app.value ? dlApp(app.value) : "", sort.value !== "queue" ? sort.selectedOptions[0].textContent : ""].filter(Boolean);
+  $("#dl-filter-summary").textContent = "Filter and sort" + (filters.length ? " · " + filters.join(" · ") : "");
+  const items = downloadRows(all, $("#dl-q").value, status.value, sort.value, app.value);
+  const empty = $("#dl-empty"), list = $("#dl");
+  list.hidden = items.length === 0; empty.hidden = items.length > 0;
+  if (!items.length) empty.textContent = dlError || (all.length ? "No downloads match these filters." : "No downloads in qBittorrent right now. Add one in Find & add.");
+  $("#dl-count").textContent = dlError && !all.length ? "Not available" : items.length + " of " + all.length + " downloads";
+  list.replaceChildren(...items.map(downloadCard));
   updateDlButtons();
 }
+for (const id of ["#dl-q", "#dl-state", "#dl-app"]) $(id).addEventListener("input", () => { selected.clear(); renderDownloads(); });
+$("#dl-sort").addEventListener("input", renderDownloads);
 
 function updateDlButtons() {
+  $("#dl-selected").textContent = selected.size ? selected.size + " selected" : "No items selected";
   const none = selected.size === 0;
   $("#dl-pause").disabled = none;
   $("#dl-resume").disabled = none;
 }
 
-async function loadDownloads() {
+let downloadsLoading = false;
+async function loadDownloads(preserveSelection = false) {
+  if (downloadsLoading) return;
+  downloadsLoading = true;
   const notice = $("#dl-notice"), empty = $("#dl-empty"), table = $("#dl");
   notice.hidden = true;
-  empty.hidden = false;
-  empty.textContent = "Loading…";
-  table.hidden = true;
-  selected.clear();
+  if (!preserveSelection || downloads === null) {
+    empty.hidden = false;
+    empty.textContent = "Loading…";
+    table.hidden = true;
+  }
+  if (!preserveSelection) selected.clear();
   dlError = "";
   try {
     const r = await api("/api/downloads");
     downloads = Array.isArray(r.items) ? r.items : [];
-    dlError = r.error || "";
+    dlError = [r.error, ...(r.problems || [])].filter(Boolean).join(" ");
+    for (const hash of selected) if (!downloads.some(t => t.hash === hash)) selected.delete(hash);
     if (dlError) { notice.hidden = false; notice.textContent = dlError; }
   } catch (e) {
     downloads = [];
     dlError = e.message;
   }
+  downloadsLoading = false;
   renderDownloads();
 }
 
@@ -602,7 +666,7 @@ async function dlAction(action) {
 }
 $("#dl-pause").addEventListener("click", () => dlAction("pause"));
 $("#dl-resume").addEventListener("click", () => dlAction("resume"));
-$("#dl-refresh").addEventListener("click", loadDownloads);
+$("#dl-refresh").addEventListener("click", () => loadDownloads());
 
 /* Sign-in, owner setup and sessions */
 function showGate(mode) {
@@ -863,6 +927,7 @@ start();
 setInterval(() => {
   if (!$("#app-shell").hidden && $("#view-settings").hidden) {
     load();
-    if (!$("#view-downloads").hidden) loadDownloads();
+    if (!$("#view-downloads").hidden) loadDownloads(true);
+    if (!$("#view-browse").hidden) loadLibrary();
   }
 }, 30000);

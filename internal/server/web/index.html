@@ -6,6 +6,7 @@
 <title>Library Studio KH</title>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="media.css">
+<script src="download-view.js" defer></script>
 <script src="app.js" defer></script>
 <script src="media.js" defer></script>
 </head>
@@ -126,23 +127,29 @@
     <section id="view-downloads" class="view" hidden>
       <header class="head">
         <h1>Downloads</h1>
-        <p class="lede">Pause or resume downloads in qBittorrent. Library Studio KH never deletes downloads from here.</p>
+        <p class="lede">Search, filter and follow downloads. Expand an item for details, or select items to pause or resume.</p>
       </header>
       <p id="dl-notice" class="notice" role="alert" hidden></p>
       <div class="panel">
+        <div class="tools download-filters">
+          <label class="search">Search downloads <input type="search" id="dl-q" placeholder="Title"></label>
+          <details class="download-filter-options" id="dl-filter-options"><summary id="dl-filter-summary">Filter and sort</summary><div class="download-filter-grid">
+          <label>Status <select id="dl-state"><option value="all">All</option></select></label>
+          <label>App <select id="dl-app"><option value="">All apps</option></select></label>
+          <label>Sort <select id="dl-sort"><option value="queue">Queue order</option><option value="app">App</option><option value="name">Name A–Z</option><option value="progress">Progress · highest first</option><option value="added">Added · newest first</option><option value="size">Size · largest first</option><option value="speed">Speed · fastest first</option></select></label>
+          </div></details>
+        </div>
         <div class="tools dl-tools">
-          <p id="dl-count" class="muted" role="status">Loading…</p>
+          <div><p id="dl-count" class="muted" role="status">Loading…</p><p id="dl-selected" class="muted" role="status"></p></div>
           <div class="actions">
-            <button type="button" class="small" id="dl-pause" disabled>Pause selected</button>
-            <button type="button" class="small" id="dl-resume" disabled>Resume selected</button>
+            <button type="button" class="small" id="dl-pause" aria-label="Pause selected downloads" disabled>Pause</button>
+            <button type="button" class="small" id="dl-resume" aria-label="Resume selected downloads" disabled>Resume</button>
             <button type="button" class="small" id="dl-refresh">Refresh</button>
           </div>
         </div>
         <p id="dl-empty" class="empty" hidden></p>
-        <table id="dl" class="list" hidden>
-          <thead><tr><th scope="col"><span class="sr">Select</span></th><th scope="col">Name</th><th scope="col">State</th><th scope="col">Progress</th><th scope="col">Size</th><th scope="col">Speed</th></tr></thead>
-          <tbody></tbody>
-        </table>
+        <div id="dl" class="download-list" hidden></div>
+        <p class="download-help muted">Sorting changes this view only. Completed includes seeding and paused finished downloads.</p>
       </div>
     </section>
 
@@ -156,13 +163,10 @@
         <div class="tools">
           <label class="search">Search <input type="search" id="lib-q" placeholder="Title"></label>
           <label>Type <select id="lib-type"><option value="">All</option><option value="Sonarr">TV</option><option value="Radarr">Films</option><option value="Lidarr">Music</option></select></label>
-          <label>Sort <select id="lib-sort"><option value="title">Title A–Z</option><option value="added">Recently added</option><option value="year">Newest year</option></select></label>
+          <label>Sort <select id="lib-sort"><option value="title">Title A–Z</option><option value="app">App</option><option value="added">Recently added</option><option value="year">Newest year</option></select></label>
         </div>
         <p id="lib-empty" class="empty" hidden></p>
-        <table id="lib" class="list">
-          <thead><tr><th scope="col">Title</th><th scope="col">Type</th><th scope="col">Files</th><th scope="col">Monitored</th><th scope="col">Added</th></tr></thead>
-          <tbody></tbody>
-        </table>
+        <div id="lib" class="library-list"></div>
       </div>
     </section>
 
