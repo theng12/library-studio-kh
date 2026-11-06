@@ -190,7 +190,7 @@ func (s *Server) guard(next http.Handler) http.Handler {
 				return
 			}
 		}
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' blob:; frame-ancestors 'none'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
 		next.ServeHTTP(w, r)
