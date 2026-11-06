@@ -29,7 +29,7 @@ Workers share this checkout with disjoint file ownership. No branch switching or
 Desktop bootstrap retains X-Library-Token for local owner access. Identity persists privately in the config home; ordinary browser entry has no token fragment. Username/password use a salted established KDF. Cookie sessions use random secrets, private server-side hashed records, expiry and revocation. Default browser session expires after 12h; explicit Remember device lasts 30 days (displayed). Session expiry controls can become configurable in a subsequent settings module. Never expose a raw credential in logs, results, guides or Launcher metadata.
 
 - GET /api/auth/status: unauthenticated allowed; {authenticated, setupRequired, rememberDays:30, sessionHours:12}. Bootstrap token counts as authenticated.
-- POST /api/auth/setup: bootstrap-token AND loopback peer required, only before an account exists; {username,password}, min 12 characters displayed by UI.
+- POST /api/auth/setup: bootstrap-token AND loopback peer required, only before an account exists; {username,password}, min 6 characters displayed by UI from the server's minPasswordLength policy.
 - POST /api/auth/login: {username,password,remember}; sets HttpOnly SameSite cookie; {ok:true}.
 - POST /api/auth/logout: revokes current cookie session; {ok:true}.
 - GET /api/auth/sessions: authenticated; {items:[{id,created,expires,current}]} without raw session tokens.

@@ -10,7 +10,7 @@ const ARRS = ["sonarr", "radarr", "lidarr", "prowlarr"];
 const NAMES = { sonarr: "Sonarr (TV)", radarr: "Radarr (films)", lidarr: "Lidarr (music)", prowlarr: "Prowlarr (search sites)" };
 const PORTS = { sonarr: 8989, radarr: 7878, lidarr: 8686, prowlarr: 9696 };
 const AUTH_FORM_PATHS = new Set(["/api/auth/login", "/api/auth/setup", "/api/auth/password"]);
-const AUTH = { available: false, authenticated: false, setupRequired: false, rememberDays: 30, sessionHours: 12 };
+const AUTH = { available: false, authenticated: false, setupRequired: false, rememberDays: 30, sessionHours: 12, minPasswordLength: 6 };
 let current = null;
 
 async function api(path, body, write) {
@@ -594,6 +594,8 @@ function signedOut() {
 function fillAuthCopy() {
   $("#remember-days").textContent = AUTH.rememberDays;
   $("#session-hours").textContent = AUTH.sessionHours;
+  for (const hint of document.querySelectorAll(".password-min")) hint.textContent = AUTH.minPasswordLength;
+  for (const input of document.querySelectorAll("#setup-form input[type=password], #recovery-form input[type=password]")) input.minLength = AUTH.minPasswordLength;
   $("#recovery-link").hidden = !token;
   $("#recovery-hint").hidden = !!token;
 }
@@ -688,7 +690,7 @@ $("#setup-form").addEventListener("submit", async (ev) => {
   msg.hidden = true;
   const username = f.username.value.trim(), password = f.password.value;
   if (!username) { msg.hidden = false; msg.textContent = "Choose a username."; f.username.focus(); return; }
-  if (password.length < 12) { msg.hidden = false; msg.textContent = "Use at least 12 characters."; f.password.focus(); return; }
+  if (password.length < AUTH.minPasswordLength) { msg.hidden = false; msg.textContent = "Use at least " + AUTH.minPasswordLength + " characters."; f.password.focus(); return; }
   if (password !== f.confirm.value) { msg.hidden = false; msg.textContent = "The two passwords do not match."; f.confirm.focus(); return; }
   btn.disabled = true; btn.textContent = "Creating…";
   let created = false;
@@ -721,7 +723,7 @@ $("#recovery-form").addEventListener("submit", async (ev) => {
   msg.hidden = true;
   const username = f.username.value.trim(), password = f.password.value;
   if (!username) { msg.hidden = false; msg.textContent = "Enter your username."; f.username.focus(); return; }
-  if (password.length < 12) { msg.hidden = false; msg.textContent = "Use at least 12 characters."; f.password.focus(); return; }
+  if (password.length < AUTH.minPasswordLength) { msg.hidden = false; msg.textContent = "Use at least " + AUTH.minPasswordLength + " characters."; f.password.focus(); return; }
   if (password !== f.confirm.value) { msg.hidden = false; msg.textContent = "The two passwords do not match."; f.confirm.focus(); return; }
   btn.disabled = true; btn.textContent = "Saving…";
   try {
@@ -792,6 +794,7 @@ async function start() {
     AUTH.setupRequired = !!st.setupRequired;
     if (Number.isFinite(st.rememberDays)) AUTH.rememberDays = st.rememberDays;
     if (Number.isFinite(st.sessionHours)) AUTH.sessionHours = st.sessionHours;
+    if (Number.isInteger(st.minPasswordLength) && st.minPasswordLength > 0) AUTH.minPasswordLength = st.minPasswordLength;
   } else {
     AUTH.available = true;
     AUTH.authenticated = false;

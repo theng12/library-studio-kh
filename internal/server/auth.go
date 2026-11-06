@@ -20,6 +20,7 @@ import (
 	"time"
 )
 
+const minPasswordCharacters = 6
 const passwordRounds = 600000
 const sessionHours = 12
 const rememberDays = 30
@@ -226,7 +227,7 @@ func (s *Server) authStatus(w http.ResponseWriter, r *http.Request) {
 	s.access.mu.Lock()
 	setup := s.access.data.Username == ""
 	s.access.mu.Unlock()
-	writeJSON(w, 200, map[string]any{"authenticated": s.authorized(r), "setupRequired": setup, "rememberDays": rememberDays, "sessionHours": sessionHours})
+	writeJSON(w, 200, map[string]any{"authenticated": s.authorized(r), "setupRequired": setup, "rememberDays": rememberDays, "sessionHours": sessionHours, "minPasswordLength": minPasswordCharacters})
 }
 func readAuth(w http.ResponseWriter, r *http.Request, out any) bool {
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") || json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(out) != nil {
@@ -252,8 +253,8 @@ func (s *Server) setAccount(w http.ResponseWriter, r *http.Request, recovery boo
 		return
 	}
 	req.Username = strings.TrimSpace(req.Username)
-	if req.Username == "" || len(req.Username) > 80 || len(req.Password) < 12 || len(req.Password) > 1024 {
-		writeJSON(w, 400, map[string]string{"error": "Enter a username (up to 80 characters) and a password of at least 12 characters (up to 1024 bytes)."})
+	if req.Username == "" || len(req.Username) > 80 || len(req.Password) < minPasswordCharacters || len(req.Password) > 1024 {
+		writeJSON(w, 400, map[string]string{"error": fmt.Sprintf("Enter a username (up to 80 characters) and a password of at least %d characters (up to 1024 bytes).", minPasswordCharacters)})
 		return
 	}
 	s.access.mu.Lock()

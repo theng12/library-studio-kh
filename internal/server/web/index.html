@@ -37,8 +37,8 @@
       <p class="lede">This computer will control the library. The account works in the desktop app and in a browser on your Tailscale network.</p>
       <form id="setup-form" class="gate-form" novalidate>
         <label>Username <input name="username" autocomplete="username" required maxlength="64"></label>
-        <label>Password <span class="hint">· at least 12 characters</span><input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
-        <label>Confirm password <input name="confirm" type="password" autocomplete="new-password" required minlength="12"></label>
+        <label>Password <span class="hint">· at least <span class="password-min">6</span> characters</span><input name="password" type="password" autocomplete="new-password" required minlength="6"></label>
+        <label>Confirm password <input name="confirm" type="password" autocomplete="new-password" required minlength="6"></label>
         <p id="setup-msg" class="msg" role="alert" hidden></p>
         <div class="actions"><button type="submit" class="primary">Create account</button></div>
       </form>
@@ -56,8 +56,8 @@
       <p class="lede">Use this on the host computer to set a new password. All other sessions will be signed out.</p>
       <form id="recovery-form" class="gate-form" novalidate>
         <label>Username <input name="username" autocomplete="username" required></label>
-        <label>New password <span class="hint">· at least 12 characters</span><input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
-        <label>Confirm new password <input name="confirm" type="password" autocomplete="new-password" required minlength="12"></label>
+        <label>New password <span class="hint">· at least <span class="password-min">6</span> characters</span><input name="password" type="password" autocomplete="new-password" required minlength="6"></label>
+        <label>Confirm new password <input name="confirm" type="password" autocomplete="new-password" required minlength="6"></label>
         <p id="recovery-msg" class="msg" role="alert" hidden></p>
         <div class="actions"><button type="submit" class="primary">Set new password</button><button type="button" class="small" id="cancel-recovery">Back to sign in</button></div>
       </form>

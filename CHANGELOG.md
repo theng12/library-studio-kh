@@ -1,5 +1,10 @@
 # What's new in Library Studio KH
 
+## 0.2.1 — 2026-11-06
+
+- Owner setup and password recovery now accept six-character passwords, including six numbers.
+- Password hints and browser validation follow the minimum reported by the host. Login-attempt limits and private-access protections are unchanged.
+
 ## 0.2.0 — 2026-11-06
 
 - Set up an owner account and sign in from a stable browser address. Remembered devices survive restarts and can be revoked.
