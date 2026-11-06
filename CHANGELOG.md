@@ -1,5 +1,13 @@
 # What's new in Library Studio KH
 
+## 0.3.0 — 2026-11-06
+
+- Open a library item to see movie details, series seasons/episodes or artist albums, with monitoring controls for each supported level.
+- Search releases deliberately and send eligible selections through Sonarr, Radarr or Lidarr. Rejected releases stay blocked and source download credentials are not exposed.
+- Sources shows Prowlarr's observed configuration, reported health, application links and the source lists in connected library apps, with partial errors shown clearly.
+- Setup & Help now reflects background-host availability and the new Sources screen.
+- The old permanent-delete cleanup is retired. The new staged Trash policy is documented and remains off until implemented and verified.
+
 ## 0.2.1 — 2026-11-06
 
 - Owner setup and password recovery now accept six-character passwords, including six numbers.

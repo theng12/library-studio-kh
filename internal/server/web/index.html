@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Library Studio KH</title>
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="media.css">
 <script src="app.js" defer></script>
+<script src="media.js" defer></script>
 </head>
 <body>
 
@@ -83,6 +85,7 @@
       <li><button type="button" data-view="downloads">Downloads</button></li>
       <li><button type="button" data-view="browse">My library</button></li>
       <li><button type="button" data-view="find">Find &amp; add</button></li>
+      <li><button type="button" data-view="sources">Sources</button></li>
       <li><button type="button" data-view="cleanup">Cleanup</button></li>
       <li><button type="button" data-view="settings">Settings</button></li>
       <li><button type="button" data-view="help">Setup &amp; help</button></li>
@@ -155,6 +158,36 @@
       </div>
     </section>
 
+    <section id="view-media" class="view" hidden>
+      <header class="head">
+        <button type="button" class="inline" data-view="browse">Back to My library</button>
+        <h1 id="media-title">Media details</h1>
+        <p id="media-meta" class="lede"></p>
+      </header>
+      <p id="media-msg" class="notice" role="status" hidden></p>
+      <div id="media-information"></div>
+      <div class="tools panel" id="media-filters" hidden>
+        <label class="search">Find an episode or album <input type="search" id="media-child-q"></label>
+        <label id="media-season-label">Season <select id="media-season"><option value="">All seasons</option></select></label>
+      </div>
+      <div id="media-children"></div>
+      <section class="panel" id="media-releases" hidden>
+        <div class="panel-head"><h2 id="media-release-title">Release search</h2><p class="muted">Searches run only when requested. Downloads are sent through the library app and its import workflow.</p></div>
+        <p id="media-release-msg" class="empty" role="status"></p>
+        <div id="media-release-list"></div>
+      </section>
+    </section>
+
+    <section id="view-sources" class="view" hidden>
+      <header class="head">
+        <h1>Sources</h1>
+        <p class="lede">Prowlarr sources, reported health and the sources configured in each library app. This screen does not change them.</p>
+      </header>
+      <div class="media-actions"><button type="button" class="small" id="sources-refresh">Refresh status</button></div>
+      <p id="sources-msg" class="notice" role="status" hidden></p>
+      <div id="sources-content"></div>
+    </section>
+
     <section id="view-find" class="view" hidden>
       <header class="head">
         <h1>Find &amp; add</h1>
@@ -197,14 +230,14 @@
         <p id="cleanup-lede" class="lede"></p>
       </header>
       <div class="panel prose">
-        <h2>When a local copy is removed</h2>
-        <p>Only when the download is finished, Sonarr, Radarr or Lidarr says the whole download is in the library, none of them is still working on it, and the days have passed. If any app doesn't answer, nothing is removed. Downloads they don't know about are never touched.</p>
+        <h2>Staged retention is planned; automatic cleanup is off</h2>
+        <p>This build keeps local copies and does not use the old permanent-delete path. The planned policy starts only after a verified whole-library import: 3 days in staging, then Library's _trash until day 7 total, then macOS Trash for up to 30 days. Low-space removal will affect only eligible Library-owned Trash, oldest first. It is not active yet.</p>
         <p id="last-run" class="muted"></p>
       </div>
       <div class="panel" id="stock-panel">
         <div class="panel-head">
           <h2>Settings inside your apps</h2>
-          <p class="muted">Put in when you save Settings. qBittorrent only stops seeding; this app removes the files after checking the library.</p>
+          <p class="muted">Read from qBittorrent. Saving Library settings does not change these limits. Automatic file cleanup is off.</p>
         </div>
         <p id="stock-empty" class="empty" hidden>Connect qBittorrent and a library app to see these.</p>
         <table id="stock" class="list">
@@ -237,8 +270,9 @@
         </fieldset>
         <fieldset class="panel">
           <legend>Local cleanup</legend>
-          <label class="check"><input type="checkbox" name="cleanupOn"> Remove local copies after they reach the library</label>
-          <label class="short">Days to wait <input type="number" name="cleanupDays" min="0" max="3650" required inputmode="numeric"></label>
+          <label class="check"><input type="checkbox" name="cleanupOn" disabled> Staged cleanup <span class="badge planned">Planned · off</span></label>
+          <p class="muted">The old permanent-delete cleanup is retired. Planned defaults: keep local copies for 3 days after verified import, keep them in Library's _trash until day 7 total, then retain them in macOS Trash for 30 days. Below 50 GB free, only eligible Library-owned Trash items are removed early, oldest first.</p>
+          <input type="hidden" name="cleanupDays">
         </fieldset>
         <fieldset class="panel">
           <legend>Folders</legend>
@@ -343,7 +377,7 @@
         <dl class="help-facts">
           <dt>Why</dt><dd>It keeps indexer settings in one place and syncs them to Sonarr, Radarr and Lidarr.</dd>
           <dt>Required</dt><dd>Optional, but recommended. Library never adds its own downloader or indexer.</dd>
-          <dt>Check</dt><dd>Prowlarr shows connected in Activity. Its own health page lists failing indexers.</dd>
+          <dt>Check</dt><dd>Open Sources to see Prowlarr's configured sources, reported health, application links and the source lists in each library app. Refresh status to check again.</dd>
           <dt>Fix</dt><dd>Start Prowlarr, add indexers there, and run its sync to the library apps. Then add its address and API key in Settings.</dd>
         </dl>
       </details>
@@ -392,19 +426,19 @@
         <summary>Cleanup and removal safety</summary>
         <dl class="help-facts">
           <dt>Why</dt><dd>Cleanup frees local disk space after a download is safely in the library.</dd>
-          <dt>Required</dt><dd>Optional. Switch it off in Settings.</dd>
-          <dt>Check</dt><dd>Cleanup shows the last check and any reason it was blocked.</dd>
-          <dt>Fix</dt><dd>If a check is blocked, reconnect the missing app or NAS. Library refuses to remove anything while it is unsure, and never touches downloads the library apps do not know about.</dd>
+          <dt>Required</dt><dd>Optional and currently off. The staged Trash policy is planned; the old permanent-delete path is retired.</dd>
+          <dt>Check</dt><dd>Cleanup shows the planned retention stages and the seeding limits reported by qBittorrent.</dd>
+          <dt>Fix</dt><dd>No cleanup engine is active in this build. Keep local copies until the staged policy is implemented and verified. The NAS library copy and unrelated Trash are outside its scope.</dd>
         </dl>
       </details>
 
       <details class="panel help-step">
         <summary>Startup, login and sleep</summary>
         <dl class="help-facts">
-          <dt>Why</dt><dd>The local server must be running for this browser page and for downloads to keep going.</dd>
+          <dt>Why</dt><dd>The Library host must be running for browser control. The stock download and library apps run independently and can continue working while Library is unavailable.</dd>
           <dt>Required</dt><dd>Yes while you use the browser.</dd>
-          <dt>Check</dt><dd>The desktop app is open and Activity loads.</dd>
-          <dt>Fix</dt><dd>Open Library Studio KH. A background host that stays running after the window closes is planned; until then keep the app open and stop the computer sleeping while downloads run.</dd>
+          <dt>Check</dt><dd>Activity loads. With an installed background host, closing the desktop window leaves browser access available.</dd>
+          <dt>Fix</dt><dd>Start the installed Library host, or keep the desktop app open in desktop-only mode. Built-in service setup is still planned. Keep the host awake for remote access; OS login and NAS availability are separate setup steps.</dd>
         </dl>
       </details>
 

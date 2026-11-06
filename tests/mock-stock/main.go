@@ -68,10 +68,14 @@ func main() {
 		"/api/v3/rootfolder": []map[string]any{{"id": 1, "path": "/Volumes/NAS/Media"}}, "/api/v1/rootfolder": []map[string]any{{"id": 1, "path": "/Volumes/NAS/Music"}},
 		"/api/v1/metadataprofile": []map[string]any{{"id": 1}},
 	}
+	tracking := newTrackingFixture(media)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		p := r.URL.Path
+		if tracking(w, r) {
+			return
+		}
 		if p == "/api/v2/torrents/stop" || p == "/api/v2/torrents/start" {
 			for _, hash := range strings.Split(r.FormValue("hashes"), "|") {
 				paused[hash] = strings.HasSuffix(p, "/stop")

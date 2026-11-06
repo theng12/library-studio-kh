@@ -1,0 +1,23 @@
+#view-media > .head > button { margin-bottom: 0.9rem; }
+#media-information, #media-children, #sources-content { display: grid; gap: var(--gap); min-width: 0; }
+.media-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+.media-padding { padding: 1rem 1.25rem; }
+.media-monitor { margin: 0; min-height: 2rem; }
+.media-monitor input { flex: none; }
+#media-children .list td { vertical-align: middle; }
+.table-scroll { overflow-x: auto; }
+#media-release-list td:first-child { min-width: 15rem; }
+#media-release-list .sub { white-space: normal; max-width: 45ch; }
+#media-release-list button { min-width: 6rem; }
+.source-notes { padding: 0.6rem 1.25rem 1rem 2.5rem; margin: 0; color: var(--ink-2); }
+.source-notes li { margin-top: 0.5rem; overflow-wrap: anywhere; }
+.source-names { color: var(--ink-2); overflow-wrap: anywhere; margin: 0.4rem 0 1rem; }
+#sources-content h3 { font-size: 0.95rem; margin: 0 0 0.4rem; }
+#sources-content .notice { margin: 0.4rem 0 1rem; }
+@media (max-width: 760px) {
+  #media-release-list td:first-child { min-width: 0; }
+  .media-search, #sources-refresh, #media-release-list button, .media-monitor { min-height: 44px; }
+  .table-scroll { overflow: visible; }
+  #media-children .list td, #media-release-list .list td { margin-bottom: 0.3rem; }
+  #media-information .media-actions { align-items: flex-start; }
+}

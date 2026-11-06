@@ -34,5 +34,5 @@ Tests use mocks only. Never call real stock apps, the NAS or the 1301 Mac from a
 - ponytail on every coding task; impeccable before UI edits; graphify before hand searches when a graph exists.
 - Commit as `112568204+theng12@users.noreply.github.com`.
 - No `rm`: move files to `~/Developer/_trash/library-studio-kh/`.
-- Paths are settings, never hard-coded. Optional features off by default; removal is the one owner-approved default-on feature.
+- Paths are settings, never hard-coded. Optional features off by default. Legacy permanent-delete cleanup is retired; the owner-confirmed staged policy in docs/STORAGE_POLICY.md stays off until implemented and verified.
 - Releases go through the Updater lead after Developer says go ([docs/PACKAGING.md](docs/PACKAGING.md)).

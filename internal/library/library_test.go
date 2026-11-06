@@ -71,23 +71,25 @@ func cfg(url string) config.Config {
 	return c
 }
 
-func TestCleanupRemovesOnlyFullyImportedOldItems(t *testing.T) {
+func TestRetiredCleanupKeepsEveryLocalCopy(t *testing.T) {
 	srv, deleted := mockStock(t, true)
 	home := t.TempDir()
 	s := Gather(cfg(srv.URL), home, now)
 	if s.Blocked != "" {
 		t.Fatalf("unexpected block: %s", s.Blocked)
 	}
-	n, errs := Cleanup(cfg(srv.URL), home, s, now)
-	if n != 1 || len(errs) != 0 || len(*deleted) != 1 || (*deleted)[0] != "aaa" {
-		t.Fatalf("want only aaa removed, got %d %v %v", n, *deleted, errs)
+	legacy := cfg(srv.URL)
+	legacy.CleanupOn = true
+	n, errs := Cleanup(legacy, home, s, now)
+	if n != 0 || len(errs) != 1 || len(*deleted) != 0 {
+		t.Fatalf("retired cleanup must never delete, got %d %v %v", n, *deleted, errs)
 	}
 	kinds := map[string]string{}
 	for _, it := range Gather(cfg(srv.URL), home, now).Items {
 		kinds[it.Title] = it.Kind
 	}
 	want := map[string]string{"New Imported": "imported", "Never Imported": "unmanaged", "Part Imported": "waiting",
-		"Still Downloading": "downloading", "Import Failed": "waiting", "Old Imported": "removed", "Show · S01E01 Pilot": "upcoming"}
+		"Still Downloading": "downloading", "Import Failed": "waiting", "Old Imported": "imported", "Show · S01E01 Pilot": "upcoming"}
 	for k, v := range want {
 		if kinds[k] != v {
 			t.Errorf("%s: want %s, got %q", k, v, kinds[k])

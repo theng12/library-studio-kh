@@ -36,9 +36,14 @@ type Config struct {
 	Prowlarr      App    `json:"prowlarr"`
 }
 
-func Default() Config { return Config{CleanupOn: true, CleanupDays: 7, TailscalePort: 7882} }
+const StagedCleanupNotice = "Automatic cleanup is disabled until the staged Trash policy is available."
+
+func Default() Config { return Config{CleanupOn: false, CleanupDays: 7, TailscalePort: 7882} }
 
 func (c Config) Validate() error {
+	if c.CleanupOn {
+		return errors.New(StagedCleanupNotice)
+	}
 	if c.TailscaleOn && (c.TailscalePort < 1024 || c.TailscalePort > 65535) {
 		return errors.New("Tailscale port must be a whole number from 1024 to 65535")
 	}
@@ -88,6 +93,8 @@ func Open(dir string) (*Store, error) {
 	if err := json.Unmarshal(b, &s.cfg); err != nil {
 		return nil, fmt.Errorf("settings file %s is damaged: %w", s.path, err)
 	}
+	// Retire the old permanent-delete policy without enabling a replacement on migration.
+	s.cfg.CleanupOn = false
 	return s, nil
 }
 

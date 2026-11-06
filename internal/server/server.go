@@ -60,6 +60,8 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.registerAuth(mux)
 	s.registerControls(mux)
+	s.registerTracking(mux)
+	s.registerSources(mux)
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/host-proof", s.hostProof)
 	static, _ := fs.Sub(web, "web")

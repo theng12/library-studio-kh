@@ -304,7 +304,15 @@ function renderLibrary() {
       monitor.setAttribute("aria-label", (m.monitored ? "Stop monitoring " : "Monitor ") + m.title);
       monitor.addEventListener("change", () => toggleMonitor(m, monitor));
     }
-    return row([titleCell(m), TYPE[m.app] || m.app, m.haveFiles ? "In library" : "Waiting for files", monitor, m.added ? day(m.added) : ""]);
+    const title = titleCell(m);
+    if (m.id > 0) {
+      const open = document.createElement("button");
+      open.type = "button"; open.className = "inline title"; open.textContent = m.title;
+      open.setAttribute("aria-label", "Details for " + m.title);
+      open.addEventListener("click", () => openMediaDetails(m));
+      title.firstChild.replaceWith(open, " ");
+    }
+    return row([title, TYPE[m.app] || m.app, m.haveFiles ? "In library" : "Waiting for files", monitor, m.added ? day(m.added) : ""]);
   }));
 }
 for (const id of ["#lib-q", "#lib-type", "#lib-sort"]) $(id).addEventListener("input", renderLibrary);
@@ -464,6 +472,7 @@ function show(view) {
   if (view === "settings" && current) { fillForm(current); loadSessions(); }
   if (view === "browse" && !libItems) loadLibrary();
   if (view === "downloads") loadDownloads();
+  if (view === "sources") loadSources();
   if (view === "find") $("#find-q").focus();
   $(".content").scrollTo?.(0, 0);
   window.scrollTo(0, 0);

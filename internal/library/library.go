@@ -156,7 +156,7 @@ func Gather(c config.Config, home string, now time.Time) Snapshot {
 				s.Items = append(s.Items, it)
 			}
 			if p, err := qb.Prefs(); err == nil {
-				s.Settings = append(s.Settings, qbitSettings(p, c.CleanupDays)...)
+				s.Settings = append(s.Settings, qbitSettings(p)...)
 			}
 			if c.DownloadPath == "" {
 				if f, err := qb.FreeSpace(); err == nil {
@@ -256,55 +256,40 @@ func onOff(b bool) string {
 // qBittorrent's limit action: 0 stop, 1 remove torrent, 2 super seeding, 3 remove torrent and files.
 var limitActions = map[float64]string{0: "Stop torrent", 1: "Remove torrent", 2: "Super seeding", 3: "Remove torrent and files"}
 
-func qbitSettings(p map[string]any, days int) []Setting {
-	enabled, _ := p["max_seeding_time_enabled"].(bool)
-	mins, _ := p["max_seeding_time"].(float64)
-	act, _ := p["max_ratio_act"].(float64)
-	limit := "No limit"
-	if enabled {
+func qbitSettings(p map[string]any) []Setting {
+	enabled, hasEnabled := p["max_seeding_time_enabled"].(bool)
+	mins, hasMinutes := p["max_seeding_time"].(float64)
+	act, hasAction := p["max_ratio_act"].(float64)
+	limit := "Not reported"
+	if hasEnabled && !enabled {
+		limit = "No limit"
+	} else if hasEnabled && hasMinutes {
 		limit = fmt.Sprintf("%g days", mins/1440)
 	}
-	want := fmt.Sprintf("%d days", days)
+	action := "Not reported"
+	if hasAction {
+		action = limitActions[act]
+	}
 	return []Setting{
-		{"qBittorrent", "Stop seeding after", limit, want, enabled && int(mins) == days*1440},
-		// Removing files from inside qBittorrent would skip the library check, so it must not be the action.
-		{"qBittorrent", "When the limit is reached", limitActions[act], "Stop torrent", act == 0},
+		{"qBittorrent", "Stop seeding after", limit, "Controlled in qBittorrent", hasEnabled && (!enabled || hasMinutes)},
+		{"qBittorrent", "When the limit is reached", action, "Stop torrent", hasAction && act == 0},
 	}
 }
 
-// Apply puts the cleanup settings into the stock apps. It never turns on removal inside them.
+// Apply is retained for old callers, but no longer overwrites the stock seeding policy.
 func Apply(c config.Config) []string {
-	var errs []string
-	if c.QBit.URL != "" {
-		qb := stock.NewQBit(c.QBit.URL, c.QBit.Username, c.QBit.Password)
-		p := map[string]any{"max_seeding_time_enabled": true, "max_seeding_time": c.CleanupDays * 1440, "max_ratio_act": 0}
-		if err := qb.SetPrefs(p); err != nil {
-			errs = append(errs, err.Error())
-		}
+	if c.CleanupOn {
+		return []string{config.StagedCleanupNotice}
 	}
-	for _, a := range arrs(c) {
-		if err := a.ApplyHandling(); err != nil {
-			errs = append(errs, err.Error())
-		}
-	}
-	return errs
+	return nil
 }
 
-// Cleanup removes the local copies the snapshot cleared. It does nothing when switched off or when any app failed to answer.
+// Cleanup never calls the retired delete-with-files path. The staged Trash engine is separate work.
 func Cleanup(c config.Config, home string, s Snapshot, now time.Time) (removed int, errs []string) {
-	if !c.CleanupOn || s.Blocked != "" || len(s.remove) == 0 {
-		return 0, nil
+	if c.CleanupOn {
+		return 0, []string{config.StagedCleanupNotice}
 	}
-	qb := stock.NewQBit(c.QBit.URL, c.QBit.Username, c.QBit.Password)
-	for _, t := range s.remove {
-		if err := qb.Delete(t.Hash); err != nil {
-			errs = append(errs, err.Error())
-			continue
-		}
-		removed++
-		appendLog(home, Item{Title: t.Name, Kind: "removed", When: now})
-	}
-	return removed, errs
+	return 0, nil
 }
 
 const logKeep = 200
