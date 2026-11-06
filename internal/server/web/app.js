@@ -287,19 +287,32 @@ async function toggleMonitor(m, box) {
   } finally { box.disabled = false; }
 }
 
+function setLibraryOptions(select, options) {
+  const keep = select.value;
+  select.replaceChildren(...options.map(({ value, label }) => {
+    const option = document.createElement("option");
+    option.value = value; option.textContent = label;
+    return option;
+  }));
+  select.value = options.some((o) => o.value === keep) ? keep : "";
+}
+
+function fillLibraryOptions(items) {
+  const genre = $("#lib-genre"), year = $("#lib-year");
+  // Rebuild only when the reported metadata set changes, so a chosen filter survives refreshes.
+  const key = libraryGenres(items).join("\u0001") + "|" + libraryYears(items).join(",");
+  if (genre.dataset.metadataKey === key) return;
+  setLibraryOptions(genre, libraryGenreOptions(items));
+  setLibraryOptions(year, libraryYearOptions(items));
+  genre.dataset.metadataKey = key;
+}
+
 function renderLibrary() {
   if (!libItems) return;
+  fillLibraryOptions(libItems);
   const q = $("#lib-q").value, type = $("#lib-type").value, sort = $("#lib-sort").value;
-  const language = $("#lib-language").value;
-  let items = libItems.filter((m) => {
-    const original = (m.originalLanguage || "").trim().toLowerCase();
-    const unknown = !original || original === "unknown" || original === "any";
-    const matchesLanguage = !language || (language === "english" ? original === "english" : language === "other" ? !unknown && original !== "english" : unknown);
-    return (!type || m.app === type) && has(m.title, q) && matchesLanguage;
-  });
-  items.sort(sort === "added" ? (a, b) => (b.added || "").localeCompare(a.added || "")
-    : sort === "app" ? (a, b) => a.app.localeCompare(b.app) || byTitle(a, b)
-    : sort === "year" ? (a, b) => (b.year || 0) - (a.year || 0) || byTitle(a, b) : byTitle);
+  const language = $("#lib-language").value, genre = $("#lib-genre").value, year = $("#lib-year").value;
+  const items = librarySort(libraryFilter(libItems, { query: q, type, language, genre, year }), sort);
   $("#browse-lede").textContent = libItems.length + (libItems.length === 1 ? " item" : " items") + " looked after by Sonarr, Radarr and Lidarr.";
   $("#lib-empty").hidden = items.length > 0;
   $("#lib-empty").textContent = libItems.length ? "Nothing matches." : "Nothing in the library yet. Use Find & add.";
@@ -331,6 +344,7 @@ function renderLibrary() {
     const body = mediaNode("div", null, "library-detail");
     if (m.overview) body.append(mediaNode("p", m.overview, "library-overview"));
     body.append(mediaNode("p", "Original language: " + (m.originalLanguage || "Not reported") + ". Downloaded audio and subtitles may differ.", "muted"));
+    body.append(mediaNode("p", "Genres: " + (m.genres && m.genres.length ? m.genres.join(", ") : "Not reported") + ".", "muted"));
     if (m.added) body.append(mediaNode("p", "Added " + day(m.added), "muted"));
     if (typeof m.monitored === "boolean") {
       const label = mediaNode("label", null, "check media-monitor"), monitor = document.createElement("input");
@@ -350,7 +364,7 @@ function renderLibrary() {
     details.append(summary, body); return details;
   }));
 }
-for (const id of ["#lib-q", "#lib-type", "#lib-sort", "#lib-language"]) $(id).addEventListener("input", renderLibrary);
+for (const id of ["#lib-q", "#lib-type", "#lib-genre", "#lib-year", "#lib-sort", "#lib-language"]) $(id).addEventListener("input", renderLibrary);
 
 $("#find-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();

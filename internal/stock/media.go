@@ -14,6 +14,7 @@ type Media struct {
 	ID               int             `json:"id"`
 	Title            string          `json:"title"`
 	Year             int             `json:"year,omitempty"`
+	Genres           []string        `json:"genres"`
 	Added            *time.Time      `json:"added,omitempty"`
 	Status           string          `json:"status,omitempty"`
 	Overview         string          `json:"overview,omitempty"`
@@ -33,6 +34,7 @@ type rawMedia struct {
 	Title            string
 	ArtistName       string
 	Year             int
+	Genres           []string
 	Added            *time.Time
 	Status           string
 	Overview         string
@@ -44,7 +46,10 @@ type rawMedia struct {
 }
 
 func (r rawMedia) media(app string) Media {
-	m := Media{App: app, ID: r.ID, Title: r.Title, Year: r.Year, Status: r.Status, Overview: r.Overview, InLibrary: r.ID > 0, HaveFiles: r.HasFile, Monitored: r.Monitored, QualityProfileID: r.QualityProfileID}
+	m := Media{App: app, ID: r.ID, Title: r.Title, Year: r.Year, Genres: []string{}, Status: r.Status, Overview: r.Overview, InLibrary: r.ID > 0, HaveFiles: r.HasFile, Monitored: r.Monitored, QualityProfileID: r.QualityProfileID}
+	if r.Genres != nil {
+		m.Genres = r.Genres
+	}
 	if r.ArtistName != "" {
 		m.Title = r.ArtistName
 	}

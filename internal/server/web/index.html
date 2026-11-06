@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="media.css">
 <link rel="stylesheet" href="movie-extras.css">
 <script src="download-view.js" defer></script>
+<script src="library-view.js" defer></script>
 <script src="addresses.js" defer></script>
 <script src="app.js" defer></script>
 <script src="media.js" defer></script>
@@ -178,7 +179,9 @@
         <div class="tools">
           <label class="search">Search <input type="search" id="lib-q" placeholder="Title"></label>
           <label>Type <select id="lib-type"><option value="">All</option><option value="Sonarr">TV</option><option value="Radarr">Films</option><option value="Lidarr">Music</option></select></label>
-          <label>Sort <select id="lib-sort"><option value="title">Title A–Z</option><option value="app">App</option><option value="added">Recently added</option><option value="year">Newest year</option></select></label>
+          <label>Genre <select id="lib-genre"><option value="">All genres</option></select></label>
+          <label>Year <select id="lib-year"><option value="">All years</option></select></label>
+          <label>Sort <select id="lib-sort"><option value="title">Title A–Z</option><option value="app">App</option><option value="added">Recently added</option><option value="year">Newest year</option><option value="oldest">Oldest year</option></select></label>
           <label>Original language <select id="lib-language"><option value="">All</option><option value="english">English</option><option value="other">Other reported languages</option><option value="unknown">Not reported</option></select></label>
         </div>
         <p id="lib-empty" class="empty" hidden></p>
