@@ -149,6 +149,22 @@ func (s *Store) Get() Config {
 
 // Save writes atomically. shortcut: keys sit in a 0600 file like the *arr apps' own config; move to the OS keychain if the owner wants that.
 func (s *Store) Save(c Config) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.saveLocked(c)
+}
+
+// SaveIfUnchanged prevents setup from replacing settings edited during a native check.
+func (s *Store) SaveIfUnchanged(before, next Config) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cfg != before {
+		return errors.New("settings changed during setup; check connections again before saving")
+	}
+	return s.saveLocked(next)
+}
+
+func (s *Store) saveLocked(c Config) error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
@@ -163,8 +179,6 @@ func (s *Store) Save(c Config) error {
 	if err := os.Rename(tmp, s.path); err != nil {
 		return err
 	}
-	s.mu.Lock()
 	s.cfg = c
-	s.mu.Unlock()
 	return nil
 }

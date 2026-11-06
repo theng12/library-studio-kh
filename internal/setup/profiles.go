@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -89,20 +88,10 @@ func PrepareArrProfile(home, app string, port int) (Profile, error) {
 	if err != nil {
 		return Profile{}, err
 	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, os.ErrExist) {
+	if err := writeNewProfileFile(path, []byte(xml.Header+string(data)+"\n")); errors.Is(err, os.ErrExist) {
 		return ReadArrProfile(app, dir)
-	}
-	if err != nil {
+	} else if err != nil {
 		return Profile{}, err
-	}
-	_, writeErr := io.WriteString(file, xml.Header+string(data)+"\n")
-	closeErr := file.Close()
-	if writeErr != nil {
-		return Profile{}, fmt.Errorf("new profile could not be written; retained for repair: %w", writeErr)
-	}
-	if closeErr != nil {
-		return Profile{}, closeErr
 	}
 	p, err := ReadArrProfile(app, dir)
 	p.Created = err == nil

@@ -1118,7 +1118,7 @@ func setupFieldStringValue(raw map[string]any, name string) (string, bool) {
 		return "", false
 	}
 	s, _ := f["value"].(string)
-	return strings.TrimSpace(s), true
+	return s, true
 }
 
 // secretLooksHidden recognises masked values that apps use in place of the real secret.

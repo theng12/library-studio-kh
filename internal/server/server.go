@@ -15,6 +15,7 @@ import (
 	librarystudio "librarystudio"
 	"librarystudio/internal/config"
 	"librarystudio/internal/library"
+	"librarystudio/internal/setup"
 )
 
 //go:embed web
@@ -33,6 +34,7 @@ type Server struct {
 	remote  remoteAccess
 	access  accessState
 	cleanup *library.StagedCleanup
+	setup   *setup.Manager
 }
 
 type lastRun struct {
@@ -45,6 +47,7 @@ type lastRun struct {
 func New(store *config.Store, home string) *Server {
 	s := &Server{Store: store, Home: home, Now: time.Now}
 	s.cleanup = library.NewStagedCleanup(store.Get, home)
+	s.setup = setup.NewManager(home, store)
 	s.initAccess()
 	return s
 }
@@ -61,6 +64,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerSources(mux)
 	s.registerSubtitles(mux)
 	s.registerCleanup(mux)
+	s.registerSetup(mux)
 	s.RegisterCompanionSettings(mux)
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/host-proof", s.hostProof)
