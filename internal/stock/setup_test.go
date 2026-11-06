@@ -20,6 +20,8 @@ type fakeStock struct {
 	rootErr                    bool
 	rootInaccessible           bool
 	hideCreated                bool
+	hideSecrets                bool
+	tamperSecret               bool
 	testedClients, madeClients []map[string]any
 	testedApps, madeApps       []map[string]any
 	madeCategories             []map[string]string
@@ -47,6 +49,9 @@ func (f *fakeStock) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		body := decodeFakeBody(r)
+		if f.tamperSecret {
+			setupSetField(body, "password", "tampered-secret")
+		}
 		f.nextID++
 		body["id"] = float64(f.nextID)
 		f.clients = append(f.clients, body)
@@ -75,11 +80,7 @@ func (f *fakeStock) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "GET" && r.URL.Path == "/api/v1/applications/schema":
 		writeFakeJSON(w, f.appSchema)
 	case r.Method == "GET" && r.URL.Path == "/api/v1/applications":
-		if f.hideCreated && len(f.madeApps) > 0 {
-			writeFakeJSON(w, f.appsWithoutMade())
-			return
-		}
-		writeFakeJSON(w, f.apps)
+		writeFakeJSON(w, f.visibleApps())
 	case r.Method == "POST" && r.URL.Path == "/api/v1/applications/test":
 		body := decodeFakeBody(r)
 		f.testedApps = append(f.testedApps, body)
@@ -94,6 +95,9 @@ func (f *fakeStock) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		body := decodeFakeBody(r)
+		if f.tamperSecret {
+			setupSetField(body, "apiKey", "tampered-key")
+		}
 		f.nextID++
 		body["id"] = float64(f.nextID)
 		f.apps = append(f.apps, body)
@@ -122,7 +126,27 @@ func (f *fakeStock) visibleClients() []map[string]any {
 	if f.hideCreated && len(f.madeClients) > 0 {
 		return []map[string]any{}
 	}
-	return f.clients
+	return f.visibleResources(f.clients, "password")
+}
+
+func (f *fakeStock) visibleApps() []map[string]any {
+	source := f.apps
+	if f.hideCreated && len(f.madeApps) > 0 {
+		source = f.appsWithoutMade()
+	}
+	return f.visibleResources(source, "apiKey")
+}
+
+func (f *fakeStock) visibleResources(in []map[string]any, secret string) []map[string]any {
+	out := []map[string]any{}
+	for _, item := range in {
+		c := cloneResource(item)
+		if f.hideSecrets {
+			setupSetField(c, secret, "")
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 func (f *fakeStock) appsWithoutMade() []map[string]any {
@@ -261,7 +285,7 @@ func TestEnsureQBitClientCreatesTestsAndReadsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != SetupCreated || res.Test != CheckPassed || res.Readback != CheckPassed || res.ClientID != 1 {
+	if res.Status != SetupCreated || res.Test != CheckPassed || res.SavedSecretCheck != CheckPassed || res.Readback != CheckPassed || res.ClientID != 1 {
 		t.Fatalf("result: %+v", res)
 	}
 	if len(f.madeClients) != 1 || len(f.testedClients) != 1 {
@@ -291,8 +315,11 @@ func TestEnsureQBitClientCreatesTestsAndReadsBack(t *testing.T) {
 	res, err = a.EnsureQBitClient(QBitClientInput{
 		URL: "http://10.0.0.5:8080/qbt", Username: "owner", Password: "hunter2",
 	})
-	if err != nil || res.Status != SetupReused || res.ClientID != 1 {
+	if err != nil || res.Status != SetupReused || res.ClientID != 1 || res.Test != CheckPassed || res.SavedSecretCheck != CheckPassed {
 		t.Fatalf("second call: %+v %v", res, err)
+	}
+	if len(f.testedClients) != 2 {
+		t.Fatalf("reused client should be tested with its exposed saved secret, tests=%d", len(f.testedClients))
 	}
 	if len(f.madeClients) != 1 {
 		t.Fatalf("idempotent call created another client: %d", len(f.madeClients))
@@ -500,7 +527,7 @@ func TestEnsureApplicationCreatesTestsAndReuses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != SetupCreated || res.Test != CheckPassed || res.Readback != CheckPassed || res.App != "Sonarr" {
+	if res.Status != SetupCreated || res.Test != CheckPassed || res.SavedSecretCheck != CheckPassed || res.Readback != CheckPassed || res.App != "Sonarr" {
 		t.Fatalf("result: %+v", res)
 	}
 	if len(f.madeApps) != 1 || len(f.testedApps) != 1 {
@@ -522,8 +549,11 @@ func TestEnsureApplicationCreatesTestsAndReuses(t *testing.T) {
 	}
 
 	res, err = a.EnsureProwlarrApplication(in)
-	if err != nil || res.Status != SetupReused || res.ApplicationID != 1 || len(f.madeApps) != 1 {
+	if err != nil || res.Status != SetupReused || res.ApplicationID != 1 || len(f.madeApps) != 1 || res.Test != CheckPassed || res.SavedSecretCheck != CheckPassed {
 		t.Fatalf("second call: %+v %v", res, err)
+	}
+	if len(f.testedApps) != 2 {
+		t.Fatalf("reused link should be tested with its exposed saved key, tests=%d", len(f.testedApps))
 	}
 }
 
@@ -548,6 +578,7 @@ func TestEnsureApplicationConflictAndDisabled(t *testing.T) {
 	existing["fields"] = []any{
 		map[string]any{"name": "baseUrl", "value": "http://new:8989"},
 		map[string]any{"name": "apiKey", "value": "saved"},
+		map[string]any{"name": "prowlarrUrl", "value": "http://10.0.0.2:9696"},
 	}
 	res, err := NewArr("Prowlarr", srv.URL, "prowlarr-key").EnsureProwlarrApplication(ApplicationInput{
 		Target: "Sonarr", BaseURL: "http://new:8989", APIKey: "key-123", ProwlarrURL: "http://10.0.0.2:9696",
@@ -628,5 +659,156 @@ func TestEnsureCategoryReadbackFailureIsHonest(t *testing.T) {
 	res, err := q.EnsureCategory(CategoryInput{Name: "tv", SavePath: "/downloads/tv"})
 	if err == nil || res.Status != SetupCreated || res.Readback != CheckFailed {
 		t.Fatalf("partial write: %+v %v", res, err)
+	}
+}
+
+func matchingQBitClient(secret string) map[string]any {
+	return map[string]any{
+		"id": float64(7), "name": "qBittorrent", "implementation": "QBittorrent", "enable": true,
+		"fields": []any{
+			map[string]any{"name": "host", "value": "10.0.0.5"},
+			map[string]any{"name": "port", "value": float64(8080)},
+			map[string]any{"name": "useSsl", "value": false},
+			map[string]any{"name": "urlBase", "value": "/"},
+			map[string]any{"name": "username", "value": "owner"},
+			map[string]any{"name": "password", "value": secret},
+			map[string]any{"name": "tvCategory", "value": "tv"},
+		},
+	}
+}
+
+func matchingApplication(prowlarrURL string) map[string]any {
+	return map[string]any{
+		"id": float64(4), "name": "Sonarr", "implementation": "Sonarr", "enable": true,
+		"fields": []any{
+			map[string]any{"name": "baseUrl", "value": "http://10.0.0.9:8989"},
+			map[string]any{"name": "apiKey", "value": "saved-key"},
+			map[string]any{"name": "prowlarrUrl", "value": prowlarrURL},
+		},
+	}
+}
+
+func TestEnsureApplicationProwlarrURLConflict(t *testing.T) {
+	f := &fakeStock{appSchema: appSchema(), apps: []map[string]any{matchingApplication("http://old:9696")}}
+	srv := setupFakeServer(t, f)
+	res, err := NewArr("Prowlarr", srv.URL, "prowlarr-key").EnsureProwlarrApplication(ApplicationInput{
+		Target: "Sonarr", BaseURL: "http://10.0.0.9:8989", APIKey: "key-123", ProwlarrURL: "http://10.0.0.2:9696",
+	})
+	if !errors.Is(err, ErrSetupConflict) || len(f.madeApps) != 0 || len(f.testedApps) != 0 {
+		t.Fatalf("want Prowlarr URL conflict without writes: %+v %v", res, err)
+	}
+	if len(res.Conflict) != 1 || res.Conflict[0] != "prowlarrUrl" || res.ExistingProwlarrURL != "http://old:9696" {
+		t.Fatalf("conflict detail: %+v", res)
+	}
+}
+
+func TestReusedResourcesDoNotClaimUnverifiedSavedSecrets(t *testing.T) {
+	f := &fakeStock{
+		clientSchema: qbitClientSchema(),
+		clients:      []map[string]any{matchingQBitClient("saved-secret")},
+		hideSecrets:  true,
+	}
+	srv := setupFakeServer(t, f)
+	res, err := NewArr("Sonarr", srv.URL, "arr-key").EnsureQBitClient(QBitClientInput{
+		URL: "http://10.0.0.5:8080", Username: "owner", Password: "fresh-secret",
+	})
+	if err != nil || res.Status != SetupReused || res.Test != CheckNotRun || res.SavedSecretCheck != CheckNotRun || res.Readback != CheckPassed {
+		t.Fatalf("reused client claimed a check it could not make: %+v %v", res, err)
+	}
+	if len(f.testedClients) != 0 {
+		t.Fatal("a hidden saved secret must not be replaced by the caller's fresh secret for a test")
+	}
+
+	f = &fakeStock{
+		appSchema:   appSchema(),
+		apps:        []map[string]any{matchingApplication("http://10.0.0.2:9696")},
+		hideSecrets: true,
+	}
+	srv = setupFakeServer(t, f)
+	res2, err := NewArr("Prowlarr", srv.URL, "prowlarr-key").EnsureProwlarrApplication(ApplicationInput{
+		Target: "Sonarr", BaseURL: "http://10.0.0.9:8989", APIKey: "fresh-key", ProwlarrURL: "http://10.0.0.2:9696",
+	})
+	if err != nil || res2.Status != SetupReused || res2.Test != CheckNotRun || res2.SavedSecretCheck != CheckNotRun || res2.Readback != CheckPassed {
+		t.Fatalf("reused link claimed a check it could not make: %+v %v", res2, err)
+	}
+	if len(f.testedApps) != 0 {
+		t.Fatal("a hidden saved key must not be replaced by the caller's fresh key for a test")
+	}
+}
+
+func TestCreatedResourceSecretChecks(t *testing.T) {
+	f := &fakeStock{clientSchema: qbitClientSchema(), hideSecrets: true}
+	srv := setupFakeServer(t, f)
+	res, err := NewArr("Sonarr", srv.URL, "arr-key").EnsureQBitClient(QBitClientInput{
+		URL: "http://10.0.0.5:8080", Username: "owner", Password: "hunter2",
+	})
+	if err != nil || res.Status != SetupCreated || res.Test != CheckPassed || res.SavedSecretCheck != CheckNotRun || res.Readback != CheckPassed {
+		t.Fatalf("hidden saved secret must be not_run: %+v %v", res, err)
+	}
+
+	f = &fakeStock{appSchema: appSchema(), hideSecrets: true}
+	srv = setupFakeServer(t, f)
+	appRes, err := NewArr("Prowlarr", srv.URL, "prowlarr-key").EnsureProwlarrApplication(ApplicationInput{
+		Target: "Sonarr", BaseURL: "http://10.0.0.9:8989", APIKey: "key-123", ProwlarrURL: "http://10.0.0.2:9696",
+	})
+	if err != nil || appRes.Status != SetupCreated || appRes.Test != CheckPassed || appRes.SavedSecretCheck != CheckNotRun || appRes.Readback != CheckPassed {
+		t.Fatalf("hidden saved key must be not_run: %+v %v", appRes, err)
+	}
+
+	f = &fakeStock{clientSchema: qbitClientSchema(), tamperSecret: true}
+	srv = setupFakeServer(t, f)
+	res, err = NewArr("Sonarr", srv.URL, "arr-key").EnsureQBitClient(QBitClientInput{
+		URL: "http://10.0.0.5:8080", Username: "owner", Password: "hunter2",
+	})
+	if err == nil || res.Status != SetupCreated || res.SavedSecretCheck != CheckFailed || res.Readback != CheckFailed {
+		t.Fatalf("a different saved secret must fail readback: %+v %v", res, err)
+	}
+	if strings.Contains(err.Error(), "hunter2") || strings.Contains(err.Error(), "tampered-secret") {
+		t.Fatalf("secret leaked in error: %v", err)
+	}
+
+	f = &fakeStock{appSchema: appSchema(), tamperSecret: true}
+	srv = setupFakeServer(t, f)
+	appRes, err = NewArr("Prowlarr", srv.URL, "prowlarr-key").EnsureProwlarrApplication(ApplicationInput{
+		Target: "Sonarr", BaseURL: "http://10.0.0.9:8989", APIKey: "key-123", ProwlarrURL: "http://10.0.0.2:9696",
+	})
+	if err == nil || appRes.Status != SetupCreated || appRes.SavedSecretCheck != CheckFailed || appRes.Readback != CheckFailed {
+		t.Fatalf("a different saved key must fail readback: %+v %v", appRes, err)
+	}
+	if strings.Contains(err.Error(), "key-123") || strings.Contains(err.Error(), "tampered-key") {
+		t.Fatalf("key leaked in error: %v", err)
+	}
+}
+
+func TestReadbackFallbackRequiresImplementation(t *testing.T) {
+	schema := qbitClientSchema()[0]
+	ep, err := parseQBitEndpoint("http://10.0.0.5:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unrelated := matchingQBitClient("saved-secret")
+	unrelated["implementation"] = "Transmission"
+	f := &fakeStock{clients: []map[string]any{unrelated}}
+	srv := setupFakeServer(t, f)
+	a := NewArr("Sonarr", srv.URL, "arr-key")
+	desired := map[string]any{"name": "qBittorrent"}
+	if _, err := a.verifyQBitClientReadback(0, desired, schema, ep, "owner", "tv", "hunter2"); err == nil {
+		t.Fatal("name fallback matched an unrelated implementation")
+	}
+	if _, err := a.verifyQBitClientReadback(7, desired, schema, ep, "owner", "tv", "hunter2"); err == nil {
+		t.Fatal("id readback matched an unrelated implementation")
+	}
+
+	app := matchingApplication("http://10.0.0.2:9696")
+	app["implementation"] = "Radarr"
+	f = &fakeStock{apps: []map[string]any{app}}
+	srv = setupFakeServer(t, f)
+	a = NewArr("Prowlarr", srv.URL, "prowlarr-key")
+	appDesired := map[string]any{"name": "Sonarr"}
+	if _, err := a.verifyApplicationReadback(0, appDesired, "Sonarr", "http://10.0.0.9:8989", "http://10.0.0.2:9696", "key-123"); err == nil {
+		t.Fatal("name fallback matched an unrelated application implementation")
+	}
+	if _, err := a.verifyApplicationReadback(4, appDesired, "Sonarr", "http://10.0.0.9:8989", "http://10.0.0.2:9696", "key-123"); err == nil {
+		t.Fatal("id readback matched an unrelated application implementation")
 	}
 }

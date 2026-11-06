@@ -115,6 +115,7 @@ type ClientSetup struct {
 	ExistingCategory string      `json:"existingCategory,omitempty"`
 	Test             SetupCheck  `json:"test"`
 	TestError        string      `json:"testError,omitempty"`
+	SavedSecretCheck SetupCheck  `json:"savedSecretCheck"`
 	Readback         SetupCheck  `json:"readback"`
 	ReadbackError    string      `json:"readbackError,omitempty"`
 	Conflict         []string    `json:"conflict,omitempty"`
@@ -133,7 +134,7 @@ type qbitEndpoint struct {
 // the app's live schema, tests it natively, then reads it back. A different
 // existing value is returned as a conflict, never overwritten.
 func (a *Arr) EnsureQBitClient(in QBitClientInput) (ClientSetup, error) {
-	res := ClientSetup{App: a.Name, Test: CheckNotRun, Readback: CheckNotRun}
+	res := ClientSetup{App: a.Name, Test: CheckNotRun, SavedSecretCheck: CheckNotRun, Readback: CheckNotRun}
 	ep, err := parseQBitEndpoint(in.URL)
 	if err != nil {
 		return res, err
@@ -197,15 +198,21 @@ func (a *Arr) EnsureQBitClient(in QBitClientInput) (ClientSetup, error) {
 				return res, errors.New(res.Blocked)
 			}
 		}
-		test := cloneResource(match)
-		a.setQBitFields(test, ep, in.Username, in.Password, category, false)
-		if err := a.do("POST", "/downloadclient/test", test, nil); err != nil {
-			res.Test, res.TestError = CheckFailed, a.setupErrorText(err, in.Password)
-			return res, fmt.Errorf("%s could not reach the existing qBittorrent client: %s", a.Name, res.TestError)
+		if saved, exposed := setupFieldStringValue(match, "password"); exposed && saved != "" && !secretLooksHidden(saved) {
+			if err := a.do("POST", "/downloadclient/test", cloneResource(match), nil); err != nil {
+				res.Test, res.TestError = CheckFailed, a.setupErrorText(err, saved)
+				res.SavedSecretCheck = CheckFailed
+				return res, fmt.Errorf("%s could not reach the existing qBittorrent client with its saved password: %s", a.Name, res.TestError)
+			}
+			res.Test, res.SavedSecretCheck, res.Readback = CheckPassed, CheckPassed, CheckPassed
+			res.Notes = append(res.Notes, "The app returned the saved password; the native test used the existing client unchanged.")
+			res.Notes = append(res.Notes, "The existing client was reused; its name and settings were left unchanged.")
+			return res, nil
 		}
-		res.Test, res.Readback = CheckPassed, CheckPassed
+		res.Test, res.SavedSecretCheck = CheckNotRun, CheckNotRun
+		res.Readback = CheckPassed
 		res.Notes = append(res.Notes, "The existing client was reused; its name and settings were left unchanged.")
-		res.Notes = append(res.Notes, "The saved password is not returned by the app; the native test used the caller's credential.")
+		res.Notes = append(res.Notes, "The saved password is not returned by the app, so it was not tested. Re-enter it in "+a.Name+" if the connection is not working.")
 		return res, nil
 	}
 
@@ -227,12 +234,18 @@ func (a *Arr) EnsureQBitClient(in QBitClientInput) (ClientSetup, error) {
 		res.Enabled = &v
 	}
 
-	if err := a.verifyQBitClientReadback(res.ClientID, desired, schema, ep, in.Username, category); err != nil {
+	secretCheck, err := a.verifyQBitClientReadback(res.ClientID, desired, schema, ep, in.Username, category, in.Password)
+	if err != nil {
 		res.Readback, res.ReadbackError = CheckFailed, a.setupErrorText(err, in.Password)
+		res.SavedSecretCheck = secretCheck
 		return res, fmt.Errorf("%s created the qBittorrent client but could not verify it: %s", a.Name, res.ReadbackError)
 	}
-	res.Readback = CheckPassed
-	res.Notes = append(res.Notes, "The app does not return the saved password; it was not compared on readback.")
+	res.Readback, res.SavedSecretCheck = CheckPassed, secretCheck
+	if secretCheck == CheckPassed {
+		res.Notes = append(res.Notes, "The app returned the saved password and it matches the supplied value.")
+	} else {
+		res.Notes = append(res.Notes, "The app did not return the saved password; the pre-create native test passed with the supplied value, but the stored value was not read back.")
+	}
 	return res, nil
 }
 
@@ -316,27 +329,30 @@ type ApplicationInput struct {
 }
 
 type ApplicationSetup struct {
-	App             string      `json:"app"`
-	Status          SetupStatus `json:"status"`
-	ApplicationID   int         `json:"applicationId,omitempty"`
-	Name            string      `json:"name,omitempty"`
-	Enabled         *bool       `json:"enabled,omitempty"`
-	BaseURL         string      `json:"baseUrl,omitempty"`
-	ExistingName    string      `json:"existingName,omitempty"`
-	ExistingBaseURL string      `json:"existingBaseUrl,omitempty"`
-	Test            SetupCheck  `json:"test"`
-	TestError       string      `json:"testError,omitempty"`
-	Readback        SetupCheck  `json:"readback"`
-	ReadbackError   string      `json:"readbackError,omitempty"`
-	Conflict        []string    `json:"conflict,omitempty"`
-	Blocked         string      `json:"blocked,omitempty"`
-	Notes           []string    `json:"notes,omitempty"`
+	App                 string      `json:"app"`
+	Status              SetupStatus `json:"status"`
+	ApplicationID       int         `json:"applicationId,omitempty"`
+	Name                string      `json:"name,omitempty"`
+	Enabled             *bool       `json:"enabled,omitempty"`
+	BaseURL             string      `json:"baseUrl,omitempty"`
+	ProwlarrURL         string      `json:"prowlarrUrl,omitempty"`
+	ExistingName        string      `json:"existingName,omitempty"`
+	ExistingBaseURL     string      `json:"existingBaseUrl,omitempty"`
+	ExistingProwlarrURL string      `json:"existingProwlarrUrl,omitempty"`
+	Test                SetupCheck  `json:"test"`
+	TestError           string      `json:"testError,omitempty"`
+	SavedSecretCheck    SetupCheck  `json:"savedSecretCheck"`
+	Readback            SetupCheck  `json:"readback"`
+	ReadbackError       string      `json:"readbackError,omitempty"`
+	Conflict            []string    `json:"conflict,omitempty"`
+	Blocked             string      `json:"blocked,omitempty"`
+	Notes               []string    `json:"notes,omitempty"`
 }
 
 // EnsureProwlarrApplication reuses the identical link or creates it from the
 // live /applications/schema entry, tests it natively, then reads it back.
 func (a *Arr) EnsureProwlarrApplication(in ApplicationInput) (ApplicationSetup, error) {
-	res := ApplicationSetup{App: canonicalArrName(in.Target), BaseURL: normalizeURLBase(in.BaseURL), Test: CheckNotRun, Readback: CheckNotRun}
+	res := ApplicationSetup{App: canonicalArrName(in.Target), BaseURL: normalizeURLBase(in.BaseURL), Test: CheckNotRun, SavedSecretCheck: CheckNotRun, Readback: CheckNotRun}
 	if res.App == "" {
 		return res, errors.New("choose Sonarr, Radarr or Lidarr")
 	}
@@ -355,6 +371,7 @@ func (a *Arr) EnsureProwlarrApplication(in ApplicationInput) (ApplicationSetup, 
 	if err != nil {
 		return res, err
 	}
+	res.ProwlarrURL = prowlarrURL
 	if strings.TrimSpace(in.APIKey) == "" {
 		return res, errors.New("an API key is required for the library app")
 	}
@@ -381,16 +398,17 @@ func (a *Arr) EnsureProwlarrApplication(in ApplicationInput) (ApplicationSetup, 
 		res.Status, res.Blocked = SetupBlocked, a.setupErrorText(err)
 		return res, a.SafeError(err)
 	}
-	match, conflict, existingName, existingBase := matchApplication(apps, res.App, base, name)
+	match, conflict, existingName, existingBase, existingProwlarr := matchApplication(apps, res.App, base, prowlarrURL, name)
 	if len(conflict) > 0 {
 		res.Status, res.Conflict = SetupConflict, conflict
-		res.ExistingName, res.ExistingBaseURL = existingName, existingBase
+		res.ExistingName, res.ExistingBaseURL, res.ExistingProwlarrURL = existingName, existingBase, existingProwlarr
 		return res, fmt.Errorf("%w: Prowlarr already links %s differently in %s", ErrSetupConflict, res.App, strings.Join(conflict, ", "))
 	}
 	if match != nil {
 		res.Status = SetupReused
 		res.ApplicationID, res.Name = asInt(match["id"]), a.sanitizeText(asStr(match["name"]))
 		res.ExistingName, res.ExistingBaseURL = res.Name, existingBase
+		res.ExistingProwlarrURL = existingProwlarr
 		if enabled, known := setupEnabled(match); known {
 			res.Enabled = &enabled
 			if !enabled {
@@ -399,15 +417,21 @@ func (a *Arr) EnsureProwlarrApplication(in ApplicationInput) (ApplicationSetup, 
 				return res, errors.New(res.Blocked)
 			}
 		}
-		test := cloneResource(match)
-		a.setApplicationFields(test, base, in.APIKey, prowlarrURL)
-		if err := a.do("POST", "/applications/test", test, nil); err != nil {
-			res.Test, res.TestError = CheckFailed, a.setupErrorText(err, in.APIKey)
-			return res, fmt.Errorf("Prowlarr could not reach the existing %s link: %s", res.App, res.TestError)
+		if saved, exposed := setupFieldStringValue(match, "apiKey"); exposed && saved != "" && !secretLooksHidden(saved) {
+			if err := a.do("POST", "/applications/test", cloneResource(match), nil); err != nil {
+				res.Test, res.TestError = CheckFailed, a.setupErrorText(err, saved)
+				res.SavedSecretCheck = CheckFailed
+				return res, fmt.Errorf("Prowlarr could not reach the existing %s link with its saved API key: %s", res.App, res.TestError)
+			}
+			res.Test, res.SavedSecretCheck, res.Readback = CheckPassed, CheckPassed, CheckPassed
+			res.Notes = append(res.Notes, "Prowlarr returned the saved API key; the native test used the existing link unchanged.")
+			res.Notes = append(res.Notes, "The existing link was reused; its name and settings were left unchanged.")
+			return res, nil
 		}
-		res.Test, res.Readback = CheckPassed, CheckPassed
+		res.Test, res.SavedSecretCheck = CheckNotRun, CheckNotRun
+		res.Readback = CheckPassed
 		res.Notes = append(res.Notes, "The existing link was reused; its name and settings were left unchanged.")
-		res.Notes = append(res.Notes, "The saved API key is not returned by Prowlarr; the native test used the caller's key.")
+		res.Notes = append(res.Notes, "The saved API key is not returned by Prowlarr, so it was not tested. Re-enter it in Prowlarr if the connection is not working.")
 		return res, nil
 	}
 
@@ -429,12 +453,18 @@ func (a *Arr) EnsureProwlarrApplication(in ApplicationInput) (ApplicationSetup, 
 		res.Enabled = &v
 	}
 
-	if err := a.verifyApplicationReadback(res.ApplicationID, desired, res.App, base); err != nil {
+	secretCheck, err := a.verifyApplicationReadback(res.ApplicationID, desired, res.App, base, prowlarrURL, in.APIKey)
+	if err != nil {
 		res.Readback, res.ReadbackError = CheckFailed, a.setupErrorText(err, in.APIKey)
+		res.SavedSecretCheck = secretCheck
 		return res, fmt.Errorf("Prowlarr created the %s link but could not verify it: %s", res.App, res.ReadbackError)
 	}
-	res.Readback = CheckPassed
-	res.Notes = append(res.Notes, "The saved API key is not returned by Prowlarr; it was not compared on readback.")
+	res.Readback, res.SavedSecretCheck = CheckPassed, secretCheck
+	if secretCheck == CheckPassed {
+		res.Notes = append(res.Notes, "Prowlarr returned the saved API key and it matches the supplied value.")
+	} else {
+		res.Notes = append(res.Notes, "Prowlarr did not return the saved API key; the pre-create native test passed with the supplied value, but the stored value was not read back.")
+	}
 	return res, nil
 }
 
@@ -665,55 +695,54 @@ func (a *Arr) buildQBitClient(schema map[string]any, name string, ep qbitEndpoin
 	return raw, nil
 }
 
-func (a *Arr) setQBitFields(raw map[string]any, ep qbitEndpoint, username, password, category string, forceEnable bool) {
-	setupSetField(raw, "host", ep.host)
-	setupSetField(raw, "port", ep.port)
-	setupSetField(raw, "useSsl", ep.useSSL)
-	setupSetField(raw, "urlBase", ep.urlBase)
-	if username != "" {
-		setupSetField(raw, "username", username)
-	}
-	if password != "" {
-		setupSetField(raw, "password", password)
-	}
-	if cat, ok := qbitCategoryField(raw); ok {
-		setupSetField(raw, cat, category)
-	}
-	if forceEnable {
-		raw["enable"] = true
-	}
-}
-
-func (a *Arr) verifyQBitClientReadback(id int, desired map[string]any, schema map[string]any, ep qbitEndpoint, username, category string) error {
+func (a *Arr) verifyQBitClientReadback(id int, desired map[string]any, schema map[string]any, ep qbitEndpoint, username, category, suppliedSecret string) (SetupCheck, error) {
 	clients, err := a.setupDownloadClients()
 	if err != nil {
-		return err
+		return CheckNotRun, err
 	}
 	var found map[string]any
-	for _, c := range clients {
-		if id > 0 && asInt(c["id"]) == id {
-			found = c
-			break
-		}
-		if found == nil && asStr(c["name"]) == asStr(desired["name"]) {
-			found = c
+	if id > 0 {
+		for _, c := range clients {
+			if asInt(c["id"]) == id {
+				found = c
+				break
+			}
 		}
 	}
 	if found == nil {
-		return errors.New("the new client is missing from the app's download client list")
+		// Fall back only when exactly one qBittorrent client carries the name; an
+		// unrelated implementation with the same name must never satisfy readback.
+		wantName := asStr(desired["name"])
+		candidates := []map[string]any{}
+		for _, c := range clients {
+			if strings.EqualFold(asStr(c["name"]), wantName) && strings.EqualFold(asStr(c["implementation"]), "QBittorrent") {
+				candidates = append(candidates, c)
+			}
+		}
+		if len(candidates) != 1 {
+			return CheckNotRun, errors.New("the new client is missing from the app's download client list")
+		}
+		found = candidates[0]
+	}
+	if !strings.EqualFold(asStr(found["implementation"]), "QBittorrent") {
+		return CheckNotRun, errors.New("the readback client is not qBittorrent")
 	}
 	if want := asStr(desired["name"]); want != "" && !strings.EqualFold(asStr(found["name"]), want) {
-		return errors.New("the readback name differs from the request")
+		return CheckNotRun, errors.New("the readback name differs from the request")
 	}
 	if problem := compareQBitClient(found, schema, ep, username, category); problem != "" {
-		return errors.New(problem)
+		return CheckNotRun, errors.New(problem)
 	}
 	if desiredEnable, ok := desired["enable"].(bool); ok {
 		if actual, known := setupEnabled(found); known && actual != desiredEnable {
-			return errors.New("the new client's enabled state differs from the request")
+			return CheckNotRun, errors.New("the new client's enabled state differs from the request")
 		}
 	}
-	return nil
+	secretCheck := setupSecretStatus(found, "password", suppliedSecret)
+	if secretCheck == CheckFailed {
+		return CheckFailed, errors.New("the saved password does not match the supplied value")
+	}
+	return secretCheck, nil
 }
 
 func compareQBitClient(raw map[string]any, schema map[string]any, ep qbitEndpoint, username, category string) string {
@@ -810,48 +839,58 @@ func (a *Arr) buildApplication(schema map[string]any, name, baseURL, apiKey, pro
 	return raw, nil
 }
 
-func (a *Arr) setApplicationFields(raw map[string]any, baseURL, apiKey, prowlarrURL string) {
-	setupSetField(raw, "baseUrl", baseURL)
-	setupSetField(raw, "apiKey", apiKey)
-	setupSetField(raw, "prowlarrUrl", prowlarrURL)
-}
-
-func (a *Arr) verifyApplicationReadback(id int, desired map[string]any, target, baseURL string) error {
+func (a *Arr) verifyApplicationReadback(id int, desired map[string]any, target, baseURL, prowlarrURL, suppliedKey string) (SetupCheck, error) {
 	apps, err := a.setupApplications()
 	if err != nil {
-		return err
+		return CheckNotRun, err
 	}
 	var found map[string]any
-	for _, app := range apps {
-		if id > 0 && asInt(app["id"]) == id {
-			found = app
-			break
-		}
-		if found == nil && strings.EqualFold(asStr(app["name"]), asStr(desired["name"])) {
-			found = app
+	if id > 0 {
+		for _, app := range apps {
+			if asInt(app["id"]) == id {
+				found = app
+				break
+			}
 		}
 	}
 	if found == nil {
-		return errors.New("the new link is missing from Prowlarr's application list")
+		wantName := asStr(desired["name"])
+		candidates := []map[string]any{}
+		for _, app := range apps {
+			if strings.EqualFold(asStr(app["name"]), wantName) && strings.EqualFold(asStr(app["implementation"]), target) {
+				candidates = append(candidates, app)
+			}
+		}
+		if len(candidates) != 1 {
+			return CheckNotRun, errors.New("the new link is missing from Prowlarr's application list")
+		}
+		found = candidates[0]
 	}
 	if want := asStr(desired["name"]); want != "" && !strings.EqualFold(asStr(found["name"]), want) {
-		return errors.New("the readback name differs from the request")
+		return CheckNotRun, errors.New("the readback name differs from the request")
 	}
 	if !strings.EqualFold(asStr(found["implementation"]), target) {
-		return errors.New("the readback implementation differs from the request")
+		return CheckNotRun, errors.New("the readback implementation differs from the request")
 	}
 	if normalizeURLBase(setupFieldString(found, "baseUrl")) != normalizeURLBase(baseURL) {
-		return errors.New("the readback base URL differs from the request")
+		return CheckNotRun, errors.New("the readback base URL differs from the request")
+	}
+	if normalizeURLBase(setupFieldString(found, "prowlarrUrl")) != normalizeURLBase(prowlarrURL) {
+		return CheckNotRun, errors.New("the readback Prowlarr URL differs from the request")
 	}
 	if desiredEnable, ok := desired["enable"].(bool); ok {
 		if actual, known := setupEnabled(found); known && actual != desiredEnable {
-			return errors.New("the new link's enabled state differs from the request")
+			return CheckNotRun, errors.New("the new link's enabled state differs from the request")
 		}
 	}
-	return nil
+	secretCheck := setupSecretStatus(found, "apiKey", suppliedKey)
+	if secretCheck == CheckFailed {
+		return CheckFailed, errors.New("the saved API key does not match the supplied value")
+	}
+	return secretCheck, nil
 }
 
-func matchApplication(apps []map[string]any, target, baseURL, name string) (match map[string]any, conflict []string, existingName, existingBase string) {
+func matchApplication(apps []map[string]any, target, baseURL, prowlarrURL, name string) (match map[string]any, conflict []string, existingName, existingBase, existingProwlarr string) {
 	matches := []map[string]any{}
 	for _, app := range apps {
 		if !strings.EqualFold(asStr(app["implementation"]), target) {
@@ -862,18 +901,24 @@ func matchApplication(apps []map[string]any, target, baseURL, name string) (matc
 		}
 	}
 	if len(matches) > 1 {
-		return nil, []string{"baseUrl"}, "", ""
+		return nil, []string{"baseUrl"}, "", "", ""
 	}
 	if len(matches) == 1 {
 		found := matches[0]
-		return found, nil, setupText(found["name"]), setupFieldString(found, "baseUrl")
+		existingName = setupText(found["name"])
+		existingBase = setupFieldString(found, "baseUrl")
+		existingProwlarr = setupFieldString(found, "prowlarrUrl")
+		if normalizeURLBase(existingProwlarr) != normalizeURLBase(prowlarrURL) {
+			return nil, []string{"prowlarrUrl"}, existingName, existingBase, existingProwlarr
+		}
+		return found, nil, existingName, existingBase, existingProwlarr
 	}
 	for _, app := range apps {
 		if strings.EqualFold(setupText(app["name"]), name) {
-			return nil, []string{"name"}, setupText(app["name"]), setupFieldString(app, "baseUrl")
+			return nil, []string{"name"}, setupText(app["name"]), setupFieldString(app, "baseUrl"), setupFieldString(app, "prowlarrUrl")
 		}
 	}
-	return nil, nil, "", ""
+	return nil, nil, "", "", ""
 }
 
 func (q *QBit) categories() (map[string]string, error) {
@@ -1064,6 +1109,34 @@ func setupFieldMatches(raw map[string]any, name string, want any, fold bool) boo
 
 func setupFieldString(raw map[string]any, name string) string {
 	return strings.TrimSpace(asStr(setupFieldValue(raw, name)))
+}
+
+func setupFieldStringValue(raw map[string]any, name string) (string, bool) {
+	_, byName := fieldMaps(raw)
+	f := byName[name]
+	if f == nil {
+		return "", false
+	}
+	s, _ := f["value"].(string)
+	return strings.TrimSpace(s), true
+}
+
+// secretLooksHidden recognises masked values that apps use in place of the real secret.
+func secretLooksHidden(s string) bool {
+	return strings.Trim(s, "*•. ") == ""
+}
+
+// setupSecretStatus is passed only when the API returns the saved secret and it
+// equals the supplied value. A missing, empty or masked value is honestly not_run.
+func setupSecretStatus(raw map[string]any, field, supplied string) SetupCheck {
+	saved, present := setupFieldStringValue(raw, field)
+	if !present || saved == "" || secretLooksHidden(saved) {
+		return CheckNotRun
+	}
+	if saved == supplied {
+		return CheckPassed
+	}
+	return CheckFailed
 }
 
 func setupText(v any) string { return strings.TrimSpace(asStr(v)) }
