@@ -25,3 +25,11 @@ test("an invalid number stops the write before any request", () => {
     /Share ratio must be a number\./,
   );
 });
+
+test("a partial apply names what was saved and warns about the rest", () => {
+  assert.equal(
+    context.companionAppliedMessage(["enableCompletedDownloadHandling"], "Sonarr: naming blocked"),
+    "Saved Completed download handling. The rest was not changed: Sonarr: naming blocked",
+  );
+  assert.equal(context.companionAppliedMessage([], "Sonarr is not reachable"), "Nothing was saved. Sonarr is not reachable");
+});

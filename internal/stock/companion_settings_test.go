@@ -54,11 +54,14 @@ func TestArrCompanionSettingsAndPatchesPreserveUnrelatedFields(t *testing.T) {
 	if handling["enableCompletedDownloadHandling"] != true || handling["keepMe"] != "x" {
 		t.Fatalf("handling PUT must merge, got %v", handling)
 	}
-	if err := a.DisableRemoveCompletedDownloads(); err != nil {
+	if err := a.DisableRemoveCompletedDownloads(9); err != nil {
 		t.Fatal(err)
 	}
 	if client["removeCompletedDownloads"] != false || client["host"] != "keep" {
 		t.Fatalf("client PUT must clear only removal and keep host, got %v", client)
+	}
+	if err := a.DisableRemoveCompletedDownloads(10); err == nil {
+		t.Fatal("a non-qBittorrent client id must not be reported as changed")
 	}
 	if err := a.SetRename("renameEpisodes", true); err != nil {
 		t.Fatal(err)

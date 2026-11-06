@@ -59,6 +59,7 @@ type CompanionState struct {
 // alone; the server rejects unknown JSON fields.
 type CompanionPatch struct {
 	App                             string   `json:"app"`
+	ClientID                        *int     `json:"clientId,omitempty"`
 	EnableCompletedDownloadHandling *bool    `json:"enableCompletedDownloadHandling,omitempty"`
 	RemoveCompletedDownloads        *bool    `json:"removeCompletedDownloads,omitempty"`
 	RenameEpisodes                  *bool    `json:"renameEpisodes,omitempty"`
@@ -79,6 +80,17 @@ func (e *ValidationError) Error() string { return e.Message }
 func invalid(format string, args ...any) error {
 	return &ValidationError{Message: fmt.Sprintf(format, args...)}
 }
+
+// PartialApplyError means the write surface was valid but an upstream write
+// failed. Applied names the fields that really changed; the caller must return
+// fresh state, not a blank failure.
+type PartialApplyError struct {
+	Applied []string
+	Err     error
+}
+
+func (e *PartialApplyError) Error() string { return e.Err.Error() }
+func (e *PartialApplyError) Unwrap() error { return e.Err }
 
 type arrTarget struct {
 	name string
@@ -131,8 +143,12 @@ func readArrCompanion(t arrTarget) CompanionApp {
 	for _, cl := range s.Clients {
 		c := CompanionClient{ID: cl.ID, Name: cl.Name, Implementation: cl.Implementation, RemoveCompletedDownloads: cl.RemoveCompletedDownloads}
 		if cl.RemoveCompletedDownloads {
-			c.CanDisable = true
-			c.Reason = "Turns file removal off. Library keeps local copies until its staged policy says otherwise."
+			if cl.Implementation == "QBittorrent" {
+				c.CanDisable = true
+				c.Reason = "Turns file removal off for this client. Library keeps local copies until its staged policy says otherwise."
+			} else {
+				c.Reason = "Library changes this only for qBittorrent clients. Open " + t.name + " and turn off Remove Completed Downloads for this " + cl.Implementation + " client."
+			}
 		}
 		app.Clients = append(app.Clients, c)
 	}
@@ -260,30 +276,54 @@ func applyArrCompanion(c config.Config, p CompanionPatch) (CompanionApp, error) 
 	if p.RemoveCompletedDownloads != nil && *p.RemoveCompletedDownloads {
 		return CompanionApp{}, invalid("Library never turns immediate removal on. It can only turn it off.")
 	}
+	if p.ClientID != nil {
+		if p.RemoveCompletedDownloads == nil {
+			return CompanionApp{}, invalid("A client can only be chosen when turning remove-after-import off.")
+		}
+		if *p.ClientID <= 0 {
+			return CompanionApp{}, invalid("Choose the download client to change.")
+		}
+	}
 	if p.EnableCompletedDownloadHandling == nil && p.RemoveCompletedDownloads == nil && p.RenameEpisodes == nil && p.RenameMovies == nil {
 		return CompanionApp{}, invalid("Choose at least one setting to apply.")
 	}
 
 	a := stock.NewArr(target.name, target.cfg.URL, target.cfg.APIKey)
+	var applied []string
+	clientID := 0
+	if p.ClientID != nil {
+		clientID = *p.ClientID
+	}
+	fail := func(err error) (CompanionApp, error) {
+		app := readArrCompanion(*target)
+		if !app.Connected && app.Error != "" {
+			app.Error = "Saved changes couldn't be read back: " + app.Error
+		}
+		return app, &PartialApplyError{Applied: applied, Err: a.SafeError(err)}
+	}
 	if p.EnableCompletedDownloadHandling != nil {
 		if err := a.SetCompletedDownloadHandling(*p.EnableCompletedDownloadHandling); err != nil {
-			return CompanionApp{}, a.SafeError(err)
+			return fail(err)
 		}
+		applied = append(applied, "enableCompletedDownloadHandling")
 	}
 	if p.RemoveCompletedDownloads != nil {
-		if err := a.DisableRemoveCompletedDownloads(); err != nil {
-			return CompanionApp{}, a.SafeError(err)
+		if err := a.DisableRemoveCompletedDownloads(clientID); err != nil {
+			return fail(err)
 		}
+		applied = append(applied, "removeCompletedDownloads")
 	}
 	if p.RenameEpisodes != nil {
 		if err := a.SetRename("renameEpisodes", *p.RenameEpisodes); err != nil {
-			return CompanionApp{}, a.SafeError(err)
+			return fail(err)
 		}
+		applied = append(applied, "renameEpisodes")
 	}
 	if p.RenameMovies != nil {
 		if err := a.SetRename("renameMovies", *p.RenameMovies); err != nil {
-			return CompanionApp{}, a.SafeError(err)
+			return fail(err)
 		}
+		applied = append(applied, "renameMovies")
 	}
 	app := readArrCompanion(*target)
 	if !app.Connected && app.Error != "" {
@@ -298,6 +338,9 @@ func applyQBitCompanion(c config.Config, p CompanionPatch) (CompanionApp, error)
 	}
 	if p.EnableCompletedDownloadHandling != nil || p.RemoveCompletedDownloads != nil || p.RenameEpisodes != nil || p.RenameMovies != nil {
 		return CompanionApp{}, invalid("Completed-download handling and renaming belong to the library apps.")
+	}
+	if p.ClientID != nil {
+		return CompanionApp{}, invalid("Download client ids belong to the library apps.")
 	}
 	if p.MaxRatioEnabled == nil && p.MaxRatio == nil && p.MaxSeedingTimeEnabled == nil && p.MaxSeedingTime == nil && p.MaxRatioAct == nil {
 		return CompanionApp{}, invalid("Choose at least one seeding setting to apply.")
@@ -321,7 +364,11 @@ func applyQBitCompanion(c config.Config, p CompanionPatch) (CompanionApp, error)
 		MaxRatioAct:           p.MaxRatioAct,
 	})
 	if err != nil {
-		return CompanionApp{}, err
+		app := readQBitCompanion(c)
+		if !app.Connected && app.Error != "" {
+			app.Error = "Nothing changed; the current state couldn't be read back: " + app.Error
+		}
+		return app, &PartialApplyError{Err: err}
 	}
 	app := readQBitCompanion(c)
 	if !app.Connected && app.Error != "" {

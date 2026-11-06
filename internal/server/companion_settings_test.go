@@ -93,6 +93,50 @@ func TestCompanionSettingsRoutesReadAndApply(t *testing.T) {
 	}
 }
 
+func TestCompanionSettingsPartialApplyReturnsFreshState(t *testing.T) {
+	handlingOn := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v3/config/downloadclient" && r.Method == "GET":
+			json.NewEncoder(w).Encode(map[string]any{"id": 4, "enableCompletedDownloadHandling": handlingOn})
+		case r.URL.Path == "/api/v3/config/downloadclient/4" && r.Method == "PUT":
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			handlingOn, _ = body["enableCompletedDownloadHandling"].(bool)
+		case r.URL.Path == "/api/v3/downloadclient" && r.Method == "GET":
+			json.NewEncoder(w).Encode([]map[string]any{})
+		case r.URL.Path == "/api/v3/config/naming" && r.Method == "GET":
+			json.NewEncoder(w).Encode([]map[string]any{{"id": 2, "renameEpisodes": false}})
+		case r.URL.Path == "/api/v3/config/naming/2" && r.Method == "PUT":
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`[{"errorMessage":"naming blocked"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	home := t.TempDir()
+	store, _ := config.Open(home)
+	c := config.Default()
+	c.Sonarr = config.App{URL: srv.URL, APIKey: "test-sonarr-key"}
+	if err := store.Save(c); err != nil {
+		t.Fatal(err)
+	}
+	s := New(store, home)
+	mux := http.NewServeMux()
+	s.RegisterCompanionSettings(mux)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("POST", "/api/companion/settings",
+		strings.NewReader(`{"app":"Sonarr","enableCompletedDownloadHandling":true,"renameEpisodes":true}`)))
+	if w.Code != 502 || !strings.Contains(w.Body.String(), `"applied":["enableCompletedDownloadHandling"]`) ||
+		!strings.Contains(w.Body.String(), `"app"`) || !strings.Contains(w.Body.String(), `"error":`) {
+		t.Fatalf("partial apply must return 502 with fresh state and applied fields: %d %s", w.Code, w.Body.String())
+	}
+	if !handlingOn {
+		t.Fatal("the successful first write must stay applied")
+	}
+}
+
 func TestCompanionSettingsPostNeedsTokenAndCSRFHeader(t *testing.T) {
 	_, s, writes := companionServer(t)
 	token := s.Token

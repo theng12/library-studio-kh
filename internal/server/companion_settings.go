@@ -31,6 +31,11 @@ func (s *Server) RegisterCompanionSettings(mux *http.ServeMux) {
 				writeJSON(w, 400, map[string]string{"error": bad.Error()})
 				return
 			}
+			var partial *library.PartialApplyError
+			if errors.As(err, &partial) {
+				writeJSON(w, 502, map[string]any{"error": partial.Error(), "app": app, "applied": partial.Applied})
+				return
+			}
 			writeJSON(w, 502, map[string]string{"error": err.Error()})
 			return
 		}

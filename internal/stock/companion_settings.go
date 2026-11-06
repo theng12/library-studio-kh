@@ -81,25 +81,34 @@ func (a *Arr) SetCompletedDownloadHandling(on bool) error {
 	return a.do("PUT", fmt.Sprintf("/config/downloadclient/%d", id), cfg, nil)
 }
 
-// DisableRemoveCompletedDownloads turns the immediate-removal flag off on each
-// qBittorrent client. It never turns it on and never touches another client.
-func (a *Arr) DisableRemoveCompletedDownloads() error {
+// DisableRemoveCompletedDownloads turns the immediate-removal flag off on one
+// qBittorrent client when id is given, or on all of them when id is 0. It never
+// turns it on and never edits a client of another implementation.
+func (a *Arr) DisableRemoveCompletedDownloads(id int) error {
 	var clients []map[string]any
 	if err := a.do("GET", "/downloadclient", nil, &clients); err != nil {
 		return err
 	}
+	found := false
 	for _, c := range clients {
 		if c["implementation"] != "QBittorrent" || c["removeCompletedDownloads"] != true {
 			continue
 		}
-		id := asInt(c["id"])
-		if id == 0 {
+		if id > 0 && asInt(c["id"]) != id {
+			continue
+		}
+		found = true
+		clientID := asInt(c["id"])
+		if clientID == 0 {
 			return fmt.Errorf("%s did not report a download client id", a.Name)
 		}
 		c["removeCompletedDownloads"] = false
-		if err := a.do("PUT", fmt.Sprintf("/downloadclient/%d", id), c, nil); err != nil {
+		if err := a.do("PUT", fmt.Sprintf("/downloadclient/%d", clientID), c, nil); err != nil {
 			return err
 		}
+	}
+	if id > 0 && !found {
+		return fmt.Errorf("%s has no qBittorrent client with removal switched on under id %d", a.Name, id)
 	}
 	return nil
 }

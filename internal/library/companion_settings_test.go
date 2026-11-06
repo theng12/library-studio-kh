@@ -35,9 +35,10 @@ func companionFixture(t *testing.T) (*httptest.Server, *config.Config, *int) {
 			writes++
 			json.NewEncoder(w).Encode(body)
 		case r.URL.Path == "/api/v3/downloadclient" && r.Method == "GET":
-			json.NewEncoder(w).Encode([]map[string]any{{
-				"id": 9, "name": "qBit", "implementation": "QBittorrent", "removeCompletedDownloads": removeOn, "host": "keep",
-			}})
+			json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 9, "name": "qBit", "implementation": "QBittorrent", "removeCompletedDownloads": removeOn, "host": "keep"},
+				{"id": 10, "name": "Deluge", "implementation": "Deluge", "removeCompletedDownloads": true},
+			})
 		case r.URL.Path == "/api/v3/downloadclient/9" && r.Method == "PUT":
 			var body map[string]any
 			json.NewDecoder(r.Body).Decode(&body)
@@ -98,8 +99,11 @@ func TestCompanionSettingsReportsActualSupportedValues(t *testing.T) {
 	if !ok || rename.Value != false || !rename.Editable {
 		t.Fatalf("rename: %+v", rename)
 	}
-	if len(st.Apps[0].Clients) != 1 || !st.Apps[0].Clients[0].CanDisable || st.Apps[0].Clients[0].Reason == "" {
-		t.Fatalf("per-client removal must explain why it stays off: %+v", st.Apps[0].Clients)
+	if len(st.Apps[0].Clients) != 2 || !st.Apps[0].Clients[0].CanDisable || st.Apps[0].Clients[0].Reason == "" {
+		t.Fatalf("qBittorrent removal must explain why it stays off and be actionable: %+v", st.Apps[0].Clients)
+	}
+	if st.Apps[0].Clients[1].CanDisable || st.Apps[0].Clients[1].Reason == "" || !strings.Contains(st.Apps[0].Clients[1].Reason, "Open Sonarr") {
+		t.Fatalf("unsupported clients must be blocked honestly: %+v", st.Apps[0].Clients[1])
 	}
 	ratio, ok := settingOf(st.QBit, "max_ratio")
 	if !ok || ratio.Value != 2.0 || !ratio.Editable || ratio.ManagedBy != "app" {
@@ -194,6 +198,57 @@ func TestCompanionApplyRedactsSecretsInUpstreamErrors(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "supersecret-key") || !strings.Contains(err.Error(), "REDACTED") {
 		t.Fatalf("secret must be redacted: %v", err)
+	}
+}
+
+func TestCompanionApplyReportsPartialStateWithoutRollback(t *testing.T) {
+	handlingOn, renameOn := false, false
+	var handlingPuts, namingPuts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v3/config/downloadclient" && r.Method == "GET":
+			json.NewEncoder(w).Encode(map[string]any{"id": 4, "enableCompletedDownloadHandling": handlingOn})
+		case r.URL.Path == "/api/v3/config/downloadclient/4" && r.Method == "PUT":
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			handlingOn, _ = body["enableCompletedDownloadHandling"].(bool)
+			handlingPuts++
+		case r.URL.Path == "/api/v3/downloadclient" && r.Method == "GET":
+			json.NewEncoder(w).Encode([]map[string]any{})
+		case r.URL.Path == "/api/v3/config/naming" && r.Method == "GET":
+			json.NewEncoder(w).Encode([]map[string]any{{"id": 2, "renameEpisodes": renameOn}})
+		case r.URL.Path == "/api/v3/config/naming/2" && r.Method == "PUT":
+			namingPuts++
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`[{"errorMessage":"naming blocked"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	c := config.Default()
+	c.Sonarr = config.App{URL: srv.URL, APIKey: "sonarr-key"}
+
+	app, err := ApplyCompanionSettings(c, CompanionPatch{
+		App: "Sonarr", EnableCompletedDownloadHandling: testBool(true), RenameEpisodes: testBool(true),
+	})
+	var partial *PartialApplyError
+	if !errors.As(err, &partial) {
+		t.Fatalf("second write failure must report partial apply, got %T %v", err, err)
+	}
+	if len(partial.Applied) != 1 || partial.Applied[0] != "enableCompletedDownloadHandling" {
+		t.Fatalf("applied fields: %v", partial.Applied)
+	}
+	if !app.Connected || app.Error != "" {
+		t.Fatalf("fresh state must be returned after a partial apply: %+v", app)
+	}
+	handling, _ := settingOf(app, "enableCompletedDownloadHandling")
+	rename, _ := settingOf(app, "renameEpisodes")
+	if handling.Value != true || rename.Value != false {
+		t.Fatalf("readback must show the real partial state: handling=%+v rename=%+v", handling, rename)
+	}
+	if handlingPuts != 1 || namingPuts != 1 || !handlingOn {
+		t.Fatalf("the first change must stay applied without rollback: handlingPuts=%d namingPuts=%d handlingOn=%v", handlingPuts, namingPuts, handlingOn)
 	}
 }
 

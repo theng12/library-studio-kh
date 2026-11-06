@@ -14,8 +14,26 @@ async function companionAPI(path, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || "Something went wrong (" + r.status + ").");
+  if (!r.ok) {
+    const err = new Error(data.error || "Something went wrong (" + r.status + ").");
+    err.data = data;
+    throw err;
+  }
   return data;
+}
+
+const COMPANION_FIELD_LABELS = {
+  enableCompletedDownloadHandling: "Completed download handling",
+  removeCompletedDownloads: "Remove after import",
+  renameEpisodes: "Rename episodes",
+  renameMovies: "Rename films",
+};
+
+function companionAppliedMessage(applied, errorText) {
+  const names = (applied || []).map((key) => COMPANION_FIELD_LABELS[key] || key);
+  return names.length
+    ? "Saved " + names.join(", ") + ". The rest was not changed: " + errorText
+    : "Nothing was saved. " + errorText;
 }
 
 // Only changed fields are sent, so applying one setting never rewrites another.
@@ -120,20 +138,28 @@ function companionClientRow(app, client) {
   wrap.append(head);
   if (client.removeCompletedDownloads && client.reason) {
     wrap.append(companionNode("p", client.reason, "muted"));
-    const button = companionNode("button", "Turn off in " + app.app, "small");
+  }
+  if (client.removeCompletedDownloads && client.canDisable) {
+    const button = companionNode("button", "Turn off for " + (client.name || "this client"), "small");
     button.type = "button";
     button.addEventListener("click", async () => {
       button.disabled = true;
       button.textContent = "Turning off…";
       const root = button.closest("[data-companion-root]");
       try {
-        const r = await companionAPI("/api/companion/settings", { app: app.app, removeCompletedDownloads: false });
+        const r = await companionAPI("/api/companion/settings", { app: app.app, removeCompletedDownloads: false, clientId: client.id });
         companionReplaceApp(root, r.app);
-        companionStatus(root, "Saved. Remove after import is off in " + app.app + ".");
+        companionStatus(root, "Saved. Remove after import is off for " + (client.name || "that client") + " in " + app.app + ".");
       } catch (e) {
-        button.disabled = false;
-        button.textContent = "Try again";
-        wrap.append(companionNode("p", e.message, "msg"));
+        const data = e.data || {};
+        if (data.app) {
+          companionReplaceApp(root, data.app);
+          companionStatus(root, companionAppliedMessage(data.applied, e.message));
+        } else {
+          button.disabled = false;
+          button.textContent = "Try again";
+          wrap.append(companionNode("p", e.message, "msg"));
+        }
       }
     });
     wrap.append(button);
@@ -202,8 +228,15 @@ function companionAppPanel(app) {
         apply.disabled = false; apply.textContent = "Apply changes";
       }
     } catch (e) {
-      msg.textContent = e.message;
-      apply.disabled = false; apply.textContent = "Apply changes";
+      const root = form.closest("[data-companion-root]");
+      const data = e.data || {};
+      if (data.app) {
+        companionReplaceApp(root, data.app);
+        companionStatus(root, companionAppliedMessage(data.applied, e.message));
+      } else {
+        msg.textContent = e.message;
+        apply.disabled = false; apply.textContent = "Apply changes";
+      }
     }
   });
   panel.append(form);
