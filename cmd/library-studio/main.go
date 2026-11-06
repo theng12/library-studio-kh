@@ -30,11 +30,17 @@ func main() {
 	hostControl := flag.String("host-control", "", "manage the macOS background host: install, start, stop or status")
 	hostHome := flag.String("host-home", "", "configuration home for -host-control (default: the app's config folder)")
 	serverExe := flag.String("exe", "", "server executable for -host-control install (default: this executable)")
+	clientHost := flag.String("client-host", "", "use another Library host webpage URL, or clear this desktop's saved host")
 	flag.Parse()
 
 	home, err := config.Dir()
 	if err != nil {
 		log.Fatal(err)
+	}
+	if *clientHost != "" {
+		out, code := runClientHost(*clientHost, home)
+		printClientHost(out)
+		os.Exit(code)
 	}
 	if *hostControl != "" {
 		if *hostHome != "" {
@@ -52,6 +58,15 @@ func main() {
 		runService(home, *port) // never returns
 	}
 	if *withShell {
+		// A saved client host wins before any local attach, server start or
+		// owner creation. It is only the normal webpage URL, never a token.
+		handled, err := remoteShell(home, os.Stdin, os.Stdout)
+		if err != nil {
+			log.Fatalf("Library Studio KH could not read this desktop's saved host: %v", err)
+		}
+		if handled {
+			return
+		}
 		info, err := attach(home)
 		if err == nil {
 			// The service outlives this helper; the shell only owns the window.
