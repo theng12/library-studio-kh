@@ -224,3 +224,65 @@ dialog::backdrop { background: rgba(14, 18, 32, 0.45); }
   .bands li { grid-template-columns: 1fr auto; }
   .bands .bar { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* Sign-in and owner setup */
+.gate { min-height: 100%; display: grid; place-items: center; padding: 2rem 1rem; }
+.gate-card {
+  width: min(30rem, 100%); padding: 1.75rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow);
+}
+.gate-brand { margin-bottom: 1.5rem; padding: 0; }
+.gate h1 { font-size: 1.4rem; line-height: 1.2; margin: 0 0 0.4rem; letter-spacing: -0.02em; }
+.gate .lede { font-size: 0.98rem; }
+.gate-form { display: grid; gap: 0.9rem; max-width: none; margin-top: 1.25rem; }
+.gate-form label { margin-top: 0; }
+.gate .actions { margin-top: 0.25rem; }
+.gate-foot { margin: 1.25rem 0 0; font-size: 0.85rem; }
+
+/* Sessions */
+.sessions { list-style: none; margin: 0.75rem 0 0; padding: 0; }
+.sessions li { display: flex; align-items: center; gap: 0.75rem; padding: 0.65rem 0; border-top: 1px solid var(--line); }
+.sessions li:first-child { border-top: 0; }
+.sessions li > div { flex: 1; min-width: 0; }
+.sessions li span { display: block; color: var(--ink-2); font-size: 0.9rem; }
+.badge {
+  display: inline-block !important; margin-top: 0.25rem; padding: 0.05rem 0.5rem;
+  border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+  font-size: 0.75rem; font-weight: 600;
+}
+.badge.planned { background: var(--warn-bg); color: var(--warn-ink); }
+
+/* Offline setup and help */
+.help-step { padding: 0; }
+.help-step summary { cursor: pointer; padding: 1rem 1.25rem; font-weight: 650; list-style-position: inside; }
+.help-step summary:hover { background: color-mix(in srgb, var(--accent-soft) 40%, transparent); }
+.help-step summary:focus-visible { outline-offset: -2px; }
+.help-step[open] summary { border-bottom: 1px solid var(--line); }
+.help-facts { display: grid; grid-template-columns: 7.5rem 1fr; gap: 0.5rem 1rem; margin: 0; padding: 1rem 1.25rem 1.25rem; }
+.help-facts dt { color: var(--muted); font-size: 0.85rem; font-weight: 600; }
+.help-facts dd { margin: 0; color: var(--ink-2); max-width: 70ch; }
+.help-facts dd strong { color: var(--ink); }
+
+/* Downloads */
+.dl-tools { justify-content: space-between; align-items: center; }
+.dl-tools .actions { margin: 0; }
+#dl td:first-child { width: 1%; }
+#dl input[type=checkbox] { margin: 0; }
+#dl .state.paused { color: var(--muted); }
+#dl .state.error { color: var(--warn-ink); }
+
+/* Add-to-library dialog */
+.add-form { display: grid; gap: 0.9rem; max-width: none; padding: 1.1rem 1.25rem; }
+.add-form label { margin-top: 0; }
+.add-form select { width: 100%; }
+
+@media (max-width: 760px) {
+  .gate { padding: 1rem; }
+  .gate-card { padding: 1.25rem; }
+  .help-facts { grid-template-columns: 1fr; gap: 0.1rem; }
+  .help-facts dd { margin-bottom: 0.6rem; }
+  .sessions li { flex-wrap: wrap; }
+  .dl-tools { align-items: stretch; }
+  .dl-tools .actions { width: 100%; }
+  .dl-tools .actions button { flex: 1 1 auto; min-height: 44px; }
+}

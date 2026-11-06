@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -95,7 +96,7 @@ func (s *Server) remoteHandler(address string) http.Handler {
 			return
 		}
 		// Only this listener may reach the localhost guard this way; API token checks still apply.
-		r2 := r.Clone(r.Context())
+		r2 := r.Clone(context.WithValue(r.Context(), remoteOriginHostKey{}, r.Host))
 		r2.Host = "127.0.0.1"
 		h.ServeHTTP(w, r2)
 	})
@@ -114,7 +115,7 @@ func (s *Server) RemoteStatus() RemoteStatus {
 	defer s.remote.mu.Unlock()
 	r := RemoteStatus{On: s.remote.server != nil, Error: s.remote.error}
 	if r.On {
-		r.URL = "http://" + s.remote.address + "/#" + s.Token
+		r.URL = "http://" + s.remote.address + "/"
 	}
 	return r
 }

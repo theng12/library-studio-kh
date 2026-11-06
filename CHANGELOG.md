@@ -1,5 +1,13 @@
 # What's new in Library Studio KH
 
+## 0.2.0 — 2026-11-06
+
+- Set up an owner account and sign in from a stable browser address. Remembered devices survive restarts and can be revoked.
+- Run Library as a background host on macOS; the desktop connects to that host instead of starting a second server.
+- Pause or resume downloads, change media monitoring, and choose live quality profiles and library folders when adding media.
+- Setup & Help explains the host, companion apps, folders, monitoring, private access and troubleshooting inside Library.
+- The companion installer and expanded media integrations remain planned; existing stock apps are adopted without reinstalling them.
+
 ## 0.1.0 — 2026-11-05
 
 - First version: a blue interface with menus for activity, your library, finding and adding media, cleanup and settings. Works with your own qBittorrent, Sonarr, Radarr, Lidarr and Prowlarr.

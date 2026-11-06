@@ -2,10 +2,7 @@
 package server
 
 import (
-	"crypto/rand"
-	"crypto/subtle"
 	"embed"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"io/fs"
@@ -32,6 +29,7 @@ type Server struct {
 	mu     sync.Mutex
 	last   *lastRun
 	remote remoteAccess
+	access accessState
 }
 
 type lastRun struct {
@@ -42,9 +40,9 @@ type lastRun struct {
 }
 
 func New(store *config.Store, home string) *Server {
-	b := make([]byte, 24)
-	rand.Read(b)
-	return &Server{Store: store, Home: home, Token: hex.EncodeToString(b), Now: time.Now}
+	s := &Server{Store: store, Home: home, Now: time.Now}
+	s.initAccess()
+	return s
 }
 
 // RunCleanup is called hourly by main.
@@ -60,6 +58,10 @@ func (s *Server) RunCleanup() {
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	s.registerAuth(mux)
+	s.registerControls(mux)
+	mux.HandleFunc("GET /api/health", s.health)
+	mux.HandleFunc("GET /api/host-proof", s.hostProof)
 	static, _ := fs.Sub(web, "web")
 	mux.Handle("/", http.FileServerFS(static))
 	mux.HandleFunc("GET /api/state", s.state)
@@ -172,9 +174,20 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/api/") && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Library-Token")), []byte(s.Token)) != 1 {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			if s.access.err != nil {
+				writeJSON(w, 503, map[string]string{"error": s.access.err.Error()})
+				return
+			}
+			if !s.safeWrite(r) {
+				writeJSON(w, 403, map[string]string{"error": "This request wasn't accepted. Use the Library page on its own host address."})
+				return
+			}
+			publicAuth := r.URL.Path == "/api/auth/status" || r.URL.Path == "/api/auth/login" || r.URL.Path == "/api/auth/setup" || r.URL.Path == "/api/host-proof"
+			if !publicAuth && !s.authorized(r) {
+				writeJSON(w, 403, map[string]string{"error": "Please sign in to Library Studio KH."})
+				return
+			}
 		}
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")

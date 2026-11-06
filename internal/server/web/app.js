@@ -4,21 +4,31 @@ if (location.hash.length > 1) {
   sessionStorage.setItem("token", location.hash.slice(1));
   history.replaceState(null, "", location.pathname);
 }
-const token = sessionStorage.getItem("token") || "";
+let token = sessionStorage.getItem("token") || "";
 const $ = (s) => document.querySelector(s);
 const ARRS = ["sonarr", "radarr", "lidarr", "prowlarr"];
 const NAMES = { sonarr: "Sonarr (TV)", radarr: "Radarr (films)", lidarr: "Lidarr (music)", prowlarr: "Prowlarr (search sites)" };
 const PORTS = { sonarr: 8989, radarr: 7878, lidarr: 8686, prowlarr: 9696 };
+const AUTH_FORM_PATHS = new Set(["/api/auth/login", "/api/auth/setup", "/api/auth/password"]);
+const AUTH = { available: false, authenticated: false, setupRequired: false, rememberDays: 30, sessionHours: 12 };
 let current = null;
 
-async function api(path, body) {
+async function api(path, body, write) {
+  const headers = token ? { "X-Library-Token": token } : {};
+  if (body) headers["Content-Type"] = "application/json";
+  if (write || body) headers["X-Library-Request"] = "1";
   const r = await fetch(path, {
-    method: body ? "POST" : "GET",
-    headers: { "X-Library-Token": token, "Content-Type": "application/json" },
+    method: write || body ? "POST" : "GET",
+    headers,
+    credentials: "same-origin",
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || (r.status === 403 ? "Please reopen Library Studio KH." : "Something went wrong (" + r.status + ")."));
+  // The API guard answers 403 when a session is missing or expired; auth forms handle their own errors.
+  if ((r.status === 401 || (r.status === 403 && AUTH.available)) && !AUTH_FORM_PATHS.has(path)) signedOut();
+  if (!r.ok) throw new Error(data.error || (r.status === 403
+    ? (AUTH.available ? "Please sign in to Library Studio KH." : "Please reopen Library Studio KH from the desktop app.")
+    : "Something went wrong (" + r.status + ")."));
   return data;
 }
 
@@ -223,8 +233,11 @@ $("#torrent-form").addEventListener("submit", async (ev) => {
   for (const f of files) fd.append("torrents", f, f.name);
   btn.disabled = true; msg.textContent = "Adding…";
   try {
-    const r = await fetch("/api/torrents", { method: "POST", headers: { "X-Library-Token": token }, body: fd });
+    const headers = { "X-Library-Request": "1" };
+    if (token) headers["X-Library-Token"] = token;
+    const r = await fetch("/api/torrents", { method: "POST", headers, credentials: "same-origin", body: fd });
     const data = await r.json().catch(() => ({}));
+    if (r.status === 401) { signedOut(); throw new Error("Please sign in again."); }
     if (!r.ok) throw new Error(data.error || "Something went wrong (" + r.status + ").");
     const parts = [];
     if (data.links) parts.push(data.links === 1 ? "1 link" : data.links + " links");
@@ -257,6 +270,21 @@ async function loadLibrary() {
   } catch (e) { libItems = []; $("#browse-notice").hidden = false; $("#browse-notice").textContent = e.message; }
   renderLibrary();
 }
+
+async function toggleMonitor(m, box) {
+  const note = $("#browse-notice");
+  box.disabled = true;
+  try {
+    await api("/api/media/monitor", { app: m.app, id: m.id, monitored: box.checked });
+    m.monitored = box.checked;
+    note.hidden = true;
+  } catch (e) {
+    box.checked = !box.checked;
+    note.hidden = false;
+    note.textContent = e.message;
+  } finally { box.disabled = false; }
+}
+
 function renderLibrary() {
   if (!libItems) return;
   const q = $("#lib-q").value, type = $("#lib-type").value, sort = $("#lib-sort").value;
@@ -267,8 +295,17 @@ function renderLibrary() {
   $("#lib-empty").hidden = items.length > 0;
   $("#lib-empty").textContent = libItems.length ? "Nothing matches." : "Nothing in the library yet. Use Find & add.";
   $("#lib").hidden = items.length === 0;
-  $("#lib tbody").replaceChildren(...items.map((m) =>
-    row([titleCell(m), TYPE[m.app] || m.app, m.haveFiles ? "In library" : "Waiting for files", m.added ? day(m.added) : ""])));
+  $("#lib tbody").replaceChildren(...items.map((m) => {
+    let monitor = "—";
+    if (m.id > 0 && typeof m.monitored === "boolean") {
+      monitor = document.createElement("input");
+      monitor.type = "checkbox";
+      monitor.checked = m.monitored;
+      monitor.setAttribute("aria-label", (m.monitored ? "Stop monitoring " : "Monitor ") + m.title);
+      monitor.addEventListener("change", () => toggleMonitor(m, monitor));
+    }
+    return row([titleCell(m), TYPE[m.app] || m.app, m.haveFiles ? "In library" : "Waiting for files", monitor, m.added ? day(m.added) : ""]);
+  }));
 }
 for (const id of ["#lib-q", "#lib-type", "#lib-sort"]) $(id).addEventListener("input", renderLibrary);
 
@@ -289,18 +326,101 @@ $("#find-form").addEventListener("submit", async (ev) => {
         action = document.createElement("button");
         action.type = "button"; action.className = "small"; action.textContent = "Add";
         action.setAttribute("aria-label", "Add " + m.title);
-        action.addEventListener("click", async () => {
-          action.disabled = true; action.textContent = "Adding…";
-          try {
-            const res = await api("/api/add", { app: m.app, raw: m.raw });
-            action.replaceWith("Added to " + res.folder);
-            libItems = null;
-          } catch (e) { action.disabled = false; action.textContent = "Add"; msg.hidden = false; msg.textContent = e.message; }
-        });
+        action.addEventListener("click", () => openAdd(m, () => {
+          action.disabled = true;
+          action.textContent = "In library";
+        }));
       }
       return row([titleCell(m), TYPE[m.app] || m.app, action]);
     }));
   } catch (e) { msg.textContent = e.message; }
+});
+
+let pendingAdd = null;
+let addDone = null;
+
+function fillOptions(sel, items, label, valueKey, textKey) {
+  sel.replaceChildren();
+  const ph = document.createElement("option");
+  ph.value = ""; ph.textContent = label; ph.disabled = true; ph.selected = true;
+  sel.append(ph);
+  for (const it of items) {
+    const o = document.createElement("option");
+    o.value = String(it[valueKey]);
+    o.textContent = it[textKey] || it.name || it.path || "ID " + it.id;
+    sel.append(o);
+  }
+  sel.disabled = items.length === 0;
+}
+
+function addReady() {
+  const q = $("#add-quality").value, r = $("#add-root").value;
+  const metaOk = !pendingAdd || pendingAdd.app !== "Lidarr" || !!$("#add-meta").value;
+  $("#add-form button.primary").disabled = !q || !r || !metaOk;
+}
+
+async function openAdd(m, done) {
+  pendingAdd = m;
+  addDone = done || null;
+  $("#add-title").textContent = "Add " + m.title;
+  $("#add-lede").textContent = "Choose where it goes in " + (m.app || "the library") + ". These choices come live from the app.";
+  $("#add-msg").hidden = true;
+  $("#add-quality").replaceChildren();
+  $("#add-root").replaceChildren();
+  $("#add-meta").replaceChildren();
+  for (const id of ["#add-quality", "#add-root", "#add-meta"]) $(id).disabled = true;
+  $("#add-meta-box").hidden = m.app !== "Lidarr";
+  $("#add-form button.primary").disabled = true;
+  $("#add-dialog").addEventListener("close", () => { pendingAdd = null; addDone = null; }, { once: true });
+  if (!$("#add-dialog").open) $("#add-dialog").showModal();
+  try {
+    const r = await api("/api/media/options?app=" + encodeURIComponent(m.app));
+    if (pendingAdd !== m) return;
+    fillOptions($("#add-quality"), r.qualityProfiles || [], "Choose a quality profile", "id", "name");
+    fillOptions($("#add-root"), r.rootFolders || [], "Choose a root folder", "path", "path");
+    if (m.app === "Lidarr") fillOptions($("#add-meta"), r.metadataProfiles || [], "Choose a metadata profile", "id", "name");
+    if ($("#add-quality").options.length < 2 || $("#add-root").options.length < 2) {
+      throw new Error("No quality profiles or root folders were returned. Set them up in " + (m.app || "the app") + ", then try again.");
+    }
+    addReady();
+  } catch (e) {
+    $("#add-msg").hidden = false;
+    $("#add-msg").textContent = e.message;
+  }
+}
+
+for (const id of ["#add-quality", "#add-root", "#add-meta"]) $(id).addEventListener("change", addReady);
+$("#add-cancel").addEventListener("click", () => $("#add-dialog").close());
+$("#add-dialog .close").addEventListener("click", () => $("#add-dialog").close());
+$("#add-dialog").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); });
+
+$("#add-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  if (!pendingAdd) return;
+  const btn = $("#add-form button.primary"), msg = $("#add-msg");
+  msg.hidden = true;
+  const body = {
+    app: pendingAdd.app,
+    raw: pendingAdd.raw,
+    qualityProfileId: Number($("#add-quality").value),
+    rootFolderPath: $("#add-root").value,
+  };
+  if (pendingAdd.app === "Lidarr") body.metadataProfileId = Number($("#add-meta").value);
+  const title = pendingAdd.title, done = addDone;
+  btn.disabled = true; btn.textContent = "Adding…";
+  try {
+    const r = await api("/api/media/add", body);
+    libItems = null;
+    $("#add-dialog").close();
+    if (done) done();
+    const fm = $("#find-msg");
+    fm.hidden = false;
+    fm.textContent = "Added " + title + " to " + (r.folder || "the library") + ". It now shows in My library.";
+  } catch (e) {
+    msg.hidden = false;
+    msg.textContent = e.message;
+    btn.disabled = false;
+  } finally { btn.textContent = "Add to library"; }
 });
 
 function fillForm(st) {
@@ -341,8 +461,9 @@ function show(view) {
   for (const b of document.querySelectorAll(".side [data-view]")) {
     if (b.dataset.view === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   }
-  if (view === "settings" && current) fillForm(current);
+  if (view === "settings" && current) { fillForm(current); loadSessions(); }
   if (view === "browse" && !libItems) loadLibrary();
+  if (view === "downloads") loadDownloads();
   if (view === "find") $("#find-q").focus();
   $(".content").scrollTo?.(0, 0);
   window.scrollTo(0, 0);
@@ -353,13 +474,293 @@ document.addEventListener("click", (ev) => {
 });
 
 async function load() {
+  if (!AUTH.authenticated) return;
   try { render(await api("/api/state")); }
   catch (e) { $("#summary").textContent = e.message; }
 }
 
+/* Downloads: pause and resume only. No delete action exists here. */
+const DL_STATES = {
+  downloading: "Downloading", forcedDL: "Downloading", stalledDL: "Stalled", metaDL: "Fetching metadata",
+  queuedDL: "Queued", checkingDL: "Checking", pausedDL: "Paused", stoppedDL: "Paused",
+  uploading: "Seeding", forcedUP: "Seeding", stalledUP: "Seeding, stalled", queuedUP: "Queued to seed",
+  checkingUP: "Checking", pausedUP: "Paused", stoppedUP: "Paused",
+  moving: "Moving", allocating: "Allocating", error: "Error", missingFiles: "Missing files", unknown: "Unknown",
+};
+const dlLabel = (s) => DL_STATES[s] || s || "Unknown";
+const dlPaused = (s) => /^(paused|stopped)/i.test(s || "");
+let downloads = null;
+let dlError = "";
+const selected = new Set();
+
+function renderDownloads() {
+  const items = downloads || [];
+  const empty = $("#dl-empty"), table = $("#dl");
+  table.hidden = items.length === 0;
+  empty.hidden = items.length > 0;
+  if (!items.length) empty.textContent = dlError || "No downloads in qBittorrent right now. Add one in Find & add.";
+  $("#dl-count").textContent = dlError && !items.length ? "Not available"
+    : items.length ? items.length + (items.length === 1 ? " download" : " downloads") : "No downloads";
+  $("#dl tbody").replaceChildren(...items.map((t) => {
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = selected.has(t.hash);
+    box.setAttribute("aria-label", "Select " + t.name);
+    box.addEventListener("change", () => {
+      if (box.checked) selected.add(t.hash); else selected.delete(t.hash);
+      updateDlButtons();
+    });
+    const state = document.createElement("span");
+    const bad = /error|missing/i.test(t.state || "");
+    state.className = "state " + (dlPaused(t.state) ? "paused" : bad ? "error" : "downloading");
+    state.textContent = dlLabel(t.state);
+    const speed = dlPaused(t.state) ? "—" : rate(t.dlspeed || 0) + " down";
+    return row([box, t.name, state, Math.round((t.progress || 0) * 100) + "%", t.size ? bytes(t.size) : "—", speed]);
+  }));
+  updateDlButtons();
+}
+
+function updateDlButtons() {
+  const none = selected.size === 0;
+  $("#dl-pause").disabled = none;
+  $("#dl-resume").disabled = none;
+}
+
+async function loadDownloads() {
+  const notice = $("#dl-notice"), empty = $("#dl-empty"), table = $("#dl");
+  notice.hidden = true;
+  empty.hidden = false;
+  empty.textContent = "Loading…";
+  table.hidden = true;
+  selected.clear();
+  dlError = "";
+  try {
+    const r = await api("/api/downloads");
+    downloads = Array.isArray(r.items) ? r.items : [];
+    dlError = r.error || "";
+    if (dlError) { notice.hidden = false; notice.textContent = dlError; }
+  } catch (e) {
+    downloads = [];
+    dlError = e.message;
+  }
+  renderDownloads();
+}
+
+async function dlAction(action) {
+  const hashes = [...selected];
+  if (!hashes.length) return;
+  const notice = $("#dl-notice");
+  notice.hidden = true;
+  $("#dl-pause").disabled = true;
+  $("#dl-resume").disabled = true;
+  try {
+    const r = await api("/api/downloads/action", { hashes, action });
+    const errs = (r.errors || r.problems || []).filter(Boolean);
+    selected.clear();
+    await loadDownloads();
+    if (errs.length) { notice.hidden = false; notice.textContent = errs.join(" "); }
+  } catch (e) {
+    const message = e.message;
+    await loadDownloads();
+    notice.hidden = false;
+    notice.textContent = message;
+  }
+}
+$("#dl-pause").addEventListener("click", () => dlAction("pause"));
+$("#dl-resume").addEventListener("click", () => dlAction("resume"));
+$("#dl-refresh").addEventListener("click", loadDownloads);
+
+/* Sign-in, owner setup and sessions */
+function showGate(mode) {
+  $("#app-shell").hidden = true;
+  $("#gate").hidden = false;
+  for (const id of ["signin", "setup", "blocked", "recovery"]) $("#gate-" + id).hidden = id !== mode;
+  document.title = (mode === "setup" ? "Create account" : mode === "recovery" ? "Recover access" : "Sign in") + " · Library Studio KH";
+  const first = $("#gate-" + mode).querySelector("input, button");
+  if (first) first.focus();
+}
+
+function hideGate() {
+  $("#gate").hidden = true;
+  $("#app-shell").hidden = false;
+  document.title = "Library Studio KH";
+}
+
+function signedOut() {
+  AUTH.authenticated = false;
+  showGate(AUTH.setupRequired ? "blocked" : "signin");
+}
+
+function fillAuthCopy() {
+  $("#remember-days").textContent = AUTH.rememberDays;
+  $("#session-hours").textContent = AUTH.sessionHours;
+  $("#recovery-link").hidden = !token;
+  $("#recovery-hint").hidden = !!token;
+}
+
+async function authStatus() {
+  try {
+    const headers = token ? { "X-Library-Token": token } : {};
+    const r = await fetch("/api/auth/status", { headers, credentials: "same-origin" });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return typeof d.authenticated === "boolean" ? d : null;
+  } catch { return null; }
+}
+
+async function enterApp() {
+  hideGate();
+  $("#auth-panel").hidden = !AUTH.available;
+  $("#auth-note").textContent = AUTH.available
+    ? "Browser sessions last " + AUTH.sessionHours + " hours, or " + AUTH.rememberDays + " days with Remember this device. The host desktop retains owner recovery access. Remote sign-in is encrypted by Tailscale; the page uses HTTP, not HTTPS."
+    : "Sign-in is not available in this build yet. The desktop app's local access is in use.";
+  await load();
+  loadSessions();
+}
+
+async function loadSessions() {
+  if (!AUTH.available || !AUTH.authenticated) return;
+  const box = $("#sessions"), msg = $("#sessions-msg");
+  try {
+    const r = await api("/api/auth/sessions");
+    const items = r.items || [];
+    box.replaceChildren(...items.map((s) => {
+      const li = document.createElement("li");
+      const info = document.createElement("div");
+      const when = document.createElement("span");
+      when.textContent = "Signed in " + stamp(s.created) + " · ends " + stamp(s.expires);
+      info.append(when);
+      if (s.current) {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = "This browser";
+        info.append(badge);
+      }
+      li.append(info);
+      if (!s.current) {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "small"; b.textContent = "Revoke";
+        b.setAttribute("aria-label", "Revoke the session from " + stamp(s.created));
+        b.addEventListener("click", async () => {
+          b.disabled = true;
+          try { await api("/api/auth/revoke", { id: s.id }); await loadSessions(); }
+          catch (e) {
+            const message = e.message;
+            await loadSessions();
+            msg.hidden = false;
+            msg.textContent = message;
+          }
+        });
+        li.append(b);
+      }
+      return li;
+    }));
+    if (!items.length) {
+      const li = document.createElement("li");
+      li.className = "muted";
+      li.textContent = "No signed-in sessions.";
+      box.append(li);
+    }
+    msg.hidden = true;
+  } catch (e) { msg.hidden = false; msg.textContent = e.message; }
+}
+
+$("#signin-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, msg = $("#signin-msg"), btn = f.querySelector("button");
+  msg.hidden = true;
+  const username = f.username.value.trim(), password = f.password.value;
+  if (!username || !password) { msg.hidden = false; msg.textContent = "Enter your username and password."; return; }
+  btn.disabled = true; btn.textContent = "Signing in…";
+  try {
+    await api("/api/auth/login", { username, password, remember: f.remember.checked });
+    AUTH.authenticated = true;
+    AUTH.setupRequired = false;
+    f.password.value = "";
+    await enterApp();
+  } catch (e) { msg.hidden = false; msg.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = "Sign in"; }
+});
+
+$("#setup-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, msg = $("#setup-msg"), btn = f.querySelector("button");
+  msg.hidden = true;
+  const username = f.username.value.trim(), password = f.password.value;
+  if (!username) { msg.hidden = false; msg.textContent = "Choose a username."; f.username.focus(); return; }
+  if (password.length < 12) { msg.hidden = false; msg.textContent = "Use at least 12 characters."; f.password.focus(); return; }
+  if (password !== f.confirm.value) { msg.hidden = false; msg.textContent = "The two passwords do not match."; f.confirm.focus(); return; }
+  btn.disabled = true; btn.textContent = "Creating…";
+  let created = false;
+  try {
+    await api("/api/auth/setup", { username, password });
+    created = true;
+    await api("/api/auth/login", { username, password, remember: false });
+    AUTH.authenticated = true;
+    AUTH.setupRequired = false;
+    await enterApp();
+  } catch (e) {
+    if (created) {
+      showGate("signin");
+      const m = $("#signin-msg");
+      m.hidden = false;
+      m.textContent = "Account created. Sign in with your new password.";
+    } else {
+      msg.hidden = false;
+      msg.textContent = e.message;
+    }
+  } finally {
+    if (created) { f.password.value = ""; f.confirm.value = ""; }
+    btn.disabled = false; btn.textContent = "Create account";
+  }
+});
+
+$("#recovery-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, msg = $("#recovery-msg"), btn = f.querySelector("button.primary");
+  msg.hidden = true;
+  const username = f.username.value.trim(), password = f.password.value;
+  if (!username) { msg.hidden = false; msg.textContent = "Enter your username."; f.username.focus(); return; }
+  if (password.length < 12) { msg.hidden = false; msg.textContent = "Use at least 12 characters."; f.password.focus(); return; }
+  if (password !== f.confirm.value) { msg.hidden = false; msg.textContent = "The two passwords do not match."; f.confirm.focus(); return; }
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    await api("/api/auth/password", { username, password });
+    await api("/api/auth/login", { username, password, remember: false });
+    AUTH.authenticated = true;
+    AUTH.setupRequired = false;
+    f.password.value = ""; f.confirm.value = "";
+    await enterApp();
+  } catch (e) {
+    msg.hidden = false;
+    msg.textContent = e.message;
+  } finally { btn.disabled = false; btn.textContent = "Set new password"; }
+});
+
+$("#show-recovery").addEventListener("click", () => showGate("recovery"));
+$("#cancel-recovery").addEventListener("click", () => showGate("signin"));
+$("#gate-retry").addEventListener("click", start);
+
+$("#logout").addEventListener("click", async () => {
+  const btn = $("#logout");
+  btn.disabled = true;
+  try { await api("/api/auth/logout", null, true); }
+  catch (e) {
+    const msg = $("#sessions-msg"); msg.hidden = false; msg.textContent = "Sign-out could not be confirmed: " + e.message;
+    btn.disabled = false;
+    return;
+  }
+  token = "";
+  sessionStorage.removeItem("token");
+  AUTH.authenticated = false;
+  fillAuthCopy();
+  btn.disabled = false;
+  showGate(AUTH.setupRequired ? "blocked" : "signin");
+});
+
 $("#form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const f = ev.target, msg = $("#form-msg"), btn = f.querySelector("button");
+  const f = ev.target, msg = $("#form-msg"), btn = f.querySelector("button.primary");
   const days = Number(f.cleanupDays.value);
   if (!Number.isInteger(days) || days < 0 || days > 3650) {
     msg.hidden = false; msg.textContent = "Days must be a whole number from 0 to 3650."; f.cleanupDays.focus(); return;
@@ -383,6 +784,48 @@ $("#form").addEventListener("submit", async (ev) => {
   finally { btn.disabled = false; }
 });
 
+async function start() {
+  const st = await authStatus();
+  if (st) {
+    AUTH.available = true;
+    AUTH.authenticated = !!st.authenticated;
+    AUTH.setupRequired = !!st.setupRequired;
+    if (Number.isFinite(st.rememberDays)) AUTH.rememberDays = st.rememberDays;
+    if (Number.isFinite(st.sessionHours)) AUTH.sessionHours = st.sessionHours;
+  } else {
+    AUTH.available = true;
+    AUTH.authenticated = false;
+    fillAuthCopy();
+    showGate("signin");
+    $("#signin-msg").hidden = false;
+    $("#signin-msg").textContent = "The host's sign-in service could not be reached. Check the host connection and try again.";
+    return;
+  }
+  fillAuthCopy();
+  if (!AUTH.authenticated) { showGate(AUTH.setupRequired ? "blocked" : "signin"); return; }
+  if (AUTH.setupRequired) { showGate("setup"); return; }
+  await enterApp();
+}
+
+$("#open-public-help").addEventListener("click", () => {
+  const copy = $("#view-help").cloneNode(true);
+  copy.removeAttribute("id"); copy.hidden = false;
+  for (const node of copy.querySelectorAll("[id]")) node.removeAttribute("id");
+  $("#public-help-content").replaceChildren(copy);
+  $("#gate").hidden = true;
+  $("#public-help").hidden = false;
+  $("#close-public-help").focus();
+});
+$("#close-public-help").addEventListener("click", () => {
+  $("#public-help").hidden = true;
+  start();
+});
+
 buildArrFields();
-load();
-setInterval(() => { if ($("#view-settings").hidden) load(); }, 30000);
+start();
+setInterval(() => {
+  if (!$("#app-shell").hidden && $("#view-settings").hidden) {
+    load();
+    if (!$("#view-downloads").hidden) loadDownloads();
+  }
+}, 30000);

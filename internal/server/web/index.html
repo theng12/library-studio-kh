@@ -8,7 +8,71 @@
 <script src="app.js" defer></script>
 </head>
 <body>
-<div class="shell">
+
+<div id="gate" class="gate" hidden>
+  <div class="gate-card">
+    <div class="brand gate-brand">
+      <svg class="mark" viewBox="0 0 1024 1024" aria-hidden="true"><rect width="1024" height="1024" rx="224" fill="currentColor"/><rect x="232" y="260" width="120" height="504" rx="24" fill="#fff"/><rect x="392" y="320" width="120" height="444" rx="24" fill="#fff"/><rect x="552" y="248" width="120" height="516" rx="24" fill="#fff" opacity=".7"/><rect x="690" y="300" width="120" height="470" rx="24" fill="#fff" transform="rotate(-12 750 535)"/></svg>
+      <span>Library Studio KH</span>
+    </div>
+
+    <section id="gate-signin" hidden>
+      <h1>Sign in</h1>
+      <p class="lede">Your library is on this computer or another one on your Tailscale network.</p>
+      <form id="signin-form" class="gate-form" novalidate>
+        <label>Username <input name="username" autocomplete="username" required></label>
+        <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+        <label class="check"><input type="checkbox" name="remember"> Remember this device for <span id="remember-days">30</span> days</label>
+        <p class="muted">Without this, you're signed out after <span id="session-hours">12</span> hours.</p>
+        <p id="signin-msg" class="msg" role="alert" hidden></p>
+        <div class="actions"><button type="submit" class="primary">Sign in</button></div>
+      </form>
+      <p id="recovery-link" class="gate-foot" hidden><button type="button" class="inline" id="show-recovery">Forgot your password?</button></p>
+      <p id="recovery-hint" class="muted gate-foot" hidden>Forgot your password? Open Library Studio KH on the host computer to recover owner access.</p>
+      <p class="muted gate-foot">This page is served over plain HTTP: on this computer, or over your private Tailscale network from another device. Tailscale encrypts remote connections, but the page is not HTTPS.</p>
+    </section>
+
+    <section id="gate-setup" hidden>
+      <h1>Create the owner account</h1>
+      <p class="lede">This computer will control the library. The account works in the desktop app and in a browser on your Tailscale network.</p>
+      <form id="setup-form" class="gate-form" novalidate>
+        <label>Username <input name="username" autocomplete="username" required maxlength="64"></label>
+        <label>Password <span class="hint">· at least 12 characters</span><input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
+        <label>Confirm password <input name="confirm" type="password" autocomplete="new-password" required minlength="12"></label>
+        <p id="setup-msg" class="msg" role="alert" hidden></p>
+        <div class="actions"><button type="submit" class="primary">Create account</button></div>
+      </form>
+      <p class="muted gate-foot">Owner setup only works on the host computer itself. Remote browsers can sign in, but cannot create the owner account.</p>
+    </section>
+
+    <section id="gate-blocked" hidden>
+      <h1>Finish setup on the host computer</h1>
+      <p class="lede">This library has no owner account yet. Open the Library Studio KH desktop app on the computer that runs it, then create the account there. After that, you can sign in from this device.</p>
+      <div class="actions"><button type="button" class="primary" id="gate-retry">Check again</button></div>
+    </section>
+
+    <section id="gate-recovery" hidden>
+      <h1>Recover owner access</h1>
+      <p class="lede">Use this on the host computer to set a new password. All other sessions will be signed out.</p>
+      <form id="recovery-form" class="gate-form" novalidate>
+        <label>Username <input name="username" autocomplete="username" required></label>
+        <label>New password <span class="hint">· at least 12 characters</span><input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
+        <label>Confirm new password <input name="confirm" type="password" autocomplete="new-password" required minlength="12"></label>
+        <p id="recovery-msg" class="msg" role="alert" hidden></p>
+        <div class="actions"><button type="submit" class="primary">Set new password</button><button type="button" class="small" id="cancel-recovery">Back to sign in</button></div>
+      </form>
+      <p class="muted gate-foot">Recovery needs the desktop app's local access. If this browser doesn't have it, open Library Studio KH on the host computer.</p>
+    </section>
+    <p class="gate-foot"><button type="button" class="inline" id="open-public-help">Setup &amp; help</button></p>
+  </div>
+</div>
+
+<section id="public-help" class="content" hidden>
+  <p><button type="button" class="small" id="close-public-help">Back to sign in</button></p>
+  <div id="public-help-content"></div>
+</section>
+
+<div class="shell" id="app-shell" hidden>
   <nav class="side" aria-label="Menu">
     <div class="brand">
       <svg class="mark" viewBox="0 0 1024 1024" aria-hidden="true"><rect width="1024" height="1024" rx="224" fill="currentColor"/><rect x="232" y="260" width="120" height="504" rx="24" fill="#fff"/><rect x="392" y="320" width="120" height="444" rx="24" fill="#fff"/><rect x="552" y="248" width="120" height="516" rx="24" fill="#fff" opacity=".7"/><rect x="690" y="300" width="120" height="470" rx="24" fill="#fff" transform="rotate(-12 750 535)"/></svg>
@@ -16,10 +80,12 @@
     </div>
     <ul class="menu">
       <li><button type="button" data-view="activity" aria-current="page">Activity</button></li>
+      <li><button type="button" data-view="downloads">Downloads</button></li>
       <li><button type="button" data-view="browse">My library</button></li>
       <li><button type="button" data-view="find">Find &amp; add</button></li>
       <li><button type="button" data-view="cleanup">Cleanup</button></li>
       <li><button type="button" data-view="settings">Settings</button></li>
+      <li><button type="button" data-view="help">Setup &amp; help</button></li>
     </ul>
     <button type="button" class="version" data-view="whatsnew">Version <span id="version">…</span><br><span class="link">What's new</span></button>
   </nav>
@@ -46,6 +112,29 @@
       </div>
     </section>
 
+    <section id="view-downloads" class="view" hidden>
+      <header class="head">
+        <h1>Downloads</h1>
+        <p class="lede">Pause or resume downloads in qBittorrent. Library Studio KH never deletes downloads from here.</p>
+      </header>
+      <p id="dl-notice" class="notice" role="alert" hidden></p>
+      <div class="panel">
+        <div class="tools dl-tools">
+          <p id="dl-count" class="muted" role="status">Loading…</p>
+          <div class="actions">
+            <button type="button" class="small" id="dl-pause" disabled>Pause selected</button>
+            <button type="button" class="small" id="dl-resume" disabled>Resume selected</button>
+            <button type="button" class="small" id="dl-refresh">Refresh</button>
+          </div>
+        </div>
+        <p id="dl-empty" class="empty" hidden></p>
+        <table id="dl" class="list" hidden>
+          <thead><tr><th scope="col"><span class="sr">Select</span></th><th scope="col">Name</th><th scope="col">State</th><th scope="col">Progress</th><th scope="col">Size</th><th scope="col">Speed</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
     <section id="view-browse" class="view" hidden>
       <header class="head">
         <h1>My library</h1>
@@ -60,7 +149,7 @@
         </div>
         <p id="lib-empty" class="empty" hidden></p>
         <table id="lib" class="list">
-          <thead><tr><th scope="col">Title</th><th scope="col">Type</th><th scope="col">Files</th><th scope="col">Added</th></tr></thead>
+          <thead><tr><th scope="col">Title</th><th scope="col">Type</th><th scope="col">Files</th><th scope="col">Monitored</th><th scope="col">Added</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -128,16 +217,23 @@
     <section id="view-settings" class="view" hidden>
       <header class="head"><h1>Settings</h1></header>
       <form id="form" novalidate>
+        <fieldset class="panel" id="auth-panel" hidden>
+          <legend>Sessions &amp; security</legend>
+          <p class="muted" id="auth-note"></p>
+          <p id="sessions-msg" class="msg" role="status" hidden></p>
+          <ul id="sessions" class="sessions" aria-label="Signed-in sessions"></ul>
+          <div class="actions"><button type="button" class="small" id="logout">Sign out this browser</button></div>
+        </fieldset>
         <fieldset class="panel">
           <legend>Phone &amp; Tailscale access</legend>
           <label class="check"><input type="checkbox" name="tailscaleOn"> Allow access from my Tailscale devices</label>
           <p class="muted">Off by default. Connect this computer and your phone to the same Tailscale network. Keep Library Studio KH open and this computer awake.</p>
           <label class="short">Port <input type="number" name="tailscalePort" min="1024" max="65535" inputmode="numeric"></label>
           <p id="remote-status" class="msg" role="status"></p>
-          <label id="remote-link-box" hidden>Phone link <span class="hint">· includes your access key; keep it private</span>
+          <label id="remote-link-box" hidden>Phone link <span class="hint">· keep it private</span>
             <input id="remote-link" readonly type="text" aria-describedby="remote-help">
           </label>
-          <p id="remote-help" class="muted">Save to apply. Send the phone link to your own phone and open it in its browser with Tailscale connected. The link changes when you restart the app.</p>
+          <p id="remote-help" class="muted">Save to apply. Send the phone link to your own phone and open it in its browser with Tailscale connected. The address is HTTP over your Tailscale network, not HTTPS.</p>
         </fieldset>
         <fieldset class="panel">
           <legend>Local cleanup</legend>
@@ -165,12 +261,185 @@
       </form>
     </section>
 
+    <section id="view-help" class="view" hidden>
+      <header class="head">
+        <h1>Setup &amp; help</h1>
+        <p class="lede">How Library Studio KH fits together, what each companion app does, and how to check and fix the common problems. This guide works offline.</p>
+      </header>
+
+      <div class="panel prose">
+        <h2>How the pieces fit</h2>
+        <p>Library Studio KH is the control room. The companion apps do the work: qBittorrent downloads, Sonarr, Radarr and Lidarr look after the library, and Prowlarr finds sources. Each companion stays a separate program, so it can update or recover on its own. A broken subtitle tool should not stop movie downloads, and updating Library should not replace the whole stack.</p>
+        <p>Most people never need to open a companion app. Use <strong>Advanced → Open companion app</strong> only for a setting or repair that Library does not cover yet. That action is planned; for now, open the companion app from your normal applications list.</p>
+      </div>
+
+      <div class="panel prose">
+        <h2>Two ways to start</h2>
+        <p>Most people never need to open a companion app. Choose the path that matches this computer.</p>
+      </div>
+
+      <details class="panel help-step">
+        <summary>Set up this computer <span class="badge planned">Planned</span></summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>Library will install and configure the companions you choose, so the whole stack can be managed from one place.</dd>
+          <dt>Required</dt><dd>Optional. This guided installer is not part of the current build yet.</dd>
+          <dt>Check</dt><dd>Not available in this build. Settings can already connect companions you installed yourself.</dd>
+          <dt>Fix</dt><dd>Until the installer arrives, install the companion apps from their official sources, start them, and add their addresses and API keys in Settings.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>Connect to an existing library</summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>It lets this device use a library that is already set up on another computer, without installing anything here.</dd>
+          <dt>Required</dt><dd>Optional. Use this for a home server or a host that is already running.</dd>
+          <dt>Check</dt><dd>Sign in succeeds and Activity lists the connected apps. No companion apps are needed on this device.</dd>
+          <dt>Fix</dt><dd>Ask the host owner for an account. If the host has no owner account yet, create it on that computer first.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>qBittorrent — downloads</summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>It downloads the files that Sonarr, Radarr and Lidarr ask for, and any torrent you add by hand.</dd>
+          <dt>Required</dt><dd>Yes, for downloading. Without it, Find &amp; add and Downloads cannot work.</dd>
+          <dt>Check</dt><dd>Activity shows qBittorrent connected. Settings holds its address, username and password.</dd>
+          <dt>Fix</dt><dd>Start qBittorrent, then correct its address and sign-in in Settings. Keep its own remove-files action off; Library does the library check before removing anything.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>Sonarr — TV</summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>It tracks shows and episodes, monitors new releases, and tells Library when a download is fully in the library.</dd>
+          <dt>Required</dt><dd>Optional. Required only if you collect TV.</dd>
+          <dt>Check</dt><dd>Activity shows Sonarr connected, My library lists TV, and Find &amp; add returns shows.</dd>
+          <dt>Fix</dt><dd>Start Sonarr and add its address and API key in Settings. The key is under Sonarr's Settings → General.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>Radarr — films</summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>It tracks films, monitors new releases, and confirms when a film is fully in the library.</dd>
+          <dt>Required</dt><dd>Optional. Required only if you collect films.</dd>
+          <dt>Check</dt><dd>Activity shows Radarr connected, My library lists films, and Find &amp; add returns films.</dd>
+          <dt>Fix</dt><dd>Start Radarr and add its address and API key in Settings. The key is under Radarr's Settings → General.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>Lidarr — music</summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>It tracks artists and albums, monitors new releases, and confirms when an album is fully in the library.</dd>
+          <dt>Required</dt><dd>Optional. Required only if you collect music.</dd>
+          <dt>Check</dt><dd>Activity shows Lidarr connected, My library lists music, and Find &amp; add returns artists.</dd>
+          <dt>Fix</dt><dd>Start Lidarr and add its address and API key in Settings. When adding music, choose both a quality profile and a metadata profile.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>Prowlarr — sources</summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>It keeps indexer settings in one place and syncs them to Sonarr, Radarr and Lidarr.</dd>
+          <dt>Required</dt><dd>Optional, but recommended. Library never adds its own downloader or indexer.</dd>
+          <dt>Check</dt><dd>Prowlarr shows connected in Activity. Its own health page lists failing indexers.</dd>
+          <dt>Fix</dt><dd>Start Prowlarr, add indexers there, and run its sync to the library apps. Then add its address and API key in Settings.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>Bazarr — subtitles <span class="badge planned">Planned</span></summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>It finds and manages subtitles for the library.</dd>
+          <dt>Required</dt><dd>Optional. Not controlled here yet.</dd>
+          <dt>Check</dt><dd>Not available in this build. Use Bazarr's own settings and health page.</dd>
+          <dt>Fix</dt><dd>Planned optional integration. When it arrives, Library will add connection health, setup help and supported workflows.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>LazyLibrarian, Mylar3 and Whisparr <span class="badge planned">Planned</span></summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>These are optional library apps for books, comics and other collections.</dd>
+          <dt>Required</dt><dd>Optional. Not controlled here yet.</dd>
+          <dt>Check</dt><dd>Not available in this build. Use each app's own settings.</dd>
+          <dt>Fix</dt><dd>Planned optional integrations. Each will bring useful controls, setup help and connection health when it is added.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>Storage and the NAS</summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>Downloads land in a local folder and the library lives on a NAS. Library checks free space and whether the library folder can be reached.</dd>
+          <dt>Required</dt><dd>Yes, for a NAS library. Both folders are settings, never fixed paths.</dd>
+          <dt>Check</dt><dd>Activity shows free space and says when the NAS library folder cannot be found.</dd>
+          <dt>Fix</dt><dd>Set both folders in Settings and mount the NAS on this computer. Library does not store NAS passwords; use the NAS's own login.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>Monitoring and quality</summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>Monitored items are watched for new releases. Quality profiles decide what counts as good enough, root folders decide where files go, and Lidarr also needs a metadata profile.</dd>
+          <dt>Required</dt><dd>Choose a live profile and root folder for every add. Lidarr also requires a metadata profile.</dd>
+          <dt>Check</dt><dd>My library has a Monitored toggle per item. Find &amp; add shows the app's live profiles and folders before you commit.</dd>
+          <dt>Fix</dt><dd>Create profiles and root folders in the companion app, then reopen the add dialog. If the list is empty, that app has nothing configured yet.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>Cleanup and removal safety</summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>Cleanup frees local disk space after a download is safely in the library.</dd>
+          <dt>Required</dt><dd>Optional. Switch it off in Settings.</dd>
+          <dt>Check</dt><dd>Cleanup shows the last check and any reason it was blocked.</dd>
+          <dt>Fix</dt><dd>If a check is blocked, reconnect the missing app or NAS. Library refuses to remove anything while it is unsure, and never touches downloads the library apps do not know about.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>Startup, login and sleep</summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>The local server must be running for this browser page and for downloads to keep going.</dd>
+          <dt>Required</dt><dd>Yes while you use the browser.</dd>
+          <dt>Check</dt><dd>The desktop app is open and Activity loads.</dd>
+          <dt>Fix</dt><dd>Open Library Studio KH. A background host that stays running after the window closes is planned; until then keep the app open and stop the computer sleeping while downloads run.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>Private remote access</summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>It lets your phone use the library without exposing it to the internet.</dd>
+          <dt>Required</dt><dd>Optional. Off by default.</dd>
+          <dt>Check</dt><dd>Settings shows the Tailscale address and whether access is on. Both devices must be on the same tailnet.</dd>
+          <dt>Fix</dt><dd>Install Tailscale and sign in on both devices, then turn on access in Settings. This is HTTP over your Tailscale network: encrypted by Tailscale, but not HTTPS, and the session cookie is not marked Secure. Do not port-forward.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>Troubleshooting</summary>
+        <dl class="help-facts">
+          <dt>App shows not connected</dt><dd>Start it, then check its address and API key in Settings. The key is in the app's own General settings.</dd>
+          <dt>Cannot create the owner account from a phone</dt><dd>Owner setup only works on the host computer. Open Library Studio KH there, create the account, then sign in from the phone.</dd>
+          <dt>Signed out unexpectedly</dt><dd>Sessions last 12 hours unless Remember this device was ticked, which lasts 30 days. Sign in again.</dd>
+          <dt>Find &amp; add has no profiles or folders</dt><dd>The companion app has nothing configured. Create a quality profile and a root folder there, then reopen the add dialog.</dd>
+          <dt>Add says the selection is not valid</dt><dd>The app changed its profiles or folders. Reopen the add dialog so Library loads the live options again.</dd>
+          <dt>NAS folder missing</dt><dd>Mount the NAS on this computer. Library will not remove files while the library is unreachable.</dd>
+          <dt>Page will not load</dt><dd>The server must be running. Open the desktop app and check the Tailscale connection.</dd>
+          <dt>Remote link does not work</dt><dd>Both devices must be on Tailscale. Use the exact address from Settings. The address is HTTP, not HTTPS.</dd>
+        </dl>
+      </details>
+    </section>
+
     <section id="view-whatsnew" class="view" hidden>
       <header class="head"><h1>What's new</h1></header>
       <div id="releases"></div>
     </section>
   </main>
 </div>
+
 <dialog id="details" aria-labelledby="d-title">
   <header class="d-head">
     <h2 id="d-title"></h2>
@@ -184,6 +453,24 @@
     <h3 id="d-bands-h">Time at each speed</h3>
     <ul id="d-bands" class="bands"></ul>
   </section>
+</dialog>
+
+<dialog id="add-dialog" aria-labelledby="add-title">
+  <header class="d-head">
+    <h2 id="add-title"></h2>
+    <button type="button" class="close" aria-label="Close">×</button>
+  </header>
+  <form id="add-form" class="add-form" novalidate>
+    <p id="add-lede" class="muted"></p>
+    <label>Quality profile <select id="add-quality" required></select></label>
+    <label>Root folder <select id="add-root" required></select></label>
+    <label id="add-meta-box" hidden>Metadata profile <select id="add-meta"></select></label>
+    <p id="add-msg" class="msg" role="alert" hidden></p>
+    <div class="actions">
+      <button type="submit" class="primary" disabled>Add to library</button>
+      <button type="button" class="small" id="add-cancel">Cancel</button>
+    </div>
+  </form>
 </dialog>
 </body>
 </html>

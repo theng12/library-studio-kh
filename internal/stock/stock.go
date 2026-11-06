@@ -59,7 +59,7 @@ func (q *QBit) login() error {
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 || strings.TrimSpace(string(b)) != "Ok." {
+	if resp.StatusCode != http.StatusNoContent && (resp.StatusCode != http.StatusOK || strings.TrimSpace(string(b)) != "Ok.") {
 		return fmt.Errorf("qBittorrent refused the username or password")
 	}
 	q.loggedIn = true
@@ -84,10 +84,19 @@ func (q *QBit) call(path string, form url.Values, out any) error {
 	if resp.StatusCode == http.StatusForbidden {
 		return fmt.Errorf("qBittorrent asked for a login: add its username and password in Settings")
 	}
-	if resp.StatusCode != 200 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("qBittorrent answered %s for %s", resp.Status, path)
 	}
 	if out == nil {
+		if path == "/api/v2/torrents/add" {
+			b, err := io.ReadAll(io.LimitReader(resp.Body, 512))
+			if err != nil {
+				return err
+			}
+			if strings.TrimSpace(string(b)) == "Fails." {
+				return fmt.Errorf("qBittorrent didn't accept those links")
+			}
+		}
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
@@ -129,7 +138,7 @@ func (q *QBit) AddFiles(files map[string][]byte) error {
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-	if resp.StatusCode != 200 || strings.TrimSpace(string(b)) == "Fails." {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || strings.TrimSpace(string(b)) == "Fails." {
 		return fmt.Errorf("qBittorrent didn't accept the torrent files (%s)", strings.TrimSpace(resp.Status+" "+string(b)))
 	}
 	return nil

@@ -8,7 +8,9 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -19,8 +21,15 @@ func main() {
 	ago := func(d int) string { return now.Add(-time.Duration(d) * 24 * time.Hour).Format(time.RFC3339) }
 	ahead := func(d int) string { return now.Add(time.Duration(d) * 24 * time.Hour).Format(time.RFC3339) }
 	unix := func(h float64) int64 { return now.Add(-time.Duration(h * float64(time.Hour))).Unix() }
+	hashOf := func(short string) string { return strings.Repeat(short, 20) }
+	var mu sync.Mutex
+	paused := map[string]bool{}
 	done := func(hash, name string, size float64, added, finished float64) map[string]any {
-		return map[string]any{"hash": hash, "name": name, "progress": 1, "state": "stalledUP", "size": size, "downloaded": size, "uploaded": size * 0.8,
+		state := "stalledUP"
+		if paused[hashOf(hash)] {
+			state = "stoppedUP"
+		}
+		return map[string]any{"hash": hashOf(hash), "name": name, "progress": 1, "state": state, "size": size, "downloaded": size, "uploaded": size * 0.8,
 			"ratio": 0.8, "added_on": unix(added), "completion_on": unix(finished), "num_seeds": 0, "num_leechs": 1, "save_path": "/Users/me/Downloads", "category": "tv-sonarr"}
 	}
 	routes := map[string]any{
@@ -29,11 +38,11 @@ func main() {
 	}
 	arr := map[string]map[string]any{
 		"/api/v3/history": {"records": []map[string]any{
-			{"eventType": "downloadFolderImported", "downloadId": "A4", "date": ago(3)},
-			{"eventType": "downloadFolderImported", "downloadId": "A2", "date": ago(1)},
+			{"eventType": "downloadFolderImported", "downloadId": hashOf("A4"), "date": ago(3)},
+			{"eventType": "downloadFolderImported", "downloadId": hashOf("A2"), "date": ago(1)},
 		}},
-		"/api/v1/history":               {"records": []map[string]any{{"eventType": "downloadImported", "downloadId": "A3", "date": ago(6)}}},
-		"/api/v3/queue":                 {"records": []map[string]any{{"downloadId": "A1"}}},
+		"/api/v1/history":               {"records": []map[string]any{{"eventType": "downloadImported", "downloadId": hashOf("A3"), "date": ago(6)}}},
+		"/api/v3/queue":                 {"records": []map[string]any{{"downloadId": hashOf("A1")}}},
 		"/api/v1/queue":                 {"records": []map[string]any{}},
 		"/api/v3/config/downloadclient": {"id": 1, "enableCompletedDownloadHandling": true},
 		"/api/v1/config/downloadclient": {"id": 1, "enableCompletedDownloadHandling": true},
@@ -60,15 +69,55 @@ func main() {
 		"/api/v1/metadataprofile": []map[string]any{{"id": 1}},
 	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
 		p := r.URL.Path
+		if p == "/api/v2/torrents/stop" || p == "/api/v2/torrents/start" {
+			for _, hash := range strings.Split(r.FormValue("hashes"), "|") {
+				paused[hash] = strings.HasSuffix(p, "/stop")
+			}
+			return
+		}
+		for _, kind := range []string{"/api/v3/movie", "/api/v3/series", "/api/v1/artist"} {
+			if strings.HasPrefix(p, kind+"/") {
+				id, err := strconv.Atoi(strings.TrimPrefix(p, kind+"/"))
+				if err != nil {
+					continue
+				}
+				for i, item := range media[kind].([]map[string]any) {
+					if item["id"] != id {
+						continue
+					}
+					if r.Method == "PUT" {
+						var changed map[string]any
+						if json.NewDecoder(r.Body).Decode(&changed) != nil {
+							http.Error(w, "bad item", 400)
+							return
+						}
+						changed["id"] = id
+						media[kind].([]map[string]any)[i] = changed
+						item = changed
+					}
+					json.NewEncoder(w).Encode(item)
+					return
+				}
+				http.NotFound(w, r)
+				return
+			}
+		}
 		if p == "/api/v2/torrents/info" {
 			// The one active download changes speed on every read, so the app's sampler has something to record.
 			speed := rand.Int63n(30e6)
 			if rand.Intn(5) == 0 {
 				speed = 0
 			}
+			state := "downloading"
+			if paused[hashOf("a1")] {
+				state = "stoppedDL"
+				speed = 0
+			}
 			json.NewEncoder(w).Encode([]map[string]any{
-				{"hash": "a1", "name": "Sample Series S02E04 1080p", "progress": 0.62, "state": "downloading", "size": 2.4e9, "downloaded": 1.49e9,
+				{"hash": hashOf("a1"), "name": "Sample Series S02E04 1080p", "progress": 0.62, "state": state, "size": 2.4e9, "downloaded": 1.49e9,
 					"dlspeed": speed, "upspeed": 120e3, "eta": 61, "added_on": unix(0.4), "num_seeds": 14, "num_leechs": 3, "save_path": "/Users/me/Downloads", "category": "tv-sonarr"},
 				done("a2", "Example Film (2024) 2160p", 18e9, 30, 29.2),
 				done("a3", "Demo Artist - First Album (FLAC)", 0.6e9, 150, 149.9),
@@ -88,6 +137,15 @@ func main() {
 			return
 		}
 		if r.Method == "POST" && media[p] != nil {
+			var item map[string]any
+			if json.NewDecoder(r.Body).Decode(&item) != nil {
+				http.Error(w, "bad item", 400)
+				return
+			}
+			items := media[p].([]map[string]any)
+			item["id"] = len(items) + 1
+			item["added"] = time.Now().Format(time.RFC3339)
+			media[p] = append(items, item)
 			log.Printf("ADD %s", p)
 			w.WriteHeader(201)
 			return
