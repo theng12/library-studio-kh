@@ -147,10 +147,9 @@ async function openSourceForm(id) {
       sourceEditing = data.item;
       renderSourceForm(null, data.item);
     } else {
-      if (!sourceCatalog) {
-        const data = await smApi("/api/sources/catalog");
-        sourceCatalog = data.items || [];
-      }
+      // Prowlarr's provider list is live; never keep a catalog from an earlier add.
+      const data = await smApi("/api/sources/catalog");
+      sourceCatalog = data.items || [];
       sourceEditing = null;
       renderSourceForm(sourceCatalog, null);
     }
@@ -347,7 +346,7 @@ function sourceInputRow(field, edit) {
       input.id = id;
       const blank = document.createElement("option");
       blank.value = "";
-      blank.textContent = field.required ? "Choose…" : "Use Prowlarr's default";
+      blank.textContent = edit ? "Leave unchanged" : field.required ? "Choose…" : "Use Prowlarr's default";
       input.append(blank);
       for (const option of field.options || []) {
         const o = document.createElement("option");
@@ -393,6 +392,7 @@ function collectSourceFields(container, edit) {
     } else {
       value = input.value;
     }
+    if (type === "select" && String(value).trim() === "") continue; // blank keeps the native value
     if (secret) {
       if (String(value).trim() === "") continue; // blank keeps the saved secret
     } else if (!edit && String(value).trim() === "") {
@@ -401,6 +401,16 @@ function collectSourceFields(container, edit) {
     values[name] = value;
   }
   return values;
+}
+
+// After an add or save both lists are read again: the configured list here and
+// the existing status report main owns. The next Add form also refetches Prowlarr's catalog.
+async function reloadAfterSourceChange(loadList, refresh) {
+  sourceCatalog = null;
+  await loadList();
+  if (refresh) {
+    try { await refresh(); } catch (_) { /* the status report shows its own error */ }
+  }
 }
 
 async function submitSourceForm(edit, key, nameInput, priorityInput, enableInput, fields, action) {
@@ -432,15 +442,12 @@ async function submitSourceForm(edit, key, nameInput, priorityInput, enableInput
       smStatus("Source saved.");
     } else {
       await smApi("/api/sources", payload);
-      smStatus("Source added. Refresh the list to see Prowlarr's report.");
+      smStatus("Source added.");
     }
     if (action === "save") {
       sourceEditing = null;
       sourceBusy = false;
-      await loadConfiguredSources();
-      if (sourceRefresh) {
-        try { await sourceRefresh(); } catch (_) { /* the read-only report shows its own error */ }
-      }
+      await reloadAfterSourceChange(loadConfiguredSources, sourceRefresh);
     }
   } catch (err) {
     smStatus(err.message);

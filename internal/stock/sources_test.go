@@ -324,3 +324,17 @@ func TestSanitizeStripsOwnBaseAndEnvKey(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdateIndexerPreservesBlankSelect(t *testing.T) {
+	var saved map[string]any
+	srv := sourceMock(t, nil, &saved, nil)
+	err := NewArr("Prowlarr", srv.URL, "{{KEY_1ce1a07b}}").UpdateIndexer(SourceInput{
+		ID: 7, Fields: map[string]any{"categories": ""},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fieldValue(saved, "categories") != float64(1) {
+		t.Fatalf("a blank select on edit must keep the native value: %+v", saved["fields"])
+	}
+}

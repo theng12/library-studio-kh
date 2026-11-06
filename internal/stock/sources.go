@@ -394,6 +394,9 @@ func (a *Arr) applySourceFields(defs []map[string]any, target map[string]any, su
 				}
 				return fmt.Errorf("%s: %s", label, blocked)
 			}
+			if !isNew && kind == "select" && valueBlank(value) {
+				continue // unchanged or no-longer-offered choice keeps the native value
+			}
 			if secret && valueBlank(value) {
 				if isNew {
 					if required {
