@@ -413,11 +413,11 @@
             <fieldset class="setup-fieldset">
               <legend>Ports</legend>
               <div class="setup-grid">
-                <label>qBittorrent <input name="port.qbittorrent" type="number" min="1" max="65535" inputmode="numeric"></label>
-                <label>Sonarr <input name="port.sonarr" type="number" min="1" max="65535" inputmode="numeric"></label>
-                <label>Radarr <input name="port.radarr" type="number" min="1" max="65535" inputmode="numeric"></label>
-                <label>Lidarr <input name="port.lidarr" type="number" min="1" max="65535" inputmode="numeric"></label>
-                <label>Prowlarr <input name="port.prowlarr" type="number" min="1" max="65535" inputmode="numeric"></label>
+                <label>qBittorrent <input name="port.qbittorrent" type="number" min="1024" max="65535" inputmode="numeric"></label>
+                <label>Sonarr <input name="port.sonarr" type="number" min="1024" max="65535" inputmode="numeric"></label>
+                <label>Radarr <input name="port.radarr" type="number" min="1024" max="65535" inputmode="numeric"></label>
+                <label>Lidarr <input name="port.lidarr" type="number" min="1024" max="65535" inputmode="numeric"></label>
+                <label>Prowlarr <input name="port.prowlarr" type="number" min="1024" max="65535" inputmode="numeric"></label>
               </div>
             </fieldset>
             <fieldset class="setup-fieldset">
@@ -437,6 +437,7 @@
             <p id="setup-form-msg" class="msg" role="alert" hidden></p>
             <div class="actions">
               <button type="submit" class="primary">Review setup plan</button>
+              <button type="button" class="small" id="setup-cancel-edit" hidden>Keep saved plan</button>
               <button type="button" class="small" id="setup-refresh">Refresh status</button>
             </div>
           </form>

@@ -8,6 +8,7 @@ const SETUP_APP_IDS = ["qbittorrent", "sonarr", "radarr", "lidarr", "prowlarr"];
 const SETUP_ROOT_IDS = ["sonarr", "radarr", "lidarr"];
 const SETUP_ACTIVE_STATES = ["planning", "installing", "checking", "configuring"];
 const SETUP_OPEN_STATES = ["needs_open", "opened", "blocked"];
+const SETUP_APP_NAMES = { qbittorrent: "qBittorrent", sonarr: "Sonarr", radarr: "Radarr", lidarr: "Lidarr", prowlarr: "Prowlarr" };
 
 function setupClientTarget(value) {
   const raw = String(value == null ? "" : value).trim();
@@ -38,7 +39,7 @@ function setupString(value, fallback) {
 function setupPort(value, fallback) {
   const raw = value == null || value === "" ? fallback : value;
   const port = Number(raw);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Ports must be whole numbers from 1 to 65535.");
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("Ports must be whole numbers from 1024 to 65535.");
   return port;
 }
 
@@ -58,6 +59,12 @@ function setupRequest(values, defaults) {
     categories[id] = setupString(given.categories && given.categories[id], server.categories && server.categories[id]);
   }
   for (const id of SETUP_APP_IDS) ports[id] = setupPort(given.ports && given.ports[id], server.ports && server.ports[id]);
+  const usedPorts = new Map();
+  for (const id of apps) {
+    const other = usedPorts.get(ports[id]);
+    if (other) throw new Error((SETUP_APP_NAMES[other] || other) + " and " + (SETUP_APP_NAMES[id] || id) + " both use port " + ports[id] + ". Choose a different port for one of them.");
+    usedPorts.set(ports[id], id);
+  }
   const renameTV = given.renameTV == null ? server.renameTV !== false : !!given.renameTV;
   const startAtLogin = given.startAtLogin == null ? server.startAtLogin === true : !!given.startAtLogin;
   return {
@@ -79,24 +86,40 @@ function setupSize(bytes) {
 
 function setupJobView(job) {
   if (!job || !job.id) {
-    return { hasJob: false, state: "not_started", active: false, plan: true, run: false, retry: false, check: false, open: [], sources: false, settings: false, restart: false, ready: false };
+    return { hasJob: false, state: "not_started", active: false, plan: true, run: false, retry: false, check: false, open: [], sources: false, settings: false, restart: false, ready: false, edit: false };
   }
   const state = String(job.state || "not_started");
   const apps = Array.isArray(job.apps) ? job.apps : [];
   const appState = (s) => apps.some((a) => a && a.state === s);
+  const active = SETUP_ACTIVE_STATES.includes(state);
   return {
-    hasJob: true, state,
-    active: SETUP_ACTIVE_STATES.includes(state),
+    hasJob: true, state, active,
     plan: false,
     run: state === "planned",
-    retry: ["failed", "interrupted", "blocked"].includes(state),
-    check: ["installing", "needs_approval", "checking", "configuring", "needs_sources", "blocked", "interrupted", "failed"].includes(state),
-    open: apps.filter((a) => a && SETUP_OPEN_STATES.includes(a.state)).map((a) => a.id),
+    retry: ["failed", "interrupted"].includes(state),
+    check: !active && ["needs_approval", "needs_sources", "blocked", "ready"].includes(state),
+    open: active ? [] : apps.filter((a) => a && a.managed === true && SETUP_OPEN_STATES.includes(a.state)).map((a) => a.id),
     sources: state === "needs_sources" || appState("needs_sources"),
     settings: appState("needs_connection"),
     restart: state === "needs_restart" || appState("needs_restart"),
     ready: state === "ready",
+    edit: !active,
   };
+}
+
+function setupExistingApp(app) {
+  if (!app || app.managed === true) return false;
+  return app.state === "adopt" || app.state === "needs_connection" || app.state === "blocked" || app.connectionDetected === true;
+}
+
+function setupCheckState(state) {
+  if (state === "passed") return "ok";
+  if (state === "failed") return "bad";
+  return "";
+}
+
+function setupCheckLabel(state) {
+  return { passed: "Passed", failed: "Failed", not_run: "Not run", not_checked: "Not checked" }[state] || state || "Not checked";
 }
 
 function setupJobRequest(job, action, app) {
@@ -111,7 +134,6 @@ function setupJobRequest(job, action, app) {
 }
 
 /* DOM wiring */
-const SETUP_APP_NAMES = { qbittorrent: "qBittorrent", sonarr: "Sonarr", radarr: "Radarr", lidarr: "Lidarr", prowlarr: "Prowlarr" };
 const SETUP_JOB_LABELS = {
   not_started: "Not started", planning: "Planning", planned: "Plan ready", installing: "Installing",
   needs_approval: "Waiting for macOS approval", checking: "Checking connections", configuring: "Configuring",
@@ -130,6 +152,8 @@ let setupDefaults = null;
 let setupTimer = 0;
 let setupVisible = false;
 let setupBusy = false;
+let setupEditing = false;
+let setupGeneration = 0;
 
 const setupForm = document.querySelector("#setup-plan-form");
 const setupJobBox = document.querySelector("#setup-job");
@@ -173,8 +197,8 @@ function setupSetField(name, value) {
   else if (value != null) field.value = String(value);
 }
 
-function fillSetupForm(defaults) {
-  if (!setupForm || setupForm.dataset.filled === "1") return;
+function fillSetupForm(defaults, force) {
+  if (!setupForm || (!force && setupForm.dataset.filled === "1")) return;
   const d = defaults || {};
   const chosen = Array.isArray(d.apps) ? new Set(d.apps) : null;
   for (const id of SETUP_APP_IDS) setupSetField("app." + id, chosen ? chosen.has(id) : id === "qbittorrent");
@@ -239,7 +263,7 @@ function setupAppActions(app, view) {
     open.setAttribute("aria-label", "Open " + name);
     actions.append(open);
   }
-  if (app.state === "needs_connection" || app.state === "adopt" || app.managed === false) {
+  if (setupExistingApp(app) || app.state === "needs_connection") {
     const settings = setupButton("Open Settings", "small", () => {});
     settings.dataset.view = "settings";
     settings.setAttribute("aria-label", "Open Settings to connect " + name);
@@ -258,7 +282,9 @@ function renderSetupJob() {
   if (!setupJobBox) return;
   setupJobBox.replaceChildren();
   const view = setupJobView(setupJob);
-  if (setupForm) setupForm.hidden = view.hasJob || !!(setupForm.dataset.unsupported === "1");
+  if (setupForm) setupForm.hidden = !((!view.hasJob || setupEditing) && setupForm.dataset.unsupported !== "1");
+  const cancelEdit = document.querySelector("#setup-cancel-edit");
+  if (cancelEdit) cancelEdit.hidden = !setupEditing;
   if (!view.hasJob) return;
 
   const job = setupJob;
@@ -268,6 +294,7 @@ function renderSetupJob() {
   head.append(setupNode("h3", "Setup plan"));
   head.append(setupNode("span", SETUP_JOB_LABELS[state] || state, "badge"));
   box.append(head);
+  if (setupEditing) box.append(setupNode("p", "Editing choices. The saved plan is kept until you review a new plan.", "notice"));
   if (job.detail) box.append(setupNode("p", job.detail, "muted"));
   if (job.request) box.append(setupReview(job.request));
   box.append(setupNode("p", "Nothing is downloaded until you choose Install. Setup does not start a media download.", "muted"));
@@ -289,7 +316,7 @@ function renderSetupJob() {
       if (app.expectedBytes != null && (app.expectedBytes > 0 || app.state === "download")) facts.push("Download limit: " + (app.sizeCap > 0 ? setupSize(app.sizeCap) : "not reported"));
       if (app.source) facts.push("Source: " + app.source);
       if (app.path) facts.push("Installed at " + app.path);
-      if (app.managed === false) facts.push("Existing app — kept as it is");
+      if (setupExistingApp(app)) facts.push("Existing app — kept as it is");
       if (facts.length) item.append(setupNode("p", facts.join(" · "), "setup-app-facts"));
       const actions = setupAppActions(app, view);
       if (actions) item.append(actions);
@@ -303,8 +330,8 @@ function renderSetupJob() {
     checks.append(setupNode("h3", "Connection checks"));
     const list = setupNode("ul", null, "setup-check-list");
     for (const check of job.checks) {
-      const item = setupNode("li", null, check.state === "connected" ? "ok" : "bad");
-      item.textContent = (check.name || check.app || "Check") + ": " + (check.state || "not checked");
+      const item = setupNode("li", null, setupCheckState(check.state));
+      item.textContent = (check.name || check.app || "Check") + ": " + setupCheckLabel(check.state);
       if (check.detail) item.textContent += " — " + check.detail;
       list.append(item);
     }
@@ -312,16 +339,19 @@ function renderSetupJob() {
     box.append(checks);
   }
 
-  if (view.open.length) box.append(setupNode("p", "Library never opens an app for you. macOS will ask you to approve it. After approving, choose Check connections.", "muted"));
+  if (view.open.length) box.append(setupNode("p", "Choose Open, then complete any macOS approval prompts. Check connections afterward.", "muted"));
   if (view.restart) box.append(setupNode("p", "Quit Library Studio KH completely, then reopen it. Start at login takes effect after that. Setup is not ready until the app has reopened.", "notice"));
   if (view.ready) box.append(setupNode("p", "Library's own connection checks passed. This setup is ready.", "muted"));
 
-  const actions = setupNode("div", null, "actions setup-actions");
-  if (view.run) actions.append(setupButton("Install selected apps", "primary", () => setupRun("run")));
-  if (view.retry) actions.append(setupButton("Retry this plan", "primary", () => setupRun("run")));
-  if (view.check) actions.append(setupButton("Check connections", "small", () => setupRun("check")));
-  actions.append(setupButton("Refresh", "small", () => loadSetupStatus()));
-  box.append(actions);
+  if (!setupEditing) {
+    const actions = setupNode("div", null, "actions setup-actions");
+    if (view.edit && setupForm && setupForm.dataset.unsupported !== "1") actions.append(setupButton("Edit choices", "small", startSetupEdit));
+    if (view.run) actions.append(setupButton("Install selected apps", "primary", () => setupRun("run")));
+    if (view.retry) actions.append(setupButton("Retry this plan", "primary", () => setupRun("run")));
+    if (view.check) actions.append(setupButton("Check connections", "small", () => setupRun("check")));
+    actions.append(setupButton("Refresh", "small", () => loadSetupStatus()));
+    box.append(actions);
+  }
   setupJobBox.append(box);
 }
 
@@ -330,36 +360,68 @@ async function setupRun(action, app) {
   let request;
   try { request = setupJobRequest(setupJob, action, app); }
   catch (e) { setupSay(e.message); return; }
+  const generation = setupGeneration;
   setupBusy = true;
   setupSay(action === "open" ? "Opening…" : action === "check" ? "Checking connections…" : "Starting…");
   let failure = "";
   try {
     const job = await setupApi(request.path, request.body, true);
+    if (generation !== setupGeneration) return;
     if (job && job.id) setupJob = job;
-  } catch (e) { failure = e.message; }
+  } catch (e) {
+    if (generation !== setupGeneration) return;
+    failure = e.message;
+  }
   setupBusy = false;
   renderSetupJob();
   setupSay(failure);
   if (!failure) scheduleSetupPoll();
 }
 
+function startSetupEdit() {
+  if (!setupJob || setupJobView(setupJob).active) return;
+  setupEditing = true;
+  const msg = document.querySelector("#setup-form-msg");
+  if (msg) { msg.hidden = true; msg.textContent = ""; }
+  fillSetupForm(setupJob.request || setupDefaults || {}, true);
+  renderSetupJob();
+  const first = setupForm && setupForm.querySelector("input, button");
+  if (first) first.focus();
+}
+
+function cancelSetupEdit() {
+  setupEditing = false;
+  const msg = document.querySelector("#setup-form-msg");
+  if (msg) { msg.hidden = true; msg.textContent = ""; }
+  renderSetupJob();
+}
+
+function resetPlanButton() {
+  const button = setupForm && setupForm.querySelector("button.primary");
+  if (button) { button.disabled = false; button.textContent = "Review setup plan"; }
+}
+
 async function loadSetupStatus() {
   if (!setupForm) return;
   if (setupBusy) return;
+  const generation = setupGeneration;
   try {
     const status = await setupApi("/api/setup/status");
+    if (generation !== setupGeneration) return;
     setupDefaults = status && status.defaults ? status.defaults : null;
     const supported = !!(status && status.supported === true);
     setupForm.dataset.unsupported = supported ? "0" : "1";
     const note = document.querySelector("#setup-unsupported");
     if (note) note.hidden = supported;
     fillSetupForm(setupDefaults || {});
-    setupJob = status && status.job && status.job.id ? status.job : null;
+    const nextJob = status && status.job && status.job.id ? status.job : null;
+    if (!(setupEditing && !nextJob)) setupJob = nextJob;
     renderSetupJob();
     if (setupJob) setupSay("");
     else setupSay(supported ? "Choose what to set up, then review the plan." : "");
     scheduleSetupPoll();
   } catch (e) {
+    if (generation !== setupGeneration) return;
     stopSetupPoll();
     setupSay("Could not read setup status: " + e.message);
   }
@@ -380,24 +442,33 @@ function scheduleSetupPoll() {
   setupTimer = setTimeout(async () => {
     setupTimer = 0;
     if (!setupActiveVisible() || setupBusy) return;
+    const generation = setupGeneration;
     try {
       const status = await setupApi("/api/setup/status");
+      if (generation !== setupGeneration) return;
       setupDefaults = status && status.defaults ? status.defaults : setupDefaults;
-      setupJob = status && status.job && status.job.id ? status.job : null;
+      const nextJob = status && status.job && status.job.id ? status.job : null;
+      if (!(setupEditing && !nextJob)) setupJob = nextJob;
       renderSetupJob();
       scheduleSetupPoll();
     } catch (e) {
+      if (generation !== setupGeneration) return;
       setupSay("Could not refresh setup: " + e.message);
     }
   }, 2500);
 }
 
 function resetSetup() {
+  setupGeneration++;
   stopSetupPoll();
   setupJob = null;
   setupDefaults = null;
   setupVisible = false;
   setupBusy = false;
+  setupEditing = false;
+  resetPlanButton();
+  const cancelEdit = document.querySelector("#setup-cancel-edit");
+  if (cancelEdit) cancelEdit.hidden = true;
   if (setupForm) {
     setupForm.reset();
     delete setupForm.dataset.filled;
@@ -417,7 +488,7 @@ function resetSetup() {
   }
 }
 
-function clearLocalToken() {
+function setupClearLocalToken() {
   if (typeof window.libraryClearToken === "function") window.libraryClearToken();
   else sessionStorage.removeItem("token");
 }
@@ -450,13 +521,19 @@ if (setupForm) {
     try { request = setupRequest(readSetupForm(), setupDefaults || {}); }
     catch (e) { if (msg) { msg.hidden = false; msg.textContent = e.message; } return; }
     setupBusy = true;
+    const generation = setupGeneration;
     if (button) { button.disabled = true; button.textContent = "Planning…"; }
     let failure = "";
     try {
       const job = await setupApi("/api/setup/plan", request, true);
+      if (generation !== setupGeneration) return;
       if (!job || !job.id) throw new Error("The host did not return a setup plan.");
       setupJob = job;
-    } catch (e) { failure = e.message; }
+      setupEditing = false;
+    } catch (e) {
+      if (generation !== setupGeneration) return;
+      failure = e.message;
+    }
     setupBusy = false;
     if (button) { button.disabled = false; button.textContent = "Review setup plan"; }
     if (failure) { if (msg) { msg.hidden = false; msg.textContent = failure; } return; }
@@ -466,6 +543,8 @@ if (setupForm) {
   });
   const refresh = document.querySelector("#setup-refresh");
   if (refresh) refresh.addEventListener("click", () => loadSetupStatus());
+  const cancelEdit = document.querySelector("#setup-cancel-edit");
+  if (cancelEdit) cancelEdit.addEventListener("click", cancelSetupEdit);
 }
 
 if (setupClientForm) {
@@ -478,7 +557,7 @@ if (setupClientForm) {
     try {
       await setupClientGo(setupClientForm.elements.namedItem("url").value, {
         api: (path, body) => setupApi(path, body, true),
-        clearToken: clearLocalToken,
+        clearToken: setupClearLocalToken,
         navigate: (url) => window.location.assign(url),
       });
     } catch (e) {
@@ -496,6 +575,7 @@ if (showOwnerButton) showOwnerButton.addEventListener("click", showSetupHost);
 async function loadGateSupport() {
   const note = document.querySelector("#setup-support-note");
   if (!note) return;
+  const generation = setupGeneration;
   showSetupHost();
   if (!document.querySelector("#gate-setup").hidden) {
     note.hidden = false;
@@ -503,18 +583,25 @@ async function loadGateSupport() {
   }
   try {
     const status = await setupApi("/api/setup/status");
+    if (generation !== setupGeneration || document.querySelector("#gate-setup").hidden) return;
     const supported = !!(status && status.supported === true);
     note.hidden = false;
     note.textContent = supported
       ? "Guided app setup is available on this Mac. Creating the account here does not install anything yet."
       : "Guided app setup runs only on Apple Silicon Macs. You can still create the owner account and connect apps in Settings, or use an existing library on another computer.";
   } catch (e) {
+    if (generation !== setupGeneration || document.querySelector("#gate-setup").hidden) return;
     note.hidden = false;
     note.textContent = "Guided setup status could not be read. You can still create the owner account, or use an existing library on another computer.";
   }
 }
 
 document.addEventListener("library:gate", (ev) => {
+  setupGeneration++;
+  setupVisible = false;
+  setupBusy = false;
+  resetPlanButton();
+  stopSetupPoll();
   if (ev.detail && ev.detail.mode === "setup") loadGateSupport();
 });
 document.addEventListener("library:view", (ev) => {

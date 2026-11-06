@@ -36,8 +36,11 @@ test("request keeps server defaults, selected apps and whole-number ports", () =
   assert.equal(request.startAtLogin, false);
   const none = { qbittorrent: false, sonarr: false, radarr: false, lidarr: false, prowlarr: false };
   assert.throws(() => context.setupRequest({ apps: none }, defaults), /Choose at least one app/);
-  assert.throws(() => context.setupRequest({ apps: { sonarr: true }, ports: { sonarr: "0" } }, defaults), /1 to 65535/);
+  assert.throws(() => context.setupRequest({ apps: { sonarr: true }, ports: { sonarr: "80" } }, defaults), /1024 to 65535/);
   assert.throws(() => context.setupRequest({ apps: { sonarr: true }, ports: { sonarr: "8989.5" } }, defaults), /whole numbers/);
+  const two = { qbittorrent: false, sonarr: true, radarr: true, lidarr: false, prowlarr: false };
+  assert.throws(() => context.setupRequest({ apps: two, ports: { sonarr: "8989", radarr: "8989" } }, defaults), /both use port 8989/);
+  assert.doesNotThrow(() => context.setupRequest({ apps: two, ports: { sonarr: "8989", radarr: "7878" } }, defaults));
 });
 
 test("unknown download size is never shown as zero", () => {
@@ -51,29 +54,74 @@ test("unknown download size is never shown as zero", () => {
 
 test("job controls follow the reported state, and retry keeps the saved plan id", () => {
   const context = helpers();
-  const planned = { id: "plan-7", state: "planned", apps: [{ id: "sonarr", state: "download" }] };
+  const planned = { id: "plan-7", state: "planned", apps: [{ id: "sonarr", state: "download", managed: true }] };
   const planView = context.setupJobView(planned);
   assert.equal(planView.run, true);
   assert.equal(planView.plan, false);
+  assert.equal(planView.check, false);
+  assert.equal(planView.edit, true);
   assert.deepEqual(JSON.parse(JSON.stringify(context.setupJobRequest(planned, "run").body)), { id: "plan-7" });
 
-  const needs = context.setupJobView({ id: "plan-7", state: "installing", apps: [
-    { id: "sonarr", state: "needs_open" }, { id: "radarr", state: "needs_connection" }, { id: "lidarr", state: "needs_sources" },
+  const installing = context.setupJobView({ id: "plan-7", state: "installing", apps: [
+    { id: "sonarr", state: "needs_open", managed: true },
   ] });
-  assert.deepEqual(needs.open, ["sonarr"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(installing.open)), []);
+  assert.equal(installing.check, false);
+  assert.equal(installing.edit, false);
+
+  const needs = context.setupJobView({ id: "plan-7", state: "needs_approval", apps: [
+    { id: "sonarr", state: "needs_open", managed: true },
+    { id: "radarr", state: "needs_connection", managed: true },
+    { id: "lidarr", state: "needs_sources", managed: true },
+  ] });
+  assert.deepEqual(JSON.parse(JSON.stringify(needs.open)), ["sonarr"]);
   assert.equal(needs.settings, true);
   assert.equal(needs.sources, true);
   assert.equal(needs.check, true);
+  assert.equal(needs.edit, true);
   assert.deepEqual(JSON.parse(JSON.stringify(context.setupJobRequest(planned, "open", "sonarr").body)), { id: "plan-7", app: "sonarr" });
   assert.throws(() => context.setupJobRequest(planned, "open"), /Choose an app/);
   assert.throws(() => context.setupJobRequest(null, "run"), /no saved setup plan/);
 
+  const blockedExisting = { id: "old", state: "blocked", managed: false };
+  const blocked = context.setupJobView({ id: "plan-7", state: "blocked", apps: [blockedExisting] });
+  assert.deepEqual(JSON.parse(JSON.stringify(blocked.open)), []);
+  assert.equal(blocked.retry, false);
+  assert.equal(blocked.check, true);
+  assert.equal(context.setupExistingApp(blockedExisting), true);
+
   assert.equal(context.setupJobView({ id: "p", state: "failed", apps: [] }).retry, true);
+  assert.equal(context.setupJobView({ id: "p", state: "interrupted", apps: [] }).retry, true);
+  assert.equal(context.setupJobView({ id: "p", state: "failed", apps: [] }).check, false);
   const restart = context.setupJobView({ id: "p", state: "needs_restart", apps: [] });
   assert.equal(restart.restart, true);
   assert.equal(restart.ready, false);
-  assert.equal(context.setupJobView({ id: "p", state: "ready", apps: [] }).ready, true);
+  const ready = context.setupJobView({ id: "p", state: "ready", apps: [] });
+  assert.equal(ready.ready, true);
+  assert.equal(ready.check, true);
   assert.equal(context.setupJobView(null).plan, true);
+});
+
+test("only a real existing-app state is treated as an existing install", () => {
+  const context = helpers();
+  assert.equal(context.setupExistingApp({ managed: false, state: "planning" }), false);
+  assert.equal(context.setupExistingApp({ managed: false, state: "download" }), false);
+  assert.equal(context.setupExistingApp({ managed: false, state: "adopt" }), true);
+  assert.equal(context.setupExistingApp({ managed: false, state: "needs_connection" }), true);
+  assert.equal(context.setupExistingApp({ managed: false, state: "blocked" }), true);
+  assert.equal(context.setupExistingApp({ managed: false, state: "not_checked", connectionDetected: true }), true);
+  assert.equal(context.setupExistingApp({ managed: true, state: "adopt" }), false);
+});
+
+test("connection checks use passed/failed/unknown, never connected-as-success", () => {
+  const context = helpers();
+  assert.equal(context.setupCheckState("passed"), "ok");
+  assert.equal(context.setupCheckState("failed"), "bad");
+  for (const state of ["not_run", "not_checked", "connected", ""]) assert.equal(context.setupCheckState(state), "");
+  assert.equal(context.setupCheckLabel("passed"), "Passed");
+  assert.equal(context.setupCheckLabel("failed"), "Failed");
+  assert.equal(context.setupCheckLabel("not_run"), "Not run");
+  assert.equal(context.setupCheckLabel("not_checked"), "Not checked");
 });
 
 test("client navigation accepts only a host root and clears local access before leaving", async () => {
@@ -126,4 +174,21 @@ test("public Help strips owner setup forms before removing ids", () => {
   assert.match(app.slice(app.indexOf('$("#open-public-help")')), /publicHelpCopy\(\$\("#view-help"\)\)/);
   assert.equal(setup.replace("window.location.assign", "").includes("location.assign"), false);
   assert.match(setup, /window\.location\.assign\(url\)/);
+});
+
+test("owner results are stale-guarded, editable while inactive, and copy never promises an OS prompt", () => {
+  assert.match(setup, /let setupGeneration = 0;/);
+  assert.match(setup, /function resetSetup\(\) \{\n  setupGeneration\+\+;/);
+  assert.match(setup, /const generation = setupGeneration;/);
+  assert.match(setup, /if \(generation !== setupGeneration\) return;/);
+  assert.match(setup, /document\.addEventListener\("library:gate"[\s\S]*?stopSetupPoll\(\)/);
+  assert.match(setup, /function setupClearLocalToken\(\)/);
+  assert.equal(/function clearLocalToken\(\)/.test(setup), false);
+  assert.match(setup, /Choose Open, then complete any macOS approval prompts\. Check connections afterward\./);
+  assert.equal(setup.includes("Library never opens an app for you"), false);
+  assert.match(setup, /setupButton\("Edit choices"/);
+  assert.match(setup, /fillSetupForm\(setupJob\.request \|\| setupDefaults \|\| \{\}, true\)/);
+  assert.match(setup, /if \(!\(setupEditing && !nextJob\)\) setupJob = nextJob;/);
+  assert.match(html, /id="setup-cancel-edit" hidden/);
+  assert.equal((html.match(/type="number" min="1024" max="65535"/g) || []).length, 5);
 });
