@@ -133,9 +133,15 @@ type Receipt struct {
 	InstalledAt         time.Time `json:"installedAt"`
 	Installer           string    `json:"installer"`
 	OwnerApprovalNeeded bool      `json:"ownerApprovalNeeded"`
-	// QuarantinePreserved records that the installer did not touch OS
-	// quarantine or the OS first-launch approval state.
-	QuarantinePreserved bool `json:"quarantinePreserved"`
+	// QuarantineAdded is true only when this installer wrote the standard
+	// com.apple.quarantine attribute on the promoted bundle. macOS, not the
+	// installer, then decides first launch.
+	QuarantineAdded bool   `json:"quarantineAdded"`
+	QuarantineAgent string `json:"quarantineAgent,omitempty"`
+	// AppLaunched and CodeSignatureModified are always false; they are recorded
+	// so a receipt never implies work this package did not do.
+	AppLaunched           bool `json:"appLaunched"`
+	CodeSignatureModified bool `json:"codeSignatureModified"`
 }
 
 // ErrBundleConflict means a bundle this package must not replace is already at
@@ -145,6 +151,11 @@ var ErrBundleConflict = errors.New("a different or invalid app bundle already oc
 // ErrUnavailable means the official source did not publish metadata that can be
 // verified. The resolver refuses to guess or self-hash in that case.
 var ErrUnavailable = errors.New("official package metadata unavailable")
+
+// ErrStalePackage means the official publication changed after the caller
+// resolved the package. Install stops before downloading or writing anything;
+// the caller must resolve again and renew the owner's approval.
+var ErrStalePackage = errors.New("official package changed since it was resolved; resolve again and renew owner approval")
 
 // Doer is the HTTP client dependency. A custom Doer must follow or reject
 // redirects itself; the default client enforces the HTTPS host allowlist on
@@ -167,6 +178,7 @@ type Options struct {
 	HDIUtil string
 	Ditto   string
 	Plutil  string
+	Xattr   string
 
 	ResolveTimeout  time.Duration
 	DownloadTimeout time.Duration
@@ -187,6 +199,10 @@ const (
 	receiptDirName     = ".library-studio-receipts"
 	defaultArm64Label  = "arm64"
 	maxDownloadAttempt = 3
+	// quarantineFlags is the standard "downloaded" flag set. The agent name is
+	// ours, never a browser's, and macOS remains the authority that prompts.
+	quarantineFlags = "0083"
+	quarantineAgent = "Library Studio KH"
 )
 
 // Installer resolves and installs packages. Create one with New.
@@ -196,6 +212,7 @@ type Installer struct {
 	hdiutil         string
 	ditto           string
 	plutil          string
+	xattr           string
 	resolveTimeout  time.Duration
 	downloadTimeout time.Duration
 	sizeCap         int64
@@ -212,6 +229,7 @@ func New(opts Options) *Installer {
 		hdiutil:         opts.HDIUtil,
 		ditto:           opts.Ditto,
 		plutil:          opts.Plutil,
+		xattr:           opts.Xattr,
 		resolveTimeout:  opts.ResolveTimeout,
 		downloadTimeout: opts.DownloadTimeout,
 		sizeCap:         opts.SizeCap,
@@ -232,6 +250,9 @@ func New(opts Options) *Installer {
 	}
 	if i.plutil == "" {
 		i.plutil = "plutil"
+	}
+	if i.xattr == "" {
+		i.xattr = "xattr"
 	}
 	if i.resolveTimeout <= 0 {
 		i.resolveTimeout = defaultResolve
@@ -392,7 +413,7 @@ func (i *Installer) ttl(ctx context.Context, d time.Duration) (context.Context, 
 // delegates to the injectable runner.
 func (i *Installer) executeCommand(ctx context.Context, tool string, args ...string) ([]byte, error) {
 	switch tool {
-	case i.hdiutil, i.ditto, i.plutil:
+	case i.hdiutil, i.ditto, i.plutil, i.xattr:
 	default:
 		return nil, fmt.Errorf("companioninstall: refusing to run %q", tool)
 	}

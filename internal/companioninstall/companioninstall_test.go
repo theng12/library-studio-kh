@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -43,7 +44,43 @@ func sha(bs []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+const (
+	cpuArm64 = uint32(0x0100000c)
+	cpuAMD64 = uint32(0x01000007)
+)
+
+func thinMachO(cpu uint32) []byte {
+	b := make([]byte, 32)
+	binary.LittleEndian.PutUint32(b[0:], 0xfeedfacf)
+	binary.LittleEndian.PutUint32(b[4:], cpu)
+	binary.LittleEndian.PutUint32(b[12:], 2) // MH_EXECUTE
+	return b
+}
+
+func fatMachO(cpus ...uint32) []byte {
+	const offset = 4096
+	b := make([]byte, offset+32*len(cpus))
+	binary.BigEndian.PutUint32(b[0:], 0xcafebabe)
+	binary.BigEndian.PutUint32(b[4:], uint32(len(cpus)))
+	off := uint32(offset)
+	for n, cpu := range cpus {
+		base := 8 + 20*n
+		binary.BigEndian.PutUint32(b[base:], cpu)
+		binary.BigEndian.PutUint32(b[base+8:], off)
+		binary.BigEndian.PutUint32(b[base+12:], 32)
+		binary.BigEndian.PutUint32(b[base+16:], 12)
+		copy(b[off:], thinMachO(cpu))
+		off += 32
+	}
+	return b
+}
+
 func writeApp(t *testing.T, dir, bundleID, version, execName string) {
+	t.Helper()
+	writeAppWithExec(t, dir, bundleID, version, execName, thinMachO(cpuArm64))
+}
+
+func writeAppWithExec(t *testing.T, dir, bundleID, version, execName string, execBody []byte) {
 	t.Helper()
 	contents := filepath.Join(dir, "Contents")
 	macOS := filepath.Join(contents, "MacOS")
@@ -61,7 +98,7 @@ func writeApp(t *testing.T, dir, bundleID, version, execName string) {
 	if err := os.WriteFile(filepath.Join(contents, "Info.plist"), plist, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(macOS, execName), []byte("#!/bin/sh\n"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(macOS, execName), execBody, 0o755); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -84,7 +121,7 @@ func buildAppZip(t *testing.T, appName, bundleID, version, execName string) []by
 		body []byte
 	}{
 		{appName + "/Contents/Info.plist", 0o644, plist},
-		{appName + "/Contents/MacOS/" + execName, 0o755, []byte("#!/bin/sh\n")},
+		{appName + "/Contents/MacOS/" + execName, 0o755, thinMachO(cpuArm64)},
 	} {
 		h := &zip.FileHeader{Name: entry.name, Method: zip.Deflate}
 		h.SetMode(entry.perm)
@@ -103,13 +140,16 @@ func buildAppZip(t *testing.T, appName, bundleID, version, execName string) []by
 }
 
 type fakeRunner struct {
-	t           *testing.T
-	attachName  string
-	attachID    string
-	attachVer   string
-	attachExec  string
-	plutilCalls int
-	attachCalls int
+	t              *testing.T
+	attachName     string
+	attachID       string
+	attachVer      string
+	attachExec     string
+	attachExecBody []byte
+	plutilCalls    int
+	attachCalls    int
+	xattrCalls     [][]string
+	xattrErr       error
 }
 
 func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -117,6 +157,13 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 	case "plutil":
 		f.plutilCalls++
 		return os.ReadFile(args[len(args)-1])
+	case "xattr":
+		copied := append([]string(nil), args...)
+		f.xattrCalls = append(f.xattrCalls, copied)
+		if f.xattrErr != nil {
+			return nil, f.xattrErr
+		}
+		return nil, nil
 	case "hdiutil":
 		switch {
 		case len(args) > 0 && args[0] == "attach":
@@ -130,7 +177,11 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 			if mount == "" {
 				return nil, errors.New("fake hdiutil: no mountpoint")
 			}
-			writeApp(f.t, filepath.Join(mount, f.attachName), f.attachID, f.attachVer, f.attachExec)
+			body := f.attachExecBody
+			if body == nil {
+				body = thinMachO(cpuArm64)
+			}
+			writeAppWithExec(f.t, filepath.Join(mount, f.attachName), f.attachID, f.attachVer, f.attachExec, body)
 			return []byte("attached"), nil
 		case len(args) > 0 && args[0] == "detach":
 			return []byte("detached"), nil
@@ -199,6 +250,64 @@ func newTestInstaller(d Doer, r CommandRunner) *Installer {
 		RetryDelay: func(int) time.Duration { return 0 },
 		Now:        func() time.Time { return time.Unix(1_700_000_000, 0) },
 	})
+}
+
+func specFor(id AppID) appSpec {
+	for _, spec := range specs {
+		if spec.app.ID == id {
+			return spec
+		}
+	}
+	panic("unknown app " + string(id))
+}
+
+func servarrAssetURL(id AppID, tag, assetName string) string {
+	spec := specFor(id)
+	return fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", spec.owner, spec.repo, tag, assetName)
+}
+
+// servarrDoer serves the official endpoint, release metadata and asset. The
+// metadata digest and size describe published; the asset body is served so a
+// corrupted-download test can differ without changing official metadata.
+func servarrDoer(t *testing.T, id AppID, tag, assetName string, published, served []byte) doerFunc {
+	t.Helper()
+	spec := specFor(id)
+	downloadURL := servarrAssetURL(id, tag, assetName)
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/tags/%s", spec.owner, spec.repo, tag)
+	release := fmt.Sprintf(`{"tag_name":%q,"assets":[{"name":%q,"size":%d,"digest":"sha256:%s","browser_download_url":%q}]}`,
+		tag, assetName, len(published), sha(published), downloadURL)
+	if served == nil {
+		served = published
+	}
+	return func(req *http.Request) (*http.Response, error) {
+		switch req.URL.String() {
+		case spec.endpoint:
+			return response(req, http.StatusFound, "", downloadURL), nil
+		case apiURL:
+			return response(req, http.StatusOK, release, ""), nil
+		case downloadURL:
+			return response(req, http.StatusOK, string(served), ""), nil
+		}
+		return nil, fmt.Errorf("unexpected URL %s", req.URL)
+	}
+}
+
+func qbitDoer(t *testing.T, version, digest string, image []byte) doerFunc {
+	t.Helper()
+	spec := specFor(QBittorrent)
+	downloadURL := fmt.Sprintf("https://sourceforge.net/projects/qbittorrent/files/qbittorrent-mac/qbittorrent-%s/qbittorrent-%s.dmg/download", version, version)
+	page := fmt.Sprintf(`<h3 id="macos"><a href="%s">SourceForge</a>
+<td>%s</td><td class="wordBreak"><code>%s</code></td>
+<h3 id="linux">`, downloadURL, version, digest)
+	return func(req *http.Request) (*http.Response, error) {
+		switch req.URL.String() {
+		case spec.endpoint:
+			return response(req, http.StatusOK, page, ""), nil
+		case downloadURL:
+			return response(req, http.StatusOK, string(image), ""), nil
+		}
+		return nil, fmt.Errorf("unexpected URL %s", req.URL)
+	}
 }
 
 func TestRegistryHasOfficialApps(t *testing.T) {
@@ -287,12 +396,14 @@ func TestResolveServarrRefusesX64Asset(t *testing.T) {
 func TestResolveQBittorrentFromOfficialPage(t *testing.T) {
 	const standardSHA = "9e37f6c7ff848c7bdd3c10167614c0cb78c00e2ddcc323f1ad3ac6c008a0481f"
 	page := `
+<h3 id="macos">
 <a href="https://sourceforge.net/projects/qbittorrent/files/qbittorrent-mac/qbittorrent-5.2.3/qbittorrent-5.2.3.dmg/download">SourceForge</a>
 <a href="https://sourceforge.net/projects/qbittorrent/files/qbittorrent-mac/qbittorrent-5.2.3/qbittorrent-5.2.3_lt20.dmg/download">SourceForge</a>
 <td>5.2.3</td>
 <td class="wordBreak"><code>` + standardSHA + `</code></td>
 <td>5.2.3 (qt6 lt20)</td>
-<td class="wordBreak"><code>4dde4f357cf8d7271f7e25140d2986d076126566edf2d2ad441cdd382b2a333d</code></td>`
+<td class="wordBreak"><code>4dde4f357cf8d7271f7e25140d2986d076126566edf2d2ad441cdd382b2a333d</code></td>
+<h3 id="linux">`
 	d := doerFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.String() != specs[0].endpoint {
 			return nil, fmt.Errorf("unexpected URL %s", req.URL)
@@ -319,7 +430,7 @@ func TestResolveQBittorrentFromOfficialPage(t *testing.T) {
 }
 
 func TestResolveQBittorrentRefusesPageWithoutChecksum(t *testing.T) {
-	page := `<a href="https://sourceforge.net/projects/qbittorrent/files/qbittorrent-mac/qbittorrent-5.2.3/qbittorrent-5.2.3.dmg/download">SourceForge</a>`
+	page := `<h3 id="macos"><a href="https://sourceforge.net/projects/qbittorrent/files/qbittorrent-mac/qbittorrent-5.2.3/qbittorrent-5.2.3.dmg/download">SourceForge</a><h3 id="linux">`
 	d := doerFunc(func(req *http.Request) (*http.Response, error) {
 		return response(req, http.StatusOK, page, ""), nil
 	})
@@ -329,18 +440,48 @@ func TestResolveQBittorrentRefusesPageWithoutChecksum(t *testing.T) {
 	}
 }
 
+func TestResolveQBittorrentScopesChecksumToMacOSSection(t *testing.T) {
+	const macSHA = "9e37f6c7ff848c7bdd3c10167614c0cb78c00e2ddcc323f1ad3ac6c008a0481f"
+	const winSHA = "aff5b3bdc00d6e5773d6099ba30f9696dd3dfd1669ab0f64ce5c4e7168486436"
+	page := `
+<h3 id="windows">
+<a href="https://sourceforge.net/projects/qbittorrent/files/qbittorrent-mac/qbittorrent-9.9.9/qbittorrent-9.9.9.dmg/download">wrong section</a>
+<td>5.2.3</td><td><code>` + winSHA + `</code></td>
+<h3 id="macos">
+<a href="https://sourceforge.net/projects/qbittorrent/files/qbittorrent-mac/qbittorrent-5.2.3/qbittorrent-5.2.3.dmg/download">SourceForge</a>
+<td>5.2.3</td><td><code>` + macSHA + `</code></td>
+<h3 id="linux">`
+	d := doerFunc(func(req *http.Request) (*http.Response, error) {
+		return response(req, http.StatusOK, page, ""), nil
+	})
+	pkg, err := newTestInstaller(d, &fakeRunner{t: t}).Resolve(context.Background(), QBittorrent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pkg.ReleaseVersion != "5.2.3" || pkg.ExpectedSHA256 != macSHA {
+		t.Fatalf("used data outside the macOS section: %+v", pkg)
+	}
+}
+
+func TestResolveQBittorrentRefusesMissingMacOSSection(t *testing.T) {
+	page := `<h3 id="windows"><td>5.2.3</td><td><code>` + strings.Repeat("a", 64) + `</code></td>`
+	d := doerFunc(func(req *http.Request) (*http.Response, error) {
+		return response(req, http.StatusOK, page, ""), nil
+	})
+	_, err := newTestInstaller(d, &fakeRunner{t: t}).Resolve(context.Background(), QBittorrent)
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("got %v, want ErrUnavailable", err)
+	}
+}
+
 func TestInstallNewBundleDetectAdoptAndReceipt(t *testing.T) {
 	zipBytes := buildAppZip(t, "Sonarr.app", "com.osx.sonarr.tv", "4.0", "Sonarr")
-	const asset = "https://github.com/Sonarr/Sonarr/releases/download/v4.0.20.3014/Sonarr.main.4.0.20.3014.osx-arm64-app.zip"
+	const assetName = "Sonarr.main.4.0.20.3014.osx-arm64-app.zip"
+	asset := servarrAssetURL(Sonarr, "v4.0.20.3014", assetName)
 	pkg := servarrPackage(t, "Sonarr", "com.osx.sonarr.tv", "4.0.20.3014", asset, zipBytes)
-	d := doerFunc(func(req *http.Request) (*http.Response, error) {
-		if req.URL.String() != asset {
-			return nil, fmt.Errorf("unexpected URL %s", req.URL)
-		}
-		return response(req, http.StatusOK, string(zipBytes), ""), nil
-	})
+	runner := &fakeRunner{t: t}
 	appDir := t.TempDir()
-	installer := newTestInstaller(d, &fakeRunner{t: t})
+	installer := newTestInstaller(servarrDoer(t, Sonarr, "v4.0.20.3014", assetName, zipBytes, nil), runner)
 
 	result, err := installer.Install(context.Background(), pkg, appDir)
 	if err != nil {
@@ -355,19 +496,44 @@ func TestInstallNewBundleDetectAdoptAndReceipt(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(result.Path, "Contents", "MacOS", "Sonarr")); err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := os.ReadFile(result.ReceiptPath)
+	if len(runner.xattrCalls) != 1 {
+		t.Fatalf("quarantine calls = %d", len(runner.xattrCalls))
+	}
+	quarantine := runner.xattrCalls[0]
+	if len(quarantine) != 4 || quarantine[0] != "-w" || quarantine[1] != "com.apple.quarantine" {
+		t.Fatalf("unexpected quarantine call: %v", quarantine)
+	}
+	if !strings.HasPrefix(quarantine[2], quarantineFlags+";") || !strings.Contains(quarantine[2], quarantineAgent) {
+		t.Fatalf("unexpected quarantine value: %q", quarantine[2])
+	}
+	if !strings.Contains(quarantine[3], ".library-studio-stage-") {
+		t.Fatalf("quarantine was not applied to the staged bundle before promotion: %s", quarantine[3])
+	}
+
+	receiptBytes, err := os.ReadFile(result.ReceiptPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(receipt, []byte(pkg.ExpectedSHA256)) || !bytes.Contains(receipt, []byte("GitHub")) {
-		t.Fatalf("receipt does not retain provenance: %s", receipt)
+	if !bytes.Contains(receiptBytes, []byte(pkg.ExpectedSHA256)) || !bytes.Contains(receiptBytes, []byte("GitHub")) {
+		t.Fatalf("receipt does not retain provenance: %s", receiptBytes)
+	}
+	if filepath.Base(result.ReceiptPath) == "sonarr.json" {
+		t.Fatalf("receipt still uses a stale per-app name: %s", result.ReceiptPath)
+	}
+	var receipt Receipt
+	if err := json.Unmarshal(receiptBytes, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.QuarantineAdded || receipt.QuarantineAgent != quarantineAgent ||
+		receipt.AppLaunched || receipt.CodeSignatureModified || !receipt.OwnerApprovalNeeded {
+		t.Fatalf("dishonest receipt semantics: %+v", receipt)
 	}
 	created, err := time.Parse(time.RFC3339Nano, "2023-11-14T22:13:20Z")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(receipt, []byte(created.Format(time.RFC3339))) {
-		t.Fatalf("receipt did not use the injected clock: %s", receipt)
+	if !bytes.Contains(receiptBytes, []byte(created.Format(time.RFC3339))) {
+		t.Fatalf("receipt did not use the injected clock: %s", receiptBytes)
 	}
 
 	detected, err := installer.Detect(context.Background(), Sonarr, appDir)
@@ -385,18 +551,22 @@ func TestInstallNewBundleDetectAdoptAndReceipt(t *testing.T) {
 	if again.State != Adopted || !again.Existing || again.Path != result.Path {
 		t.Fatalf("second install did not adopt: %+v", again)
 	}
+	if len(runner.xattrCalls) != 1 {
+		t.Fatalf("adoption changed quarantine: %d calls", len(runner.xattrCalls))
+	}
 }
 
 func TestInstallRefusesChecksumMismatchAndKeepsPartialInTrash(t *testing.T) {
 	zipBytes := buildAppZip(t, "Sonarr.app", "com.osx.sonarr.tv", "4.0", "Sonarr")
-	const asset = "https://github.com/Sonarr/Sonarr/releases/download/v4.0.20.3014/Sonarr.main.4.0.20.3014.osx-arm64-app.zip"
+	const assetName = "Sonarr.main.4.0.20.3014.osx-arm64-app.zip"
+	asset := servarrAssetURL(Sonarr, "v4.0.20.3014", assetName)
 	pkg := servarrPackage(t, "Sonarr", "com.osx.sonarr.tv", "4.0.20.3014", asset, zipBytes)
-	pkg.ExpectedSHA256 = strings.Repeat("0", 64)
-	d := doerFunc(func(req *http.Request) (*http.Response, error) {
-		return response(req, http.StatusOK, string(zipBytes), ""), nil
-	})
+	tampered := append([]byte(nil), zipBytes...)
+	tampered[len(tampered)/2] ^= 0xff
 	appDir := t.TempDir()
 
+	// Official metadata stays intact; the served bytes are corrupted.
+	d := servarrDoer(t, Sonarr, "v4.0.20.3014", assetName, zipBytes, tampered)
 	_, err := newTestInstaller(d, &fakeRunner{t: t}).Install(context.Background(), pkg, appDir)
 	if err == nil || !strings.Contains(err.Error(), "SHA-256 mismatch") {
 		t.Fatalf("got %v, want a checksum refusal", err)
@@ -413,15 +583,19 @@ func TestInstallRefusesChecksumMismatchAndKeepsPartialInTrash(t *testing.T) {
 
 func TestInstallRetriesTransientDownloadFailure(t *testing.T) {
 	zipBytes := buildAppZip(t, "Sonarr.app", "com.osx.sonarr.tv", "4.0", "Sonarr")
-	const asset = "https://github.com/Sonarr/Sonarr/releases/download/v4.0.20.3014/Sonarr.main.4.0.20.3014.osx-arm64-app.zip"
+	const assetName = "Sonarr.main.4.0.20.3014.osx-arm64-app.zip"
+	asset := servarrAssetURL(Sonarr, "v4.0.20.3014", assetName)
 	pkg := servarrPackage(t, "Sonarr", "com.osx.sonarr.tv", "4.0.20.3014", asset, zipBytes)
+	base := servarrDoer(t, Sonarr, "v4.0.20.3014", assetName, zipBytes, nil)
 	calls := 0
 	d := doerFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
-		if calls == 1 {
-			return response(req, http.StatusInternalServerError, "try again", ""), nil
+		if req.URL.String() == asset {
+			calls++
+			if calls == 1 {
+				return response(req, http.StatusInternalServerError, "try again", ""), nil
+			}
 		}
-		return response(req, http.StatusOK, string(zipBytes), ""), nil
+		return base(req)
 	})
 
 	result, err := newTestInstaller(d, &fakeRunner{t: t}).Install(context.Background(), pkg, t.TempDir())
@@ -481,23 +655,197 @@ func TestInstallQBittorrentFromDMG(t *testing.T) {
 		ReleaseVersion:     "5.2.3",
 		OfficialAssetURL:   asset,
 		ExpectedSHA256:     sha(image),
-		ExpectedBytes:      int64(len(image)),
-		SizeCap:            int64(len(image)) + (1 << 20),
+		// The official page publishes no size; Resolve leaves this zero.
+		ExpectedBytes: 0,
+		SizeCap:       int64(len(image)) + (1 << 20),
 	}
-	d := doerFunc(func(req *http.Request) (*http.Response, error) {
-		return response(req, http.StatusOK, string(image), ""), nil
-	})
-	runner := &fakeRunner{t: t, attachName: "qbittorrent.app", attachID: "org.qbittorrent.qBittorrent", attachVer: "5.2.3", attachExec: "qbittorrent"}
+	appDir := t.TempDir()
+	runner := &fakeRunner{
+		t: t, attachName: "qbittorrent.app", attachID: "org.qbittorrent.qBittorrent",
+		attachVer: "5.2.3", attachExec: "qbittorrent", attachExecBody: fatMachO(cpuAMD64, cpuArm64),
+	}
 
-	result, err := newTestInstaller(d, runner).Install(context.Background(), pkg, t.TempDir())
+	result, err := newTestInstaller(qbitDoer(t, "5.2.3", sha(image), image), runner).Install(context.Background(), pkg, appDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Path != filepath.Join(filepath.Dir(result.Path), "qbittorrent.app") || result.Version != "5.2.3" {
+	if filepath.Dir(result.Path) != appDir || filepath.Base(result.Path) != "qbittorrent.app" || result.Version != "5.2.3" {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 	if runner.attachCalls != 1 {
 		t.Fatalf("attach calls = %d", runner.attachCalls)
+	}
+	if len(runner.xattrCalls) != 1 {
+		t.Fatalf("quarantine calls = %d", len(runner.xattrCalls))
+	}
+}
+
+func TestInstallRejectsForgedPackage(t *testing.T) {
+	zipBytes := buildAppZip(t, "Sonarr.app", "com.osx.sonarr.tv", "4.0", "Sonarr")
+	const assetName = "Sonarr.main.4.0.20.3014.osx-arm64-app.zip"
+	officialURL := servarrAssetURL(Sonarr, "v4.0.20.3014", assetName)
+	pkg := servarrPackage(t, "Sonarr", "com.osx.sonarr.tv", "4.0.20.3014", officialURL, zipBytes)
+	// Caller supplies an allowed host but a repository and digest of its own.
+	pkg.OfficialAssetURL = "https://github.com/attacker/Sonarr/releases/download/v4.0.20.3014/Sonarr.main.4.0.20.3014.osx-arm64-app.zip"
+	pkg.ExpectedSHA256 = strings.Repeat("f", 64)
+
+	base := servarrDoer(t, Sonarr, "v4.0.20.3014", assetName, zipBytes, nil)
+	attackerRequested := false
+	d := doerFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.String() == pkg.OfficialAssetURL {
+			attackerRequested = true
+		}
+		return base(req)
+	})
+	appDir := t.TempDir()
+	result, err := newTestInstaller(d, &fakeRunner{t: t}).Install(context.Background(), pkg, appDir)
+	if !errors.Is(err, ErrStalePackage) {
+		t.Fatalf("got result=%+v err=%v, want ErrStalePackage", result, err)
+	}
+	if attackerRequested {
+		t.Fatal("downloaded from the caller-supplied URL")
+	}
+	if _, statErr := os.Stat(filepath.Join(appDir, "Sonarr.app")); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Fatalf("a forged package wrote a bundle: %v", statErr)
+	}
+}
+
+func TestInstallStopsWhenOfficialVersionChanged(t *testing.T) {
+	zipBytes := buildAppZip(t, "Sonarr.app", "com.osx.sonarr.tv", "4.0", "Sonarr")
+	const assetName = "Sonarr.main.4.0.20.3014.osx-arm64-app.zip"
+	oldURL := servarrAssetURL(Sonarr, "v4.0.19.1", assetName)
+	pkg := servarrPackage(t, "Sonarr", "com.osx.sonarr.tv", "4.0.19.1", oldURL, zipBytes)
+	appDir := t.TempDir()
+	result, err := newTestInstaller(servarrDoer(t, Sonarr, "v4.0.20.3014", assetName, zipBytes, nil), &fakeRunner{t: t}).
+		Install(context.Background(), pkg, appDir)
+	if !errors.Is(err, ErrStalePackage) {
+		t.Fatalf("got result=%+v err=%v, want ErrStalePackage", result, err)
+	}
+	if !strings.Contains(err.Error(), "4.0.19.1") || !strings.Contains(err.Error(), "4.0.20.3014") {
+		t.Fatalf("stale error does not show both versions: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(appDir, "Sonarr.app")); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Fatalf("a stale plan wrote a bundle: %v", statErr)
+	}
+}
+
+func TestCheckArchitectureFixtures(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    []byte
+		wantErr bool
+	}{
+		{"thin arm64", thinMachO(cpuArm64), false},
+		{"thin amd64", thinMachO(cpuAMD64), true},
+		{"universal with arm64", fatMachO(cpuAMD64, cpuArm64), false},
+		{"universal without arm64", fatMachO(cpuAMD64), true},
+		{"malformed", []byte("#!/bin/sh\n"), true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "executable")
+			if err := os.WriteFile(path, tc.body, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			err := checkArchitecture(path, "arm64")
+			if tc.wantErr && err == nil {
+				t.Fatal("architecture check passed")
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestQuarantineFailureStopsPromotion(t *testing.T) {
+	zipBytes := buildAppZip(t, "Sonarr.app", "com.osx.sonarr.tv", "4.0", "Sonarr")
+	const assetName = "Sonarr.main.4.0.20.3014.osx-arm64-app.zip"
+	asset := servarrAssetURL(Sonarr, "v4.0.20.3014", assetName)
+	pkg := servarrPackage(t, "Sonarr", "com.osx.sonarr.tv", "4.0.20.3014", asset, zipBytes)
+	appDir := t.TempDir()
+	runner := &fakeRunner{t: t, xattrErr: errors.New("xattr denied")}
+
+	_, err := newTestInstaller(servarrDoer(t, Sonarr, "v4.0.20.3014", assetName, zipBytes, nil), runner).
+		Install(context.Background(), pkg, appDir)
+	if err == nil || !strings.Contains(err.Error(), "quarantine") {
+		t.Fatalf("got %v, want a quarantine refusal", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(appDir, "Sonarr.app")); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Fatalf("promoted a bundle without quarantine: %v", statErr)
+	}
+	entries, readErr := os.ReadDir(filepath.Join(appDir, trashDirName, string(Sonarr)))
+	if readErr != nil || len(entries) == 0 {
+		t.Fatalf("stage was not kept in recoverable trash: %v", readErr)
+	}
+}
+
+func TestStageRetirementFailureIsReported(t *testing.T) {
+	zipBytes := buildAppZip(t, "Sonarr.app", "com.osx.sonarr.tv", "4.0", "Sonarr")
+	const assetName = "Sonarr.main.4.0.20.3014.osx-arm64-app.zip"
+	asset := servarrAssetURL(Sonarr, "v4.0.20.3014", assetName)
+	pkg := servarrPackage(t, "Sonarr", "com.osx.sonarr.tv", "4.0.20.3014", asset, zipBytes)
+	tampered := append([]byte(nil), zipBytes...)
+	tampered[len(tampered)/2] ^= 0xff
+	appDir := t.TempDir()
+	// Make the per-app trash path a file so retirement cannot create its folder.
+	trashParent := filepath.Join(appDir, trashDirName)
+	if err := os.MkdirAll(trashParent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(trashParent, string(Sonarr)), []byte("blocked"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := newTestInstaller(servarrDoer(t, Sonarr, "v4.0.20.3014", assetName, zipBytes, tampered), &fakeRunner{t: t}).
+		Install(context.Background(), pkg, appDir)
+	if err == nil || !strings.Contains(err.Error(), "SHA-256 mismatch") ||
+		!strings.Contains(err.Error(), "could not retire staging folder") {
+		t.Fatalf("got %v, want checksum plus stage retirement failure", err)
+	}
+}
+
+func TestReceiptIsPerInstallHistory(t *testing.T) {
+	installer := newTestInstaller(doerFunc(func(req *http.Request) (*http.Response, error) {
+		return response(req, http.StatusOK, "", ""), nil
+	}), &fakeRunner{t: t})
+	appDir := t.TempDir()
+	base := servarrPackage(t, "Sonarr", "com.osx.sonarr.tv", "4.0.20.3014",
+		servarrAssetURL(Sonarr, "v4.0.20.3014", "Sonarr.main.4.0.20.3014.osx-arm64-app.zip"), []byte("one"))
+	second := base
+	second.ReleaseVersion = "4.0.21.1"
+	second.ExpectedSHA256 = strings.Repeat("b", 64)
+
+	first, err := installer.writeReceipt(appDir, base, filepath.Join(appDir, "Sonarr.app"), bundleInfo{Identifier: "com.osx.sonarr.tv", Version: "4.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := installer.writeReceipt(appDir, second, filepath.Join(appDir, "Sonarr.app"), bundleInfo{Identifier: "com.osx.sonarr.tv", Version: "4.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == next {
+		t.Fatalf("receipt path was reused: %s", first)
+	}
+	for path, want := range map[string]string{first: "4.0.20.3014", next: "4.0.21.1"} {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(body, []byte(want)) {
+			t.Fatalf("receipt %s does not retain %s", path, want)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o444 {
+			t.Fatalf("receipt %s mode = %v", path, info.Mode().Perm())
+		}
+	}
+	entries, err := os.ReadDir(filepath.Join(appDir, receiptDirName))
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("receipt history = %d, err=%v", len(entries), err)
 	}
 }
 

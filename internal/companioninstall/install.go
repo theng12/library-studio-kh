@@ -3,6 +3,7 @@ package companioninstall
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"debug/macho"
 	"encoding/json"
 	"errors"
@@ -67,7 +68,7 @@ func (i *Installer) detect(ctx context.Context, spec appSpec, appDir string) (De
 			}
 			continue
 		}
-		if err := checkArchitecture(found.Executable, spec); err != nil {
+		if err := checkArchitecture(found.Executable, defaultArm64Label); err != nil {
 			keep = &DetectResult{Path: path, State: DetectKeep, BundleID: found.Identifier, Version: found.Version}
 			continue
 		}
@@ -101,7 +102,13 @@ func (i *Installer) detect(ctx context.Context, spec appSpec, appDir string) (De
 
 // Install verifies and copies pkg into appDir. Existing bundles are adopted or
 // kept, never overwritten, downgraded or replaced by a different app.
-func (i *Installer) Install(ctx context.Context, pkg Package, appDir string) (InstallResult, error) {
+//
+// Before downloading anything, Install re-resolves the app and compares the
+// trusted vendor fields. A caller cannot substitute its own URL, digest or
+// version: a changed publication stops with ErrStalePackage so the owner can
+// be asked again. A caller may persist a Package and retry later; the same
+// comparison applies.
+func (i *Installer) Install(ctx context.Context, pkg Package, appDir string) (result InstallResult, err error) {
 	spec, err := i.spec(pkg.AppID)
 	if err != nil {
 		return InstallResult{}, err
@@ -110,10 +117,10 @@ func (i *Installer) Install(ctx context.Context, pkg Package, appDir string) (In
 	if err != nil {
 		return InstallResult{}, err
 	}
-	if err := validatePackage(pkg, spec); err != nil {
+	if err = validatePackage(pkg, spec); err != nil {
 		return InstallResult{}, err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err = os.MkdirAll(dir, 0o755); err != nil {
 		return InstallResult{}, err
 	}
 
@@ -142,6 +149,19 @@ func (i *Installer) Install(ctx context.Context, pkg Package, appDir string) (In
 		}, fmt.Errorf("%w: %s", ErrBundleConflict, existing.Path)
 	}
 
+	fresh, err := i.Resolve(ctx, pkg.AppID)
+	if err != nil {
+		return InstallResult{}, fmt.Errorf("companioninstall: verify %s against the official publication: %w", pkg.AppID, err)
+	}
+	if !sameTrustedPackage(pkg, fresh) {
+		return InstallResult{}, fmt.Errorf("%w: planned %s %s at %s, official is %s at %s",
+			ErrStalePackage, pkg.AppID, pkg.ReleaseVersion, pkg.OfficialAssetURL,
+			fresh.ReleaseVersion, fresh.OfficialAssetURL)
+	}
+	// Everything below uses the freshly verified package, including its size
+	// cap, URL, digest and provenance. Nothing forgeable from the caller is used.
+	pkg = fresh
+
 	stage, err := os.MkdirTemp(dir, ".library-studio-stage-"+string(pkg.AppID)+"-")
 	if err != nil {
 		return InstallResult{}, err
@@ -149,10 +169,14 @@ func (i *Installer) Install(ctx context.Context, pkg Package, appDir string) (In
 	installed := false
 	defer func() {
 		if installed {
-			os.RemoveAll(stage)
+			if rmErr := os.RemoveAll(stage); rmErr != nil {
+				err = errors.Join(err, fmt.Errorf("companioninstall: installed bundle but could not remove staging folder %s: %w", stage, rmErr))
+			}
 			return
 		}
-		i.moveStageToTrash(dir, pkg.AppID, stage)
+		if moveErr := i.moveStageToTrash(dir, pkg.AppID, stage); moveErr != nil {
+			err = errors.Join(err, fmt.Errorf("companioninstall: could not retire staging folder %s to recoverable trash: %w", stage, moveErr))
+		}
 	}()
 
 	asset, err := i.download(ctx, pkg, stage)
@@ -177,7 +201,13 @@ func (i *Installer) Install(ctx context.Context, pkg Package, appDir string) (In
 	if found.Identifier != pkg.BundleID {
 		return InstallResult{}, fmt.Errorf("%w: downloaded bundle identifies as %q, expected %q", ErrBundleConflict, found.Identifier, pkg.BundleID)
 	}
-	if err := checkArchitecture(found.Executable, spec); err != nil {
+	if err = checkArchitecture(found.Executable, pkg.NativeArchitecture); err != nil {
+		return InstallResult{}, err
+	}
+	// New Go-written files are not quarantined by the OS. Add the standard
+	// attribute on the staged bundle so macOS, not this installer, decides
+	// first launch. Never clear it and never self-sign.
+	if err = i.addQuarantine(ctx, bundlePath); err != nil {
 		return InstallResult{}, err
 	}
 
@@ -190,12 +220,12 @@ func (i *Installer) Install(ctx context.Context, pkg Package, appDir string) (In
 	// shortcut: a concurrent process creating dest between Lstat and Rename
 	// could be replaced; this is a single-user installer. Upgrade to a
 	// no-replace rename syscall if concurrent installers ever become possible.
-	if err := os.Rename(bundlePath, dest); err != nil {
+	if err = os.Rename(bundlePath, dest); err != nil {
 		return InstallResult{}, err
 	}
 	installed = true
 
-	result := InstallResult{
+	result = InstallResult{
 		AppID:               pkg.AppID,
 		Path:                dest,
 		Version:             found.Version,
@@ -204,12 +234,24 @@ func (i *Installer) Install(ctx context.Context, pkg Package, appDir string) (In
 		State:               Installed,
 		OwnerApprovalNeeded: true,
 	}
-	receiptPath, err := i.writeReceipt(dir, pkg, dest, found)
+	receiptPath, receiptErr := i.writeReceipt(dir, pkg, dest, found)
 	result.ReceiptPath = receiptPath
-	if err != nil {
-		return result, fmt.Errorf("companioninstall: installed %s but could not write its receipt: %w", dest, err)
+	if receiptErr != nil {
+		return result, fmt.Errorf("companioninstall: installed %s but could not write its receipt: %w", dest, receiptErr)
 	}
 	return result, nil
+}
+
+// sameTrustedPackage compares only fields an attacker could otherwise supply.
+// SizeCap is deliberately excluded because Install uses the fresh value.
+func sameTrustedPackage(a, b Package) bool {
+	return a.AppID == b.AppID &&
+		a.BundleID == b.BundleID &&
+		a.NativeArchitecture == b.NativeArchitecture &&
+		a.ReleaseVersion == b.ReleaseVersion &&
+		a.OfficialAssetURL == b.OfficialAssetURL &&
+		a.ExpectedBytes == b.ExpectedBytes &&
+		strings.EqualFold(a.ExpectedSHA256, b.ExpectedSHA256)
 }
 
 func listBundles(dir string) ([]string, error) {
@@ -299,19 +341,20 @@ func (i *Installer) readBundle(ctx context.Context, path string) (bundleInfo, er
 	return info, nil
 }
 
-func checkArchitecture(executable string, spec appSpec) error {
+func checkArchitecture(executable, want string) error {
 	var cpu macho.Cpu
-	switch defaultArm64Label {
+	switch want {
 	case "arm64":
 		cpu = macho.CpuArm64
+	case "amd64", "x86_64":
+		cpu = macho.CpuAmd64
 	default:
-		return fmt.Errorf("companioninstall: unsupported architecture %q", defaultArm64Label)
+		return fmt.Errorf("companioninstall: unsupported architecture %q", want)
 	}
 	if file, err := macho.Open(executable); err == nil {
 		defer file.Close()
 		if file.Cpu != cpu {
-			return fmt.Errorf("companioninstall: %s executable is %s, expected %s",
-				spec.app.Name, cpuName(file.Cpu), defaultArm64Label)
+			return fmt.Errorf("companioninstall: executable is %s, expected %s", cpuName(file.Cpu), want)
 		}
 		return nil
 	}
@@ -322,10 +365,11 @@ func checkArchitecture(executable string, spec appSpec) error {
 				return nil
 			}
 		}
-		return fmt.Errorf("companioninstall: %s executable does not contain %s", spec.app.Name, defaultArm64Label)
+		return fmt.Errorf("companioninstall: executable does not contain %s", want)
 	}
-	// Not a Mach-O binary; the architecture expectation does not apply.
-	return nil
+	// Official vendor bundles use a Mach-O launcher. Anything else fails closed
+	// rather than silently passing an unchecked script or wrapper.
+	return fmt.Errorf("companioninstall: %s is not a Mach-O binary; cannot verify %s", filepath.Base(executable), want)
 }
 
 func cpuName(cpu macho.Cpu) string {
@@ -344,16 +388,18 @@ func (i *Installer) writeReceipt(appDir string, pkg Package, installedPath strin
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	path := filepath.Join(dir, string(pkg.AppID)+".json")
 	receipt := Receipt{
-		Package:             pkg,
-		InstalledPath:       installedPath,
-		InstalledVersion:    info.Version,
-		InstalledBundleID:   info.Identifier,
-		InstalledAt:         i.now().UTC(),
-		Installer:           installerName,
-		OwnerApprovalNeeded: true,
-		QuarantinePreserved: true,
+		Package:               pkg,
+		InstalledPath:         installedPath,
+		InstalledVersion:      info.Version,
+		InstalledBundleID:     info.Identifier,
+		InstalledAt:           i.now().UTC(),
+		Installer:             installerName,
+		OwnerApprovalNeeded:   true,
+		QuarantineAdded:       true,
+		QuarantineAgent:       quarantineAgent,
+		AppLaunched:           false,
+		CodeSignatureModified: false,
 	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -361,27 +407,51 @@ func (i *Installer) writeReceipt(appDir string, pkg Package, installedPath strin
 	if err := enc.Encode(receipt); err != nil {
 		return "", err
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o444)
-	if errors.Is(err, fs.ErrExist) {
-		// Receipts are immutable; keep the first one.
-		return path, nil
-	}
+	// One immutable receipt per install. The random name keeps history instead
+	// of replacing a stale per-app file.
+	f, err := os.CreateTemp(dir, string(pkg.AppID)+"-*.json")
 	if err != nil {
 		return "", err
 	}
-	_, writeErr := f.Write(buf.Bytes())
-	closeErr := f.Close()
-	if writeErr != nil {
-		return path, writeErr
+	path := f.Name()
+	if _, err := f.Write(buf.Bytes()); err != nil {
+		f.Close()
+		return path, err
 	}
-	return path, closeErr
+	if err := f.Chmod(0o444); err != nil {
+		f.Close()
+		return path, err
+	}
+	if err := f.Close(); err != nil {
+		return path, err
+	}
+	return path, nil
 }
 
-func (i *Installer) moveStageToTrash(appDir string, id AppID, stage string) {
+// addQuarantine gives a newly installed vendor bundle the standard macOS
+// downloaded-file attribute before promotion, so the OS shows its normal
+// first-launch approval. It never clears the attribute or touches the code
+// signature.
+func (i *Installer) addQuarantine(ctx context.Context, bundle string) error {
+	event := make([]byte, 16)
+	if _, err := rand.Read(event); err != nil {
+		return fmt.Errorf("companioninstall: generate quarantine event id: %w", err)
+	}
+	value := fmt.Sprintf("%s;%x;%s;%x", quarantineFlags, i.now().UTC().Unix(), quarantineAgent, event)
+	if _, err := i.executeCommand(ctx, i.xattr, "-w", "com.apple.quarantine", value, bundle); err != nil {
+		return fmt.Errorf("companioninstall: add macOS quarantine to %s: %w", bundle, err)
+	}
+	return nil
+}
+
+func (i *Installer) moveStageToTrash(appDir string, id AppID, stage string) error {
 	dir := filepath.Join(appDir, trashDirName, string(id))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return
+		return err
 	}
 	name := fmt.Sprintf("%s-%d", filepath.Base(stage), i.now().UTC().UnixNano())
-	_ = os.Rename(stage, filepath.Join(dir, name))
+	if err := os.Rename(stage, filepath.Join(dir, name)); err != nil {
+		return err
+	}
+	return nil
 }

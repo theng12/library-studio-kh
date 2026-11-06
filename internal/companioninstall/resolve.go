@@ -270,6 +270,25 @@ var (
 	qbitSHA     = regexp.MustCompile(`(?s)<td[^>]*>\s*([^<]+?)\s*</td>\s*<td[^>]*>\s*<code>\s*([0-9a-fA-F]{64})\s*</code>`)
 )
 
+// pageSection returns the heading block for id, from its <h3> to the next <h3>.
+func pageSection(page, id string) (string, bool) {
+	lower := strings.ToLower(page)
+	marker := `id="` + strings.ToLower(id) + `"`
+	at := strings.Index(lower, marker)
+	if at < 0 {
+		return "", false
+	}
+	start := strings.LastIndex(lower[:at], "<h3")
+	if start < 0 {
+		start = at
+	}
+	end := len(page)
+	if next := strings.Index(lower[at:], "<h3"); next >= 0 {
+		end = at + next
+	}
+	return page[start:end], true
+}
+
 func (i *Installer) resolveQBittorrent(ctx context.Context, spec appSpec) (Package, error) {
 	pkg := basePackage(spec, i.sizeCap)
 
@@ -286,6 +305,13 @@ func (i *Installer) resolveQBittorrent(ctx context.Context, spec appSpec) (Packa
 		return Package{}, fmt.Errorf("resolve %s: %w", spec.app.ID, err)
 	}
 	page := string(body)
+	// Checksums are published per platform. Search only the macOS section so an
+	// equal-version Windows or Linux row can never supply the digest.
+	macSection, ok := pageSection(page, "macos")
+	if !ok {
+		return Package{}, fmt.Errorf("%w: qBittorrent's official page has no macOS section", ErrUnavailable)
+	}
+	page = macSection
 
 	// The standard build is the bare *.dmg; the "lt20" variant links include
 	// _lt20 and are deliberately not matched by this pattern.
