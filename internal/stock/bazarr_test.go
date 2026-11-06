@@ -2,8 +2,10 @@ package stock
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -84,6 +86,61 @@ func TestBazarrAllowlistedFieldsOnly(t *testing.T) {
 	}
 }
 
+func TestBazarrAudioLanguageShapes(t *testing.T) {
+	ptr := func(s string) *string { return &s }
+	cases := []struct {
+		name    string
+		field   string
+		want    *string
+		wantAll []string
+		wantErr bool
+	}{
+		{"1.6 array", `"audio_language":[{"name":"English"},{"name":"French"}],`, ptr("English"), []string{"English", "French"}, false},
+		{"single array", `"audio_language":[{"name":"English"}],`, ptr("English"), []string{"English"}, false},
+		{"old object", `"audio_language":{"name":"English"},`, ptr("English"), []string{"English"}, false},
+		{"missing", "", nil, nil, false},
+		{"null", `"audio_language":null,`, nil, nil, false},
+		{"empty array", `"audio_language":[],`, nil, nil, false},
+		{"unnamed", `"audio_language":[{"name":""}],`, nil, nil, false},
+		{"string", `"audio_language":"English",`, nil, nil, true},
+		{"number", `"audio_language":2,`, nil, nil, true},
+		{"string list", `"audio_language":["English"],`, nil, nil, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := fmt.Sprintf(`{"data":[{"radarrId":42,"title":"Example","profileId":1,"path":"/movies/a.mkv",%s"missing_subtitles":[{"name":"English","code2":"en"}],"subtitles":[{"name":"German","code2":"de"}]}]}`, tc.field)
+			b := bazarrTestClient(t, func(w http.ResponseWriter, r *http.Request) { writeBody(w, body) })
+			items, err := b.Subtitles(AppRadarr, 42)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("accepted malformed audio_language: %+v", items)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(items) != 1 {
+				t.Fatalf("Subtitles() = %+v", items)
+			}
+			m := items[0]
+			if tc.want == nil {
+				if m.AudioLanguage != nil {
+					t.Fatalf("audio language = %q, want none", *m.AudioLanguage)
+				}
+			} else if m.AudioLanguage == nil || *m.AudioLanguage != *tc.want {
+				t.Fatalf("audio language = %v, want %q", m.AudioLanguage, *tc.want)
+			}
+			if !slices.Equal(m.AudioLanguages, tc.wantAll) {
+				t.Fatalf("audio languages = %v, want %v", m.AudioLanguages, tc.wantAll)
+			}
+			if len(m.Existing) != 1 || m.Existing[0].Code != "de" || len(m.Missing) != 1 || m.Missing[0].Code != "en" {
+				t.Fatalf("subtitle languages changed by audio shape: %+v", m)
+			}
+		})
+	}
+}
+
 func TestBazarrRefusesCrossParentAndDoesNotSearch(t *testing.T) {
 	var patches atomic.Int32
 	b := bazarrTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -116,14 +173,14 @@ func TestBazarrEnglishSearchSchedulesMovieAndEpisode(t *testing.T) {
 			name: "movie", app: AppRadarr, parent: 42, item: 42,
 			getPath:   "/api/movies",
 			patchPath: "/api/movies/subtitles",
-			body:      `{"data":[{"radarrId":42,"title":"Example","profileId":1,"path":"/movies/example.mkv","subtitles":[]}]}`,
+			body:      `{"data":[{"radarrId":42,"title":"Example","profileId":1,"path":"/movies/example.mkv","audio_language":[{"name":"English"}],"subtitles":[]}]}`,
 			want:      map[string]string{"radarrid": "42", "language": "en", "forced": "false", "hi": "false"},
 		},
 		{
 			name: "episode", app: AppSonarr, parent: 7, item: 101,
 			getPath:   "/api/episodes",
 			patchPath: "/api/episodes/subtitles",
-			body:      `{"data":[{"sonarrSeriesId":7,"sonarrEpisodeId":101,"title":"Episode","profileId":1,"path":"/tv/example.mkv","subtitles":[]}]}`,
+			body:      `{"data":[{"sonarrSeriesId":7,"sonarrEpisodeId":101,"title":"Episode","profileId":1,"path":"/tv/example.mkv","audio_language":[{"name":"English"}],"subtitles":[]}]}`,
 			want:      map[string]string{"seriesid": "7", "episodeid": "101", "language": "en", "forced": "false", "hi": "false"},
 		},
 	}

@@ -10,9 +10,9 @@ func newSubtitleFixture() func(http.ResponseWriter, *http.Request) bool {
 	english := map[string]any{"name": "English", "code2": "en", "forced": false, "hi": false}
 	episodes := []map[string]any{
 		{"sonarrSeriesId": 1, "sonarrEpisodeId": 11, "season": 0, "episode": 1, "title": "A special beginning", "profileId": 1, "path": "", "missing_subtitles": []any{}, "subtitles": []any{}},
-		{"sonarrSeriesId": 1, "sonarrEpisodeId": 12, "season": 1, "episode": 1, "title": "First episode", "profileId": 1, "path": "/private/fixture/episode.mkv", "audio_language": map[string]string{"name": "French"}, "missing_subtitles": []any{english}, "subtitles": []any{}},
+		{"sonarrSeriesId": 1, "sonarrEpisodeId": 12, "season": 1, "episode": 1, "title": "First episode", "profileId": 1, "path": "/private/fixture/episode.mkv", "audio_language": []any{map[string]string{"name": "French"}}, "missing_subtitles": []any{english}, "subtitles": []any{}},
 	}
-	movie := map[string]any{"radarrId": 2, "title": "A Quiet Film", "profileId": 1, "path": "/private/fixture/movie.mkv", "audio_language": map[string]string{"name": "English"}, "missing_subtitles": []any{english}, "subtitles": []any{}}
+	movie := map[string]any{"radarrId": 2, "title": "A Quiet Film", "profileId": 1, "path": "/private/fixture/movie.mkv", "audio_language": []any{map[string]string{"name": "English"}}, "missing_subtitles": []any{english}, "subtitles": []any{}}
 	return func(w http.ResponseWriter, r *http.Request) bool {
 		out := func(v any) { json.NewEncoder(w).Encode(v) }
 		switch r.URL.Path {

@@ -1,6 +1,7 @@
 package stock
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,14 +43,15 @@ type SubtitleLanguage struct {
 }
 
 type SubtitleMedia struct {
-	App           string             `json:"app"`
-	ParentID      int                `json:"parentId"`
-	ID            int                `json:"id"`
-	Title         string             `json:"title"`
-	ProfileID     int                `json:"profileId"`
-	AudioLanguage *string            `json:"audioLanguage,omitempty"`
-	Existing      []SubtitleLanguage `json:"existing"`
-	Missing       []SubtitleLanguage `json:"missing"`
+	App            string             `json:"app"`
+	ParentID       int                `json:"parentId"`
+	ID             int                `json:"id"`
+	Title          string             `json:"title"`
+	ProfileID      int                `json:"profileId"`
+	AudioLanguage  *string            `json:"audioLanguage,omitempty"`
+	AudioLanguages []string           `json:"audioLanguages,omitempty"`
+	Existing       []SubtitleLanguage `json:"existing"`
+	Missing        []SubtitleLanguage `json:"missing"`
 	// FileReported means Bazarr reports a media path. It is not a filesystem check.
 	FileReported bool `json:"fileReported"`
 	Season       int  `json:"season,omitempty"`
@@ -67,27 +69,62 @@ type bazarrAudio struct {
 	Name string `json:"name"`
 }
 
+// bazarrAudioLanguages accepts Bazarr 1.6's list and older single-object rows.
+type bazarrAudioLanguages []bazarrAudio
+
+func (l *bazarrAudioLanguages) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || bytes.Equal(data, []byte("null")) {
+		*l = nil
+		return nil
+	}
+	if data[0] == '{' {
+		var one bazarrAudio
+		if err := json.Unmarshal(data, &one); err != nil {
+			return fmt.Errorf("audio_language: %w", err)
+		}
+		*l = bazarrAudioLanguages{one}
+		return nil
+	}
+	var list []bazarrAudio
+	if err := json.Unmarshal(data, &list); err != nil {
+		return fmt.Errorf("audio_language is not a language object or list: %w", err)
+	}
+	*l = list
+	return nil
+}
+
+func (l bazarrAudioLanguages) names() []string {
+	names := make([]string, 0, len(l))
+	for _, a := range l {
+		if a.Name != "" {
+			names = append(names, a.Name)
+		}
+	}
+	return names
+}
+
 type bazarrMovie struct {
-	RadarrID      int              `json:"radarrId"`
-	Title         string           `json:"title"`
-	ProfileID     int              `json:"profileId"`
-	Path          string           `json:"path"`
-	AudioLanguage bazarrAudio      `json:"audio_language"`
-	Missing       []bazarrLanguage `json:"missing_subtitles"`
-	Subtitles     []bazarrLanguage `json:"subtitles"`
+	RadarrID      int                  `json:"radarrId"`
+	Title         string               `json:"title"`
+	ProfileID     int                  `json:"profileId"`
+	Path          string               `json:"path"`
+	AudioLanguage bazarrAudioLanguages `json:"audio_language"`
+	Missing       []bazarrLanguage     `json:"missing_subtitles"`
+	Subtitles     []bazarrLanguage     `json:"subtitles"`
 }
 
 type bazarrEpisode struct {
-	SonarrSeriesID  int              `json:"sonarrSeriesId"`
-	SonarrEpisodeID int              `json:"sonarrEpisodeId"`
-	Season          int              `json:"season"`
-	Episode         int              `json:"episode"`
-	Title           string           `json:"title"`
-	ProfileID       int              `json:"profileId"`
-	Path            string           `json:"path"`
-	AudioLanguage   bazarrAudio      `json:"audio_language"`
-	Missing         []bazarrLanguage `json:"missing_subtitles"`
-	Subtitles       []bazarrLanguage `json:"subtitles"`
+	SonarrSeriesID  int                  `json:"sonarrSeriesId"`
+	SonarrEpisodeID int                  `json:"sonarrEpisodeId"`
+	Season          int                  `json:"season"`
+	Episode         int                  `json:"episode"`
+	Title           string               `json:"title"`
+	ProfileID       int                  `json:"profileId"`
+	Path            string               `json:"path"`
+	AudioLanguage   bazarrAudioLanguages `json:"audio_language"`
+	Missing         []bazarrLanguage     `json:"missing_subtitles"`
+	Subtitles       []bazarrLanguage     `json:"subtitles"`
 }
 
 type bazarrProfile struct {
@@ -207,7 +244,7 @@ func (b *Bazarr) Subtitles(app string, parentID int) ([]SubtitleMedia, error) {
 }
 
 func subtitleMedia(app string, parentID, id int, title string, profileID int, path string,
-	audio bazarrAudio, missing, existing []bazarrLanguage, season, episode int) SubtitleMedia {
+	audio bazarrAudioLanguages, missing, existing []bazarrLanguage, season, episode int) SubtitleMedia {
 	m := SubtitleMedia{
 		App:          app,
 		ParentID:     parentID,
@@ -220,9 +257,9 @@ func subtitleMedia(app string, parentID, id int, title string, profileID int, pa
 		Season:       season,
 		Episode:      episode,
 	}
-	if audio.Name != "" {
-		name := audio.Name
-		m.AudioLanguage = &name
+	if names := audio.names(); len(names) > 0 {
+		m.AudioLanguage = &names[0]
+		m.AudioLanguages = names
 	}
 	return m
 }
