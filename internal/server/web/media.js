@@ -75,6 +75,11 @@ async function refreshMediaDetails() {
     actions.append(mediaMonitor(data.monitored, { app: data.app, id: data.id }, "Monitor this item", true));
     if (data.app === "Radarr") actions.append(mediaSearchButton("Search releases", {}, data.title));
     information.append(overview, dl, technical, actions); $("#media-information").replaceChildren(information);
+    if (data.app === "Radarr") {
+      const extras = mediaNode("div");
+      $("#media-information").append(extras);
+      loadMovieExtras(data, extras);
+    }
     const seasons = $("#media-season"), selectedSeason = seasons.value;
     seasons.replaceChildren(mediaOption("", "All seasons"));
     const numbers = [...new Set((data.episodes || []).map(e => e.seasonNumber))].sort((a, b) => a - b);
@@ -93,10 +98,6 @@ async function refreshMediaDetails() {
 function mediaDay(value) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date(value + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
   return day(value);
-}
-function sourceDisableTime(value) {
-  if (!value) return "No disable time reported";
-  return (new Date(value).getTime() > Date.now() ? "Disabled until " : "Last disable ended ") + stamp(value);
 }
 function mediaOption(value, text) { const o = mediaNode("option", text); o.value = value; return o; }
 function mediaMonitor(checked, request, label, root) {
@@ -204,13 +205,10 @@ async function loadSources() {
     const problems = data.problems || [];
     message.hidden = data.configured && !problems.length;
     message.textContent = !data.configured ? "Prowlarr isn't connected. Add it in Settings to view its sources. " + problems.join(" ") : problems.join(" ");
-    const indexerRows = (data.indexers || []).map(x => row([x.name, x.enabled == null ? "Not reported" : x.enabled ? "Enabled" : "Disabled", x.protocol || "Not reported",
-      x.priority == null ? "Not reported" : x.priority, sourceDisableTime(x.disabledUntil)]));
-    const sources = mediaPanel("Prowlarr sources", "Configured sources and their reported availability.", indexerRows.length ? mediaTable(["Source", "Setting", "Protocol", "Priority", "Availability"], indexerRows) : mediaNode("p", "No source entries available.", "empty"));
     const health = mediaNode("ul", null, "source-notes");
     for (const h of data.health || []) health.append(mediaNode("li", (h.type || "Message") + ": " + h.message));
     if (!health.childNodes.length) health.append(mediaNode("li", "No health messages were reported. Check any availability errors before relying on this result."));
-    content.append(mediaPanel("Reported health", "Messages supplied by Prowlarr; source availability is listed below.", health), sources);
+    content.append(mediaPanel("Reported health", "Messages supplied by Prowlarr. Enabled sources can still report errors here.", health));
     const links = (data.links || []).map(x => row([x.name, x.syncLevel || "Not reported"]));
     content.append(mediaPanel("Application links", "A configured sync mode does not prove that the latest synchronization succeeded.", links.length ? mediaTable(["Application", "Configured sync"], links) : mediaNode("p", "No application links available.", "empty")));
     const libraries = mediaNode("div", null, "media-padding");
@@ -228,6 +226,24 @@ async function loadSources() {
   } catch (e) { message.hidden = false; message.textContent = e.message; }
   finally { if (serial === sourcesSerial) refresh.disabled = false; }
 }
-$("#sources-refresh").addEventListener("click", loadSources);
+$("#sources-refresh").addEventListener("click", () => {
+  loadSources();
+  refreshSourceManager();
+});
+
+function collectionLookup(items, tmdbId) {
+  return (items || []).find(m => m.app === "Radarr" && Number(m.raw?.tmdbId) === tmdbId);
+}
+globalThis.movieExtrasFindAndAdd = async (member) => {
+  const result = await api("/api/find?q=" + encodeURIComponent("tmdb:" + member.tmdbId));
+  const movie = collectionLookup(result.items, member.tmdbId);
+  if (!movie) throw new Error("Radarr did not return this film. " + (result.problems || []).join(" "));
+  if (movie.inLibrary) throw new Error("This film is already in Radarr. Refresh its collection to see the current state.");
+  await openAdd(movie, () => {
+    libItems = null;
+    if (!$("#view-browse").hidden) loadLibrary();
+    if (!$("#view-media").hidden) refreshMediaDetails();
+  });
+};
 $("#media-child-q").addEventListener("input", renderMediaChildren);
 $("#media-season").addEventListener("change", renderMediaChildren);

@@ -103,7 +103,7 @@ async function loadConfiguredSources() {
       for (const [i, value] of cells.entries()) {
         const td = document.createElement("td");
         if (i === 5) td.append(value); else td.textContent = value;
-        const labels = ["Source", "Availability", "Disabled until", "Protocol", "Priority", "Actions"];
+        const labels = ["Source", "Setting", "Disabled until", "Protocol", "Priority", "Actions"];
         td.dataset.label = labels[i];
         tr.append(td);
       }
@@ -113,7 +113,7 @@ async function loadConfiguredSources() {
     const table = smNode("table", null, "list");
     const thead = document.createElement("thead");
     const head = document.createElement("tr");
-    for (const name of ["Source", "Availability", "Disabled until", "Protocol", "Priority", "Actions"]) {
+    for (const name of ["Source", "Setting", "Disabled until", "Protocol", "Priority", "Actions"]) {
       const th = smNode("th", name);
       th.scope = "col";
       head.append(th);
@@ -125,7 +125,7 @@ async function loadConfiguredSources() {
     wrap.append(table);
     const panel = smPanel(
       "Configured sources",
-      "Add, test or edit a source. Saving changes Prowlarr only; it never adds or deletes a source by itself.",
+      "Add, test or edit a source in Prowlarr. Enabled is the saved setting; check reported health for connection errors.",
       rows.length ? wrap : smNode("p", "No sources are configured in Prowlarr yet.", "empty")
     );
     body.replaceChildren(panel);

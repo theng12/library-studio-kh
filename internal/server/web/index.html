@@ -6,11 +6,16 @@
 <title>Library Studio KH</title>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="media.css">
+<link rel="stylesheet" href="movie-extras.css">
 <script src="download-view.js" defer></script>
 <script src="addresses.js" defer></script>
 <script src="app.js" defer></script>
 <script src="media.js" defer></script>
 <script src="subtitles.js" defer></script>
+<script src="movie-extras.js" defer></script>
+<script src="source-manager.js" defer></script>
+<script src="companion-settings.js" defer></script>
+<script src="cleanup.js" defer></script>
 </head>
 <body>
 
@@ -209,10 +214,11 @@
     <section id="view-sources" class="view" hidden>
       <header class="head">
         <h1>Sources</h1>
-        <p class="lede">Prowlarr sources, reported health and the sources configured in each library app. This screen does not change them.</p>
+        <p class="lede">Add, test and edit sources through Prowlarr. Provider choices come from its live catalog.</p>
       </header>
       <div class="media-actions"><button type="button" class="small" id="sources-refresh">Refresh status</button></div>
       <p id="sources-msg" class="notice" role="status" hidden></p>
+      <div id="source-manager"></div>
       <div id="sources-content"></div>
     </section>
 
@@ -257,22 +263,35 @@
         <h1>Cleanup</h1>
         <p id="cleanup-lede" class="lede"></p>
       </header>
-      <div class="panel prose">
-        <h2>Staged retention is planned; automatic cleanup is off</h2>
-        <p>This build keeps local copies and does not use the old permanent-delete path. The planned policy starts only after a verified whole-library import: 3 days in staging, then Library's _trash until day 7 total, then macOS Trash for up to 30 days. Low-space removal will affect only eligible Library-owned Trash, oldest first. It is not active yet.</p>
-        <p id="last-run" class="muted"></p>
-      </div>
-      <div class="panel" id="stock-panel">
-        <div class="panel-head">
-          <h2>Settings inside your apps</h2>
-          <p class="muted">Read from qBittorrent. Saving Library settings does not change these limits. Automatic file cleanup is off.</p>
+      <form id="cleanup-form" class="panel prose">
+        <h2>Local copies after import</h2>
+        <label class="check"><input type="checkbox" name="stagedCleanupOn"> Enable staged cleanup</label>
+        <p>Only downloads with a verified complete import can move. NAS library files and downloads added directly stay untouched. Eligible local copies are permanently removed after their macOS Trash period, or earlier under the free-space rule below.</p>
+        <div class="pair">
+          <label>Days in the download folder <input type="number" name="stagedDays" min="1" max="365" step="1" required></label>
+          <label>Extra days in Library’s _trash <input type="number" name="managedTrashDays" min="0" max="365" step="1" required></label>
         </div>
-        <p id="stock-empty" class="empty" hidden>Connect qBittorrent and a library app to see these.</p>
-        <table id="stock" class="list">
-          <thead><tr><th scope="col">App</th><th scope="col">Setting</th><th scope="col">Now</th><th scope="col">Should be</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
+        <label>Days in macOS Trash before removal <input type="number" name="nativeTrashDays" min="1" max="3650" step="1" required></label>
+        <label>Free-space threshold in GB <input type="number" name="pressureFreeGB" min="0" max="10000000" step="1" required></label>
+        <p class="muted">Below this threshold, eligible Library-owned items already in macOS Trash can be removed early, oldest first. Set 0 to turn this off. Other Trash is left alone.</p>
+        <div class="pair">
+          <label>Stop seeding at ratio <input type="number" name="seedRatio" min="0" max="1000000" step="any" required></label>
+          <label>Or seeding minutes <input type="number" name="seedMinutes" min="0" max="5256000" step="1" required></label>
+        </div>
+        <p class="muted">Whichever limit is reached first. Library checks proven imports only; qBittorrent’s own limits are edited separately below.</p>
+        <details><summary>Local _trash folder</summary>
+          <label>Managed folder <input name="managedTrashPath" placeholder="Empty uses _trash inside the download folder"></label>
+          <p class="muted">Must stay on this computer. The current resolved folder is shown in the status.</p>
+        </details>
+        <div class="actions"><button type="submit" class="primary" id="cleanup-save">Save cleanup policy</button><p id="cleanup-save-msg" class="msg" role="status"></p></div>
+      </form>
+      <section class="panel">
+        <div class="panel-head"><h2>Cleanup status</h2><p class="muted">Preview verifies files and shows proposed actions without changing them. Large downloads can take time to verify.</p></div>
+        <div class="media-actions media-padding"><button type="button" id="cleanup-refresh">Refresh status</button><button type="button" id="cleanup-preview">Preview</button><button type="button" id="cleanup-run" disabled>Run cleanup now</button></div>
+        <p id="cleanup-msg" class="media-padding" role="status"></p>
+        <div id="cleanup-status"></div>
+      </section>
+      <div id="companion-settings"></div>
     </section>
 
     <section id="view-settings" class="view" hidden>
@@ -298,9 +317,8 @@
         </fieldset>
         <fieldset class="panel">
           <legend>Local cleanup</legend>
-          <label class="check"><input type="checkbox" name="cleanupOn" disabled> Staged cleanup <span class="badge planned">Planned · off</span></label>
-          <p class="muted">The old permanent-delete cleanup is retired. Planned defaults: keep local copies for 3 days after verified import, keep them in Library's _trash until day 7 total, then retain them in macOS Trash for 30 days. Below 50 GB free, only eligible Library-owned Trash items are removed early, oldest first.</p>
-          <input type="hidden" name="cleanupDays">
+          <p class="muted">Choose retention periods, preview eligible downloads and edit native app settings on the Cleanup screen.</p>
+          <button type="button" class="small" data-view="cleanup">Open cleanup settings</button>
         </fieldset>
         <fieldset class="panel">
           <legend>Folders</legend>
@@ -464,9 +482,9 @@
         <summary>Cleanup and removal safety</summary>
         <dl class="help-facts">
           <dt>Why</dt><dd>Cleanup frees local disk space after a download is safely in the library.</dd>
-          <dt>Required</dt><dd>Optional and currently off. The staged Trash policy is planned; the old permanent-delete path is retired.</dd>
-          <dt>Check</dt><dd>Cleanup shows the planned retention stages and the seeding limits reported by qBittorrent.</dd>
-          <dt>Fix</dt><dd>No cleanup engine is active in this build. Keep local copies until the staged policy is implemented and verified. The NAS library copy and unrelated Trash are outside its scope.</dd>
+          <dt>Required</dt><dd>Optional and off by default. Staged cleanup needs macOS, a local managed folder and a verified complete import. The old permanent-delete path is retired.</dd>
+          <dt>Check</dt><dd>Open Cleanup to edit the policy, Preview eligible files and see import proof, blockers and restore paths. Settings inside your apps has separate Apply controls for supported native settings.</dd>
+          <dt>Fix</dt><dd>Resolve reported connection or verification blockers before enabling cleanup. Local copies pass through Library’s _trash and macOS Trash before permanent removal; low-space removal affects eligible Library-owned Trash only. NAS files and unrelated Trash stay protected.</dd>
         </dl>
       </details>
 

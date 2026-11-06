@@ -4,15 +4,15 @@ The owner's media library manager. It does not download or search anything itsel
 
 - **qBittorrent** downloads.
 - **Sonarr** (TV), **Radarr** (films), **Lidarr** (music) and **Prowlarr** (search sites) find and import into the library on the NAS.
-- **Library Studio KH** provides library tracking, release selection, source status and download control through one private interface. Staged local-copy cleanup is planned and stays off.
+- **Library Studio KH** provides library tracking, artwork and movie collections, release selection, source management, native app settings and download control through one private interface. Optional staged local-copy cleanup starts off.
 
 Only use sources and content you are allowed to download.
 
 ## How removal stays safe
 
-The old permanent-delete cleanup is retired and cannot be enabled in this build. The staged policy is specified in [docs/STORAGE_POLICY.md](docs/STORAGE_POLICY.md): keep local copies for 3 days after verified import, keep them in Library's `_trash` until day 7 total, then retain them in macOS Trash for up to 30 days; below 50 GB free, only eligible Library-owned native Trash may be removed early, oldest first. That engine is not active yet.
+The old permanent-delete cleanup is retired. The optional staged policy is implemented and specified in [docs/STORAGE_POLICY.md](docs/STORAGE_POLICY.md): keep local copies for 3 days after verified import, keep them in the local download folder's `_trash` until day 7 total, then retain them in macOS Trash for up to 30 days; below 50 GB free, only eligible Library-owned native Trash may be removed early, oldest first. The periods, threshold and local managed folder are editable on Cleanup. Preview changes nothing; automatic cleanup starts off and deployment does not turn it on.
 
-Any future eligibility decision must still satisfy all of these requirements:
+Eligibility must satisfy all of these requirements:
 
 1. qBittorrent says the download is complete.
 2. Sonarr, Radarr or Lidarr has a history entry saying the whole download was imported (`downloadFolderImported`, or Lidarr's `downloadImported`).
@@ -22,7 +22,9 @@ Any future eligibility decision must still satisfy all of these requirements:
 
 Downloads that no library app knows about are never touched. Settings saves no longer overwrite the stock seeding/retention policy. Seeding limits and staged retention are separate concerns; 1301 keeps its ratio 2 or 2,880-minute stop policy.
 
-Eligibility classification and the retired-cleanup no-delete guard live in `internal/library` and are tested against mocked apps. Source status is read-only. Release searches/grabs run only on user actions and go through the owning library app.
+Eligibility and lifecycle checks live in `internal/library` and use mocked apps and isolated directories in tests. The engine verifies every imported video and local file, rejects unsafe paths and unknown proofs, and records clocks and ownership across restarts. Cleanup shows blockers, proposed actions and restore paths; native Trash expiry permanently removes only proven Library-owned copies. Native Trash cleanup is unavailable outside macOS.
+
+Sources supports explicit Add/Edit/Test/Save through Prowlarr's live schema. New sources start disabled; testing never saves. Companion settings apply only supported fields and report partial success. Release searches/grabs and collection additions run only on user actions through the owning library app.
 
 ## Use from your phone or away from home
 
