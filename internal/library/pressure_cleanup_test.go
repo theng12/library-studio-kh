@@ -2,11 +2,14 @@ package library
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"librarystudio/internal/stock"
 )
 
 func TestPressureBypassClearsOldestBeforeRetentionAndStopsAtFloor(t *testing.T) {
@@ -206,5 +209,52 @@ func TestPressureWaitsForNativeMetadataRemoval(t *testing.T) {
 		if result.Purged != 0 || !exists(item.src) {
 			t.Fatal("an accepted delete request is not confirmed native removal")
 		}
+	}
+}
+
+func TestSeasonPackNeedsEveryImportedEpisodeByte(t *testing.T) {
+	for _, complete := range []bool{false, true} {
+		t.Run(fmt.Sprint(complete), func(t *testing.T) {
+			h := newHarness(t)
+			item := h.add("Season", *h.clock)
+			second := []byte("a different second episode")
+			if err := os.WriteFile(filepath.Join(item.root, "episode2.mkv"), second, 0600); err != nil {
+				t.Fatal(err)
+			}
+			h.src.files[item.hash] = append(h.src.files[item.hash], stock.TorrentFile{Name: "Season/episode2.mkv", Size: int64(len(second)), Progress: 1})
+			h.src.proofs[item.hash][0].ImportedPath = filepath.Join(item.lib, "renamed-by-app.mkv")
+			if complete {
+				if err := os.WriteFile(filepath.Join(item.lib, "renamed-episode2.mkv"), second, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			result := h.run()
+			if complete {
+				if len(result.Status.Items) != 1 || result.Status.Items[0].Files != 2 {
+					t.Fatalf("both renamed episodes should be proven: %+v", result)
+				}
+			} else if len(result.Status.Items) != 0 || !exists(item.src) {
+				t.Fatal("one imported episode cannot prove an entire season pack")
+			}
+		})
+	}
+}
+
+func TestPressureDiscoveryRetainsOldestOrderAcrossNativeRemovals(t *testing.T) {
+	h := newHarness(t)
+	first := h.add("First", h.clock.Add(-48*time.Hour))
+	second := h.add("Second", h.clock.Add(-24*time.Hour))
+	third := h.add("Third", *h.clock)
+	h.cfg.PressureFreeGB = 200
+	h.cfg.PressureBypassRetention = true
+	h.freeFn = func() int64 {
+		if !exists(first.root) && !exists(second.root) {
+			return 205_000_000_000
+		}
+		return 190_000_000_000
+	}
+	result := h.run()
+	if result.Purged != 2 || exists(first.root) || exists(second.root) || !exists(third.src) {
+		t.Fatalf("native removals must not skip the second oldest candidate: %+v", result)
 	}
 }

@@ -222,6 +222,7 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 
 	block := func(reason string) { st.Blocked = append(st.Blocked, reason) }
 	torrents, err := e.Source.Torrents()
+	torrents = append([]stock.CleanupTorrent(nil), torrents...)
 	if err != nil {
 		block("qBittorrent could not be read, so nothing is changed this round.")
 	}
@@ -244,6 +245,26 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 		block(p)
 	}
 	global := len(st.Blocked) > 0
+	ctx := &settleCtx{e: e, c: c, now: now, execute: execute, torrents: byTorrent, queued: queued, res: &res}
+	if !global && c.PressureBypassRetention && execute {
+		// Free already-verified space before hashing any new large downloads.
+		ctx.purge(recs, false)
+		if execute {
+			if err := e.save(recs); err != nil {
+				return res, err
+			}
+		}
+		sort.SliceStable(torrents, func(i, j int) bool {
+			left, right := proofs[strings.ToUpper(torrents[i].Hash)], proofs[strings.ToUpper(torrents[j].Hash)]
+			if len(left) != 1 {
+				return false
+			}
+			if len(right) != 1 {
+				return true
+			}
+			return left[0].ImportedAt.Before(right[0].ImportedAt)
+		})
+	}
 
 	// Verify new whole imports only when every connected app answered. A
 	// partial answer never becomes an eligible deletion.
@@ -280,6 +301,17 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 				res.Problems = append(res.Problems, shortHash(h)+" files could not be verified, so it is left protected.")
 				continue
 			}
+			if len(fs) > 1 {
+				info, err := os.Lstat(p.ImportedPath)
+				if err != nil {
+					res.Problems = append(res.Problems, shortHash(h)+" library path is unavailable; it stays protected.")
+					continue
+				}
+				if info.Mode().IsRegular() {
+					// Episode imports report one renamed file; prove every payload byte in that season folder.
+					p.ImportedPath = filepath.Dir(p.ImportedPath)
+				}
+			}
 			root, files, bytes, err := sourceLayout(t, fs, e.LocalVolume)
 			if err != nil {
 				res.Problems = append(res.Problems, shortHash(h)+" is left protected: "+err.Error())
@@ -297,6 +329,15 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 			}
 			recs = append(recs, rec)
 			byHash[h] = rec
+			if execute && c.PressureBypassRetention {
+				ctx.purge(recs, false)
+				if err := e.save(recs); err != nil {
+					return res, err
+				}
+				if free, err := e.FreeBytes(st.TrashDir); err == nil && c.PressureFreeGB > 0 && free >= int64(c.PressureFreeGB)*1_000_000_000 {
+					break
+				}
+			}
 			if execute {
 				res.Actions = append(res.Actions, "Verified whole import of "+rec.Name+" ("+fmt.Sprintf("%s", humanBytes(bytes))+").")
 			} else {
@@ -306,14 +347,13 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 	}
 
 	if !global {
-		ctx := &settleCtx{e: e, c: c, now: now, execute: execute, torrents: byTorrent, queued: queued, res: &res}
 		for _, rec := range recs {
 			switch rec.State {
 			case phaseStaging, phaseManaged, phaseNative:
 				ctx.settle(rec)
 			}
 		}
-		ctx.purge(recs)
+		ctx.purge(recs, true)
 		if len(ctx.problems) > 0 {
 			res.Problems = append(res.Problems, ctx.problems...)
 		}
@@ -529,7 +569,7 @@ func (x *settleCtx) settleNative(rec *cleanupRecord) {
 // purge removes only saved, identity-and-content-verified Library-owned entries
 // from this user's own Trash. Oldest verified import first, re-measuring free
 // space after each removal and stopping at the threshold.
-func (x *settleCtx) purge(recs []*cleanupRecord) {
+func (x *settleCtx) purge(recs []*cleanupRecord, reportShortfall bool) {
 	if x.c.PressureFreeGB <= 0 {
 		return
 	}
@@ -624,7 +664,7 @@ func (x *settleCtx) purge(recs []*cleanupRecord) {
 			return
 		}
 	}
-	if free < threshold {
+	if reportShortfall && free < threshold {
 		x.problems = append(x.problems, fmt.Sprintf("Free space is %s, below %s; no more eligible Library-owned copies can be removed.", humanBytes(free), humanBytes(threshold)))
 	}
 }
