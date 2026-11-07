@@ -276,14 +276,20 @@ async function loadLibrary() {
 }
 
 async function toggleMonitor(m, box) {
-  const note = $("#browse-notice");
+  const note = $("#browse-notice"), requested = box.checked;
+  let reported = null;
   box.disabled = true;
   try {
-    await api("/api/media/monitor", { app: m.app, id: m.id, monitored: box.checked });
-    m.monitored = box.checked;
+    await api("/api/media/monitor", { app: m.app, id: m.id, monitored: requested });
+    const current = await api("/api/media/details?" + new URLSearchParams({ app: m.app, id: m.id }));
+    reported = typeof current.monitored === "boolean" ? current.monitored : null;
+    if (reported !== requested) throw new Error(m.app + " did not confirm the monitoring change. Refresh to check its current setting.");
+    m.monitored = reported;
     note.hidden = true;
+    renderLibrary();
   } catch (e) {
-    box.checked = !box.checked;
+    m.monitored = reported;
+    renderLibrary();
     note.hidden = false;
     note.textContent = e.message;
   } finally { box.disabled = false; }
@@ -314,7 +320,8 @@ function renderLibrary() {
   fillLibraryOptions(libItems);
   const q = $("#lib-q").value, type = $("#lib-type").value, sort = $("#lib-sort").value;
   const language = $("#lib-language").value, genre = $("#lib-genre").value, year = $("#lib-year").value;
-  const items = librarySort(libraryFilter(libItems, { query: q, type, language, genre, year }), sort);
+  const monitoring = $("#lib-monitoring").value;
+  const items = librarySort(libraryFilter(libItems, { query: q, type, language, genre, year, monitoring }), sort);
   $("#browse-lede").textContent = libItems.length + (libItems.length === 1 ? " item" : " items") + " looked after by Sonarr, Radarr and Lidarr.";
   $("#lib-empty").hidden = items.length > 0;
   $("#lib-empty").textContent = libItems.length ? "Nothing matches." : "Nothing in the library yet. Use Find & add.";
@@ -336,7 +343,7 @@ function renderLibrary() {
     if (details.open) queueMicrotask(loadExtras);
     const summary = mediaNode("summary", null, "download-summary");
     summary.append(mediaNode("span", m.title + (m.year ? " (" + m.year + ")" : ""), "download-title"));
-    summary.append(mediaNode("span", (TYPE[m.app] || m.app) + " · " + (m.haveFiles ? "Files available" : "Waiting for files"), "download-status"));
+    summary.append(mediaNode("span", (TYPE[m.app] || m.app) + " · " + (m.haveFiles ? "Files available" : "Waiting for files") + " · " + libraryMonitoringLabel(m), "download-status"));
     const matches = libraryDownloads.filter(t => t.app === m.app && (t.mediaIds || []).includes(m.id));
     if (matches.length) {
       const active = downloadRows(matches, "", "downloading", "queue")[0] || downloadRows(matches, "", "all", "queue").find(t => Number.isFinite(t.progress) && t.progress < 1);
@@ -353,7 +360,7 @@ function renderLibrary() {
       monitor.type = "checkbox"; monitor.checked = m.monitored;
       monitor.setAttribute("aria-label", "Monitor " + m.title);
       monitor.addEventListener("change", () => toggleMonitor(m, monitor));
-      label.append(monitor, mediaNode("span", "Monitored")); body.append(label);
+      label.append(monitor, mediaNode("span", "Monitor for releases")); body.append(label);
     }
     if (matches.length) {
       const list = mediaNode("ul", null, "source-list");
@@ -366,7 +373,7 @@ function renderLibrary() {
     details.append(summary, body); return details;
   }));
 }
-for (const id of ["#lib-q", "#lib-type", "#lib-genre", "#lib-year", "#lib-sort", "#lib-language"]) $(id).addEventListener("input", renderLibrary);
+for (const id of ["#lib-q", "#lib-type", "#lib-genre", "#lib-year", "#lib-sort", "#lib-language", "#lib-monitoring"]) $(id).addEventListener("input", renderLibrary);
 
 $("#find-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -397,6 +404,7 @@ $("#find-form").addEventListener("submit", async (ev) => {
 
 let pendingAdd = null;
 let addDone = null;
+let addBusy = false;
 
 function fillOptions(sel, items, label, valueKey, textKey) {
   sel.replaceChildren();
@@ -415,10 +423,19 @@ function fillOptions(sel, items, label, valueKey, textKey) {
 function addReady() {
   const q = $("#add-quality").value, r = $("#add-root").value;
   const metaOk = !pendingAdd || pendingAdd.app !== "Lidarr" || !!$("#add-meta").value;
-  $("#add-form button.primary").disabled = !q || !r || !metaOk;
+  $("#add-form button.primary").disabled = addBusy || !q || !r || !metaOk;
+  $("#add-form button.primary").textContent = addBusy ? "Adding…" : $("#add-search").checked ? "Add and search" : "Add to library";
+}
+
+function addMonitoringChanged() {
+  const search = $("#add-search");
+  search.disabled = !$("#add-monitor").checked;
+  if (search.disabled) search.checked = false;
+  addReady();
 }
 
 async function openAdd(m, done) {
+  if (addBusy) return;
   pendingAdd = m;
   addDone = done || null;
   $("#add-title").textContent = "Add " + m.title;
@@ -429,6 +446,13 @@ async function openAdd(m, done) {
   $("#add-meta").replaceChildren();
   for (const id of ["#add-quality", "#add-root", "#add-meta"]) $(id).disabled = true;
   $("#add-meta-box").hidden = m.app !== "Lidarr";
+  $("#add-monitor").checked = true;
+  $("#add-search").checked = false;
+  $("#add-search").disabled = false;
+  $("#add-monitor-label").textContent = m.app === "Sonarr" ? "Monitor all seasons and episodes" : m.app === "Radarr" ? "Monitor this film" : "Monitor this artist and albums";
+  $("#add-search-label").textContent = m.app === "Sonarr" ? "Search for missing episodes now" : m.app === "Radarr" ? "Search for this film now" : "Search for missing albums now";
+  $("#add-monitor-help").textContent = m.app + " will watch for matching releases using your quality settings. You can turn monitoring off; existing files are kept.";
+  $("#add-form button.primary").textContent = "Add to library";
   $("#add-form button.primary").disabled = true;
   $("#add-dialog").addEventListener("close", () => { pendingAdd = null; addDone = null; }, { once: true });
   if (!$("#add-dialog").open) $("#add-dialog").showModal();
@@ -448,14 +472,15 @@ async function openAdd(m, done) {
   }
 }
 
-for (const id of ["#add-quality", "#add-root", "#add-meta"]) $(id).addEventListener("change", addReady);
+for (const id of ["#add-quality", "#add-root", "#add-meta", "#add-search"]) $(id).addEventListener("change", addReady);
+$("#add-monitor").addEventListener("change", addMonitoringChanged);
 $("#add-cancel").addEventListener("click", () => $("#add-dialog").close());
 $("#add-dialog .close").addEventListener("click", () => $("#add-dialog").close());
 $("#add-dialog").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); });
 
 $("#add-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  if (!pendingAdd) return;
+  if (!pendingAdd || addBusy) return;
   const btn = $("#add-form button.primary"), msg = $("#add-msg");
   msg.hidden = true;
   const body = {
@@ -463,9 +488,12 @@ $("#add-form").addEventListener("submit", async (ev) => {
     raw: pendingAdd.raw,
     qualityProfileId: Number($("#add-quality").value),
     rootFolderPath: $("#add-root").value,
+    monitored: $("#add-monitor").checked,
+    search: $("#add-monitor").checked && $("#add-search").checked,
   };
   if (pendingAdd.app === "Lidarr") body.metadataProfileId = Number($("#add-meta").value);
   const title = pendingAdd.title, done = addDone;
+  addBusy = true;
   btn.disabled = true; btn.textContent = "Adding…";
   try {
     const r = await api("/api/media/add", body);
@@ -474,12 +502,12 @@ $("#add-form").addEventListener("submit", async (ev) => {
     if (done) done();
     const fm = $("#find-msg");
     fm.hidden = false;
-    fm.textContent = "Added " + title + " to " + (r.folder || "the library") + ". It now shows in My library.";
+    fm.textContent = "Added " + title + " to " + (r.folder || "the library") + ". Monitoring " + (body.monitored ? "on" : "off") + ". " + (body.search ? "Search requested; check Downloads for progress." : "No immediate search requested.");
   } catch (e) {
     msg.hidden = false;
     msg.textContent = e.message;
     btn.disabled = false;
-  } finally { btn.textContent = "Add to library"; }
+  } finally { addBusy = false; addReady(); }
 });
 
 function fillForm(st) {

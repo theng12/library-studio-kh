@@ -15,7 +15,7 @@ type Detail struct {
 	App              string    `json:"app"`
 	ID               int       `json:"id"`
 	Title            string    `json:"title"`
-	Monitored        bool      `json:"monitored"`
+	Monitored        *bool     `json:"monitored"`
 	HaveFiles        bool      `json:"haveFiles"`
 	Status           string    `json:"status,omitempty"`
 	Path             string    `json:"path,omitempty"`
@@ -27,8 +27,8 @@ type Detail struct {
 }
 
 type Season struct {
-	SeasonNumber int  `json:"seasonNumber"`
-	Monitored    bool `json:"monitored"`
+	SeasonNumber int   `json:"seasonNumber"`
+	Monitored    *bool `json:"monitored"`
 }
 
 type Episode struct {
@@ -36,7 +36,7 @@ type Episode struct {
 	SeasonNumber  int    `json:"seasonNumber"`
 	EpisodeNumber int    `json:"episodeNumber"`
 	Title         string `json:"title"`
-	Monitored     bool   `json:"monitored"`
+	Monitored     *bool  `json:"monitored"`
 	HaveFiles     bool   `json:"haveFiles"`
 	When          string `json:"when,omitempty"`
 }
@@ -44,7 +44,7 @@ type Episode struct {
 type Album struct {
 	ID             int    `json:"id"`
 	Title          string `json:"title"`
-	Monitored      bool   `json:"monitored"`
+	Monitored      *bool  `json:"monitored"`
 	HaveFiles      bool   `json:"haveFiles"`
 	When           string `json:"when,omitempty"`
 	TrackCount     *int   `json:"trackCount,omitempty"`
@@ -55,7 +55,7 @@ type rawDetail struct {
 	rawMetadata
 	Title            string `json:"title"`
 	ArtistName       string `json:"artistName"`
-	Monitored        bool   `json:"monitored"`
+	Monitored        *bool  `json:"monitored"`
 	Status           string `json:"status"`
 	Path             string `json:"path"`
 	HasFile          bool   `json:"hasFile"`
@@ -65,8 +65,8 @@ type rawDetail struct {
 		TrackFileCount   int `json:"trackFileCount"`
 	} `json:"statistics"`
 	Seasons []struct {
-		SeasonNumber int  `json:"seasonNumber"`
-		Monitored    bool `json:"monitored"`
+		SeasonNumber int   `json:"seasonNumber"`
+		Monitored    *bool `json:"monitored"`
 	} `json:"seasons"`
 }
 
@@ -102,7 +102,7 @@ func (a *Arr) Detail(id int) (Detail, error) {
 			SeasonNumber  int    `json:"seasonNumber"`
 			EpisodeNumber int    `json:"episodeNumber"`
 			Title         string `json:"title"`
-			Monitored     bool   `json:"monitored"`
+			Monitored     *bool  `json:"monitored"`
 			HasFile       bool   `json:"hasFile"`
 			AirDate       string `json:"airDate"`
 		}
@@ -116,7 +116,7 @@ func (a *Arr) Detail(id int) (Detail, error) {
 		var als []struct {
 			ID        int    `json:"id"`
 			Title     string `json:"title"`
-			Monitored bool   `json:"monitored"`
+			Monitored *bool  `json:"monitored"`
 			When      string `json:"releaseDate"`
 			Stats     *struct {
 				TrackCount     int `json:"trackCount"`

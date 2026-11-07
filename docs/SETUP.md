@@ -36,6 +36,12 @@ Prowlarr needs an enabled source before searches can work. Sources uses Prowlarr
 
 Check setup again. Readiness requires the selected native connections, accessible roots, saved links/logins and enabled-source tests to pass. This does not start a media search or download. Request accepted never means file downloaded.
 
+## Monitoring and adding media
+
+My library shows Monitoring on, off or not reported beside each title, and its Monitoring filter narrows the same list. Expand an item to change monitoring; Library reads the native setting back rather than presenting a write as confirmed. Series details also let you choose seasons and episodes. If series monitoring is off, those child choices do not make Sonarr follow the series until you turn it on. Monitoring changes never remove existing files.
+
+Find & add starts with monitoring on and Search now off. Review the quality profile, destination and monitoring choice before adding. Sonarr monitors all seasons and episodes when selected; films and artists use their native monitoring settings. Turn monitoring off to add without following releases. Search now is a separate deliberate choice that can start downloads using the selected native quality profile; it is unavailable while monitoring is off. Monitoring watches matching incoming releases but does not itself search the entire back catalogue. A requested search is not a completed download or import.
+
 ## Optional startup and recovery
 
 Start at login is off until selected. It registers only the Library host and new managed companions in the reviewed plan. Existing externally managed companion jobs are preserved. A desktop server may require quit/reopen before background handoff; check setup afterward. A saved or loaded job is not evidence of a real fresh-login test. See [background hosting](HOST.md).

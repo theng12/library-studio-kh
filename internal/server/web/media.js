@@ -72,9 +72,12 @@ async function refreshMediaDetails() {
     facts(technicalFacts, [["Quality profile ID", data.qualityProfileId || "Not reported"], ["Library folder", data.path || "Not reported"]]);
     technical.append(technicalFacts);
     const actions = mediaNode("div", null, "media-actions media-padding");
-    actions.append(mediaMonitor(data.monitored, { app: data.app, id: data.id }, "Monitor this item", true));
+    actions.append(mediaMonitor(data.monitored, { app: data.app, id: data.id }, "Monitor this " + (data.app === "Sonarr" ? "series" : data.app === "Radarr" ? "film" : "artist"), true));
     if (data.app === "Radarr") actions.append(mediaSearchButton("Search releases", {}, data.title));
-    information.append(overview, dl, technical, actions); $("#media-information").replaceChildren(information);
+    information.append(overview, dl, technical, actions);
+    information.append(mediaNode("p", "Monitoring follows matching releases using your quality settings. It does not remove files or automatically search every older missing episode.", "muted media-padding"));
+    if (data.app === "Sonarr" && data.monitored === false) information.append(mediaNode("p", "Series monitoring is off. Turn it on above for monitored seasons and episodes to be followed.", "notice media-padding"));
+    $("#media-information").replaceChildren(information);
     if (data.app === "Radarr") {
       const extras = mediaNode("div");
       $("#media-information").append(extras);
@@ -101,9 +104,10 @@ function mediaDay(value) {
 }
 function mediaOption(value, text) { const o = mediaNode("option", text); o.value = value; return o; }
 function mediaMonitor(checked, request, label, root) {
+  if (typeof checked !== "boolean") return mediaNode("span", "Monitoring not reported", "muted");
   const box = mediaNode("label", null, "check media-monitor"), input = document.createElement("input");
   input.type = "checkbox"; input.checked = !!checked; input.setAttribute("aria-label", label);
-  box.append(input, mediaNode("span", root ? "Monitored" : "Monitor"));
+  box.append(input, mediaNode("span", root ? label : "Monitor"));
   input.addEventListener("change", async () => {
     input.disabled = true;
     const serial = mediaSerial;
@@ -139,7 +143,7 @@ function renderMediaChildren() {
       .sort((a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber);
     const rows = episodes.map(e => row([
       "S" + String(e.seasonNumber).padStart(2, "0") + "E" + String(e.episodeNumber).padStart(2, "0") + " · " + e.title,
-      e.haveFiles ? "In library" : "Missing files", e.when ? mediaDay(e.when) : "Date not reported",
+      e.haveFiles ? "In library" : "No file reported", e.when ? mediaDay(e.when) : "Date not reported",
       mediaMonitor(e.monitored, { app: d.app, id: d.id, kind: "episode", childId: e.id }, "Monitor " + e.title),
       mediaSearchButton("Search releases", { episodeId: e.id }, e.title),
     ]));

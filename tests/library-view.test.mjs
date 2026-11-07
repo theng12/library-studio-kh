@@ -84,3 +84,19 @@ test("a chosen filter survives a refresh that still reports it and resets when i
 function appSource() {
   return readFileSync(new URL("../internal/server/web/app.js", import.meta.url), "utf8");
 }
+
+test("monitoring filters distinguish true, false and unreported native states", () => {
+  const rows = [
+    { title: "On", app: "Sonarr", monitored: true, genres: ["Drama"], year: 2020 },
+    { title: "Off", app: "Sonarr", monitored: false, genres: ["Drama"], year: 2020 },
+    { title: "Unknown", app: "Sonarr", monitored: null },
+    { title: "Missing", app: "Radarr" },
+  ];
+  assert.deepEqual(titles(libraryFilter(rows, { monitoring: "on" })), ["On"]);
+  assert.deepEqual(titles(libraryFilter(rows, { monitoring: "off" })), ["Off"]);
+  assert.deepEqual(titles(libraryFilter(rows, { monitoring: "unknown" })), ["Unknown", "Missing"]);
+  assert.deepEqual(titles(libraryFilter(rows, { monitoring: "off", type: "Sonarr", genre: "Drama", year: "2020" })), ["Off"]);
+  assert.equal(context.libraryMonitoringLabel(rows[0]), "Monitoring on");
+  assert.equal(context.libraryMonitoringLabel(rows[1]), "Monitoring off");
+  for (const monitored of [null, undefined, "false", 0]) assert.equal(context.libraryMonitoringLabel({ monitored }), "Monitoring not reported");
+});

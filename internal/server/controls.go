@@ -58,6 +58,8 @@ func (s *Server) registerControls(mux *http.ServeMux) {
 			QualityProfileID  int             `json:"qualityProfileId"`
 			RootFolderPath    string          `json:"rootFolderPath"`
 			MetadataProfileID int             `json:"metadataProfileId"`
+			Monitored         *bool           `json:"monitored"`
+			Search            bool            `json:"search"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil || len(req.Raw) == 0 {
 			writeJSON(w, 400, map[string]string{"error": "That result could not be read."})
@@ -67,7 +69,13 @@ func (s *Server) registerControls(mux *http.ServeMux) {
 			writeJSON(w, 400, map[string]string{"error": "app must be Sonarr, Radarr or Lidarr."})
 			return
 		}
-		sel := stock.AddSelection{QualityProfileID: req.QualityProfileID, RootFolderPath: req.RootFolderPath, MetadataProfileID: req.MetadataProfileID}
+		sel := stock.AddSelection{
+			QualityProfileID:  req.QualityProfileID,
+			RootFolderPath:    req.RootFolderPath,
+			MetadataProfileID: req.MetadataProfileID,
+			Monitored:         req.Monitored,
+			Search:            req.Search,
+		}
 		where, err := library.AddSelected(s.Store.Get(), req.App, req.Raw, sel)
 		if err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})

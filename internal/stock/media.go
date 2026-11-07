@@ -21,7 +21,7 @@ type Media struct {
 	OriginalLanguage string          `json:"originalLanguage,omitempty"`
 	HaveFiles        bool            `json:"haveFiles"`
 	InLibrary        bool            `json:"inLibrary"`
-	Monitored        bool            `json:"monitored"`
+	Monitored        *bool           `json:"monitored"`
 	QualityProfileID int             `json:"qualityProfileId"`
 	Raw              json.RawMessage `json:"raw,omitempty"` // lookup result, sent back unchanged to add it
 }
@@ -40,8 +40,8 @@ type rawMedia struct {
 	Overview         string
 	OriginalLanguage *language `json:"originalLanguage"`
 	HasFile          bool
-	Monitored        bool
-	QualityProfileID int `json:"qualityProfileId"`
+	Monitored        *bool `json:"monitored"`
+	QualityProfileID int   `json:"qualityProfileId"`
 	Statistics       *struct{ EpisodeFileCount, TrackFileCount int }
 }
 
@@ -111,7 +111,7 @@ func (a *Arr) Add(raw json.RawMessage) (string, error) {
 	if len(o.RootFolders) == 0 {
 		return "", fmt.Errorf("%s has no root folder set up yet", a.Name)
 	}
-	sel := AddSelection{QualityProfileID: o.QualityProfiles[0].ID, RootFolderPath: o.RootFolders[0].Path}
+	sel := AddSelection{QualityProfileID: o.QualityProfiles[0].ID, RootFolderPath: o.RootFolders[0].Path, Search: true}
 	if a.Name == "Lidarr" {
 		if len(o.MetadataProfiles) == 0 {
 			return "", fmt.Errorf("%s has no metadata profile set up yet", a.Name)

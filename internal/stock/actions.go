@@ -100,13 +100,22 @@ func (a *Arr) Options() (Options, error) {
 }
 
 type AddSelection struct {
-	QualityProfileID  int
-	RootFolderPath    string
-	MetadataProfileID int // Lidarr only
+	QualityProfileID  int    `json:"qualityProfileId"`
+	RootFolderPath    string `json:"rootFolderPath"`
+	MetadataProfileID int    `json:"metadataProfileId,omitempty"` // Lidarr only
+	Monitored         *bool  `json:"monitored,omitempty"`
+	Search            bool   `json:"search,omitempty"`
 }
 
 // AddSelected adds a lookup result with the owner's choices, after checking them against the app.
 func (a *Arr) AddSelected(raw json.RawMessage, sel AddSelection) (string, error) {
+	monitored := true
+	if sel.Monitored != nil {
+		monitored = *sel.Monitored
+	}
+	if !monitored && sel.Search {
+		return "", errors.New("cannot search an unmonitored item")
+	}
 	var item map[string]any
 	if err := json.Unmarshal(raw, &item); err != nil || item == nil {
 		return "", errors.New("that result could not be read")
@@ -146,17 +155,29 @@ func hasPath(xs []Option, path string) bool {
 }
 
 func (a *Arr) add(item map[string]any, sel AddSelection) (string, error) {
-	item["qualityProfileId"], item["rootFolderPath"], item["monitored"] = sel.QualityProfileID, sel.RootFolderPath, true
+	monitored := true
+	if sel.Monitored != nil {
+		monitored = *sel.Monitored
+	}
+	if !monitored && sel.Search {
+		return "", errors.New("cannot search an unmonitored item")
+	}
+	item["qualityProfileId"], item["rootFolderPath"], item["monitored"] = sel.QualityProfileID, sel.RootFolderPath, monitored
+	monitorOption := "all"
+	if !monitored {
+		monitorOption = "none"
+	}
+	search := sel.Search && monitored
 	switch a.Name {
 	case "Sonarr":
 		item["seasonFolder"] = true
-		item["addOptions"] = map[string]any{"searchForMissingEpisodes": true, "monitor": "all"}
+		item["addOptions"] = map[string]any{"searchForMissingEpisodes": search, "monitor": monitorOption}
 	case "Radarr":
 		item["minimumAvailability"] = "released"
-		item["addOptions"] = map[string]any{"searchForMovie": true}
+		item["addOptions"] = map[string]any{"searchForMovie": search}
 	case "Lidarr":
 		item["metadataProfileId"] = sel.MetadataProfileID
-		item["addOptions"] = map[string]any{"searchForMissingAlbums": true, "monitor": "all"}
+		item["addOptions"] = map[string]any{"searchForMissingAlbums": search, "monitor": monitorOption}
 	}
 	if err := a.do("POST", "/"+kinds[a.Name], item, nil); err != nil {
 		return "", err

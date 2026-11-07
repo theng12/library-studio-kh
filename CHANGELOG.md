@@ -1,5 +1,12 @@
 # What's new in Library Studio KH
 
+## 0.7.1 — 2026-11-07
+
+- See monitoring on or off beside every library title and filter by monitoring status. Unreported native settings stay distinct from off.
+- Change monitoring from the library and read the native setting back. Series details explain when the show is off even though seasons or episodes are selected.
+- Adding media starts with monitoring on and Search now off. Review both choices; immediate searching is a separate opt-in, and turning monitoring off keeps existing files.
+- Keep add requests single while saving, and distinguish a requested search from a downloaded or imported file.
+
 ## 0.7.0 — 2026-11-07
 
 - Guided core-app setup on Apple Silicon Macs resolves current official packages, verifies published checksums, preserves existing apps and keeps first opening under normal macOS approval.

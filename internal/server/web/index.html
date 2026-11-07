@@ -195,6 +195,7 @@
         <div class="tools">
           <label class="search">Search <input type="search" id="lib-q" placeholder="Title"></label>
           <label>Type <select id="lib-type"><option value="">All</option><option value="Sonarr">TV</option><option value="Radarr">Films</option><option value="Lidarr">Music</option></select></label>
+          <label>Monitoring <select id="lib-monitoring"><option value="">All</option><option value="on">On</option><option value="off">Off</option><option value="unknown">Not reported</option></select></label>
           <label>Genre <select id="lib-genre"><option value="">All genres</option></select></label>
           <label>Year <select id="lib-year"><option value="">All years</option></select></label>
           <label>Sort <select id="lib-sort"><option value="title">Title A–Z</option><option value="app">App</option><option value="added">Recently added</option><option value="year">Newest year</option><option value="oldest">Oldest year</option></select></label>
@@ -632,6 +633,10 @@
     <label>Quality profile <select id="add-quality" required></select></label>
     <label>Root folder <select id="add-root" required></select></label>
     <label id="add-meta-box" hidden>Metadata profile <select id="add-meta"></select></label>
+    <label class="check"><input type="checkbox" id="add-monitor" checked aria-describedby="add-monitor-help"><span id="add-monitor-label">Monitor for releases</span></label>
+    <p id="add-monitor-help" class="hint"></p>
+    <label class="check"><input type="checkbox" id="add-search"><span id="add-search-label">Search now</span></label>
+    <p class="hint">Search now can start downloads that meet your native quality settings. Monitoring alone does not search the whole back catalogue.</p>
     <p id="add-msg" class="msg" role="alert" hidden></p>
     <div class="actions">
       <button type="submit" class="primary" disabled>Add to library</button>

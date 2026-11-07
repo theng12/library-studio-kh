@@ -69,6 +69,17 @@ function libraryYearMatches(item, year) {
   return known && value === Number(year);
 }
 
+function libraryMonitoringLabel(item) {
+  return item.monitored === true ? "Monitoring on" : item.monitored === false ? "Monitoring off" : "Monitoring not reported";
+}
+
+function libraryMonitoringMatches(item, monitoring) {
+  if (!monitoring) return true;
+  if (monitoring === "on") return item.monitored === true;
+  if (monitoring === "off") return item.monitored === false;
+  return typeof item.monitored !== "boolean";
+}
+
 // Every control narrows the same reported library list; the source array is left untouched.
 function libraryFilter(items, filters = {}) {
   const query = (filters.query || "").trim().toLocaleLowerCase();
@@ -77,7 +88,8 @@ function libraryFilter(items, filters = {}) {
     (item.title || "").toLocaleLowerCase().includes(query) &&
     libraryLanguageMatches(item, filters.language) &&
     libraryGenreMatches(item, filters.genre) &&
-    libraryYearMatches(item, filters.year));
+    libraryYearMatches(item, filters.year) &&
+    libraryMonitoringMatches(item, filters.monitoring));
 }
 
 // Unknown years sort last in both directions, with title ordering keeping ties deterministic.

@@ -372,7 +372,7 @@ dialog::backdrop { background: rgba(14, 18, 32, 0.45); }
 .download-item .facts { border-top: 1px solid var(--line); }
 .library-detail { padding: 0 1rem 1rem; }
 .library-overview { color: var(--ink-2); margin: 0.5rem 0 1rem; max-width: 70ch; overflow-wrap: anywhere; }
-.library-detail .media-monitor { min-height: 44px; }
+.media-monitor, .add-form .check { min-height: 44px; }
 .library-detail button { min-height: 44px; }
 @media (max-width: 760px) {
   .download-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

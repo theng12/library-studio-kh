@@ -190,3 +190,270 @@ func TestSetMonitoredPreservesUpstreamItem(t *testing.T) {
 		t.Fatalf("PUT lost upstream fields: %v", put)
 	}
 }
+
+func TestAddSelectedMonitoredAndSearchPayloads(t *testing.T) {
+	bTrue := true
+	bFalse := false
+
+	tests := []struct {
+		app            string
+		postPath       string
+		qualityPath    string
+		rootPath       string
+		metaPath       string
+		raw            json.RawMessage
+		sel            AddSelection
+		wantMonitored  bool
+		wantSearch     bool
+		wantMonitorOpt string // empty for Radarr
+	}{
+		// Sonarr default: monitored nil -> true, search default false
+		{
+			app:            "Sonarr",
+			postPath:       "/api/v3/series",
+			qualityPath:    "/api/v3/qualityprofile",
+			rootPath:       "/api/v3/rootfolder",
+			raw:            json.RawMessage(`{"title":"Show","tvdbId":10}`),
+			sel:            AddSelection{QualityProfileID: 1, RootFolderPath: "/nas/tv"},
+			wantMonitored:  true,
+			wantSearch:     false,
+			wantMonitorOpt: "all",
+		},
+		// Sonarr explicit monitored=true, search=true
+		{
+			app:            "Sonarr",
+			postPath:       "/api/v3/series",
+			qualityPath:    "/api/v3/qualityprofile",
+			rootPath:       "/api/v3/rootfolder",
+			raw:            json.RawMessage(`{"title":"Show","tvdbId":10}`),
+			sel:            AddSelection{QualityProfileID: 1, RootFolderPath: "/nas/tv", Monitored: &bTrue, Search: true},
+			wantMonitored:  true,
+			wantSearch:     true,
+			wantMonitorOpt: "all",
+		},
+		// Sonarr unmonitored: monitored=false, search=false -> monitor "none", search false
+		{
+			app:            "Sonarr",
+			postPath:       "/api/v3/series",
+			qualityPath:    "/api/v3/qualityprofile",
+			rootPath:       "/api/v3/rootfolder",
+			raw:            json.RawMessage(`{"title":"Show","tvdbId":10}`),
+			sel:            AddSelection{QualityProfileID: 1, RootFolderPath: "/nas/tv", Monitored: &bFalse, Search: false},
+			wantMonitored:  false,
+			wantSearch:     false,
+			wantMonitorOpt: "none",
+		},
+		// Radarr default: monitored nil -> true, search default false
+		{
+			app:           "Radarr",
+			postPath:      "/api/v3/movie",
+			qualityPath:   "/api/v3/qualityprofile",
+			rootPath:      "/api/v3/rootfolder",
+			raw:           json.RawMessage(`{"title":"Movie","tmdbId":20}`),
+			sel:           AddSelection{QualityProfileID: 1, RootFolderPath: "/nas/movies"},
+			wantMonitored: true,
+			wantSearch:    false,
+		},
+		// Radarr explicit monitored=true, search=true
+		{
+			app:           "Radarr",
+			postPath:      "/api/v3/movie",
+			qualityPath:   "/api/v3/qualityprofile",
+			rootPath:      "/api/v3/rootfolder",
+			raw:           json.RawMessage(`{"title":"Movie","tmdbId":20}`),
+			sel:           AddSelection{QualityProfileID: 1, RootFolderPath: "/nas/movies", Monitored: &bTrue, Search: true},
+			wantMonitored: true,
+			wantSearch:    true,
+		},
+		// Radarr unmonitored: monitored=false, search=false
+		{
+			app:           "Radarr",
+			postPath:      "/api/v3/movie",
+			qualityPath:   "/api/v3/qualityprofile",
+			rootPath:      "/api/v3/rootfolder",
+			raw:           json.RawMessage(`{"title":"Movie","tmdbId":20}`),
+			sel:           AddSelection{QualityProfileID: 1, RootFolderPath: "/nas/movies", Monitored: &bFalse, Search: false},
+			wantMonitored: false,
+			wantSearch:    false,
+		},
+		// Lidarr default: monitored nil -> true, search default false
+		{
+			app:            "Lidarr",
+			postPath:       "/api/v1/artist",
+			qualityPath:    "/api/v1/qualityprofile",
+			rootPath:       "/api/v1/rootfolder",
+			metaPath:       "/api/v1/metadataprofile",
+			raw:            json.RawMessage(`{"artistName":"Artist","foreignArtistId":"30"}`),
+			sel:            AddSelection{QualityProfileID: 1, RootFolderPath: "/nas/music", MetadataProfileID: 5},
+			wantMonitored:  true,
+			wantSearch:     false,
+			wantMonitorOpt: "all",
+		},
+		// Lidarr explicit monitored=true, search=true
+		{
+			app:            "Lidarr",
+			postPath:       "/api/v1/artist",
+			qualityPath:    "/api/v1/qualityprofile",
+			rootPath:       "/api/v1/rootfolder",
+			metaPath:       "/api/v1/metadataprofile",
+			raw:            json.RawMessage(`{"artistName":"Artist","foreignArtistId":"30"}`),
+			sel:            AddSelection{QualityProfileID: 1, RootFolderPath: "/nas/music", MetadataProfileID: 5, Monitored: &bTrue, Search: true},
+			wantMonitored:  true,
+			wantSearch:     true,
+			wantMonitorOpt: "all",
+		},
+		// Lidarr unmonitored: monitored=false, search=false -> monitor "none", search false
+		{
+			app:            "Lidarr",
+			postPath:       "/api/v1/artist",
+			qualityPath:    "/api/v1/qualityprofile",
+			rootPath:       "/api/v1/rootfolder",
+			metaPath:       "/api/v1/metadataprofile",
+			raw:            json.RawMessage(`{"artistName":"Artist","foreignArtistId":"30"}`),
+			sel:            AddSelection{QualityProfileID: 1, RootFolderPath: "/nas/music", MetadataProfileID: 5, Monitored: &bFalse, Search: false},
+			wantMonitored:  false,
+			wantSearch:     false,
+			wantMonitorOpt: "none",
+		},
+	}
+
+	for _, tc := range tests {
+		var posted map[string]any
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case tc.qualityPath:
+				w.Write([]byte(`[{"id":1,"name":"Standard"}]`))
+			case tc.rootPath:
+				w.Write([]byte(`[{"id":1,"path":"` + tc.sel.RootFolderPath + `"}]`))
+			case tc.metaPath:
+				w.Write([]byte(`[{"id":5,"name":"Standard"}]`))
+			case tc.postPath:
+				json.NewDecoder(r.Body).Decode(&posted)
+				w.WriteHeader(http.StatusCreated)
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+
+		a := NewArr(tc.app, srv.URL, "k")
+		where, err := a.AddSelected(tc.raw, tc.sel)
+		srv.Close()
+		if err != nil {
+			t.Fatalf("%s (%+v): unexpected error: %v", tc.app, tc.sel, err)
+		}
+		if where != tc.sel.RootFolderPath {
+			t.Fatalf("%s: expected folder %s, got %s", tc.app, tc.sel.RootFolderPath, where)
+		}
+
+		if posted["monitored"] != tc.wantMonitored {
+			t.Fatalf("%s (%+v): want monitored %v, got %v", tc.app, tc.sel, tc.wantMonitored, posted["monitored"])
+		}
+
+		addOpts, ok := posted["addOptions"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s (%+v): missing addOptions in posted: %v", tc.app, tc.sel, posted)
+		}
+
+		switch tc.app {
+		case "Sonarr":
+			if addOpts["searchForMissingEpisodes"] != tc.wantSearch {
+				t.Fatalf("Sonarr: want searchForMissingEpisodes %v, got %v", tc.wantSearch, addOpts["searchForMissingEpisodes"])
+			}
+			if addOpts["monitor"] != tc.wantMonitorOpt {
+				t.Fatalf("Sonarr: want monitor %v, got %v", tc.wantMonitorOpt, addOpts["monitor"])
+			}
+		case "Radarr":
+			if addOpts["searchForMovie"] != tc.wantSearch {
+				t.Fatalf("Radarr: want searchForMovie %v, got %v", tc.wantSearch, addOpts["searchForMovie"])
+			}
+		case "Lidarr":
+			if addOpts["searchForMissingAlbums"] != tc.wantSearch {
+				t.Fatalf("Lidarr: want searchForMissingAlbums %v, got %v", tc.wantSearch, addOpts["searchForMissingAlbums"])
+			}
+			if addOpts["monitor"] != tc.wantMonitorOpt {
+				t.Fatalf("Lidarr: want monitor %v, got %v", tc.wantMonitorOpt, addOpts["monitor"])
+			}
+		}
+	}
+}
+
+func TestAddSelectedRejectsSearchWhenUnmonitoredWithoutWriting(t *testing.T) {
+	bFalse := false
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.Error(w, "should not be called", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	for _, app := range []string{"Sonarr", "Radarr", "Lidarr"} {
+		a := NewArr(app, srv.URL, "k")
+		raw := json.RawMessage(`{"title":"Item","tmdbId":1}`)
+		sel := AddSelection{
+			QualityProfileID: 1,
+			RootFolderPath:   "/nas/media",
+			Monitored:        &bFalse,
+			Search:           true,
+		}
+		_, err := a.AddSelected(raw, sel)
+		if err == nil {
+			t.Fatalf("%s: expected error when search=true and monitored=false", app)
+		}
+		if requests != 0 {
+			t.Fatalf("%s: invalid search+unmonitored must make 0 requests upstream, made %d", app, requests)
+		}
+	}
+}
+
+func TestLegacyAddPreservesMonitoredAndSearch(t *testing.T) {
+	for _, tc := range []struct {
+		app         string
+		postPath    string
+		qualityPath string
+		rootPath    string
+		metaPath    string
+		raw         json.RawMessage
+		searchKey   string
+	}{
+		{"Sonarr", "/api/v3/series", "/api/v3/qualityprofile", "/api/v3/rootfolder", "", json.RawMessage(`{"title":"Show","tvdbId":1}`), "searchForMissingEpisodes"},
+		{"Radarr", "/api/v3/movie", "/api/v3/qualityprofile", "/api/v3/rootfolder", "", json.RawMessage(`{"title":"Film","tmdbId":1}`), "searchForMovie"},
+		{"Lidarr", "/api/v1/artist", "/api/v1/qualityprofile", "/api/v1/rootfolder", "/api/v1/metadataprofile", json.RawMessage(`{"artistName":"Band","foreignArtistId":"1"}`), "searchForMissingAlbums"},
+	} {
+		var posted map[string]any
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case tc.qualityPath:
+				w.Write([]byte(`[{"id":1,"name":"Standard"}]`))
+			case tc.rootPath:
+				w.Write([]byte(`[{"id":1,"path":"/nas/media"}]`))
+			case tc.metaPath:
+				w.Write([]byte(`[{"id":1,"name":"Standard"}]`))
+			case tc.postPath:
+				json.NewDecoder(r.Body).Decode(&posted)
+				w.WriteHeader(http.StatusCreated)
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+
+		a := NewArr(tc.app, srv.URL, "k")
+		where, err := a.Add(tc.raw)
+		srv.Close()
+		if err != nil {
+			t.Fatalf("%s: legacy Add: %v", tc.app, err)
+		}
+		if where != "/nas/media" {
+			t.Fatalf("%s: legacy Add where: %s", tc.app, where)
+		}
+		if posted["monitored"] != true {
+			t.Fatalf("%s: legacy Add must post monitored: true, got %v", tc.app, posted["monitored"])
+		}
+		addOpts, ok := posted["addOptions"].(map[string]any)
+		if !ok || addOpts[tc.searchKey] != true {
+			t.Fatalf("%s: legacy Add must post %s: true, got %v", tc.app, tc.searchKey, addOpts[tc.searchKey])
+		}
+		if tc.app != "Radarr" && addOpts["monitor"] != "all" {
+			t.Fatalf("%s: legacy Add must post monitor: all, got %v", tc.app, addOpts["monitor"])
+		}
+	}
+}
