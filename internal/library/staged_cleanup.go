@@ -683,21 +683,26 @@ func (x *settleCtx) purgeOne(rec *cleanupRecord, why string) {
 		x.block(rec, err.Error())
 		return
 	}
-	if err := verifyTree(path, rec.Files); err != nil {
-		x.block(rec, "the system Trash entry can't be verified: "+err.Error())
-		return
-	}
-	// Fresh NAS proof right before the permanent removal: the copy could have
-	// disappeared or changed since it was first verified.
-	if err := proveImported(rec.ImportedPath, rec.Files); err != nil {
-		x.block(rec, "the library copy can't be verified: "+err.Error())
-		return
+	// Run the NAS proof after local checks, immediately before removal.
+	verifyImported := func() error {
+		if err := proveImported(rec.ImportedPath, rec.Files); err != nil {
+			return fmt.Errorf("the library copy can't be verified: %w", err)
+		}
+		return nil
 	}
 	if !x.execute {
+		if err := verifyTree(path, rec.Files); err != nil {
+			x.block(rec, "the system Trash entry can't be verified: "+err.Error())
+			return
+		}
+		if err := verifyImported(); err != nil {
+			x.block(rec, err.Error())
+			return
+		}
 		x.res.Actions = append(x.res.Actions, "Would permanently remove "+rec.Name+" from the system Trash because "+why+".")
 		return
 	}
-	if err := os.RemoveAll(path); err != nil {
+	if err := removeVerifiedCopy(path, rec.Files, verifyImported); err != nil {
 		x.block(rec, "the system Trash entry could not be removed: "+err.Error())
 		return
 	}

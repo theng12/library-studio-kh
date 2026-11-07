@@ -1,5 +1,11 @@
 # What's new in Library Studio KH
 
+## 0.7.3 — 2026-11-07
+
+- Clear verified folders from macOS Trash without listing the parent Trash directory. Keep removal scoped to the exact owned item, and recheck NAS content immediately before deletion.
+- Protect changed files, added content, symlinks and replaced folders during removal. Preserve existing cleanup settings and retention clocks.
+- Read full verification checksums in bounded larger chunks, avoiding small network reads without caching or skipping content checks.
+
 ## 0.7.2 — 2026-11-07
 
 - Optionally skip local staging waits when space falls below your chosen threshold. Clear oldest completed, NAS-verified copies first and stop at the measured target; existing installations keep this override off until chosen.

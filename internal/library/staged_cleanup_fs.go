@@ -39,7 +39,8 @@ func hashFile(path string) (string, error) {
 		return "", err
 	}
 	h := sha256.New()
-	n, err := io.Copy(h, f)
+	// File.WriteTo bypasses CopyBuffer, so expose only Reader for larger NAS reads.
+	n, err := io.CopyBuffer(h, struct{ io.Reader }{f}, make([]byte, 4<<20))
 	if err != nil {
 		return "", err
 	}
@@ -51,6 +52,106 @@ func hashFile(path string) (string, error) {
 		return "", errors.New("file changed during checksum verification")
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// removeVerifiedCopy stays inside the owned item: RemoveAll opens its parent,
+// which macOS can deny for Trash even when the item itself is accessible.
+func removeVerifiedCopy(path string, files []CleanupFile, verifyImported func() error) error {
+	if err := verifyTree(path, files); err != nil {
+		return err
+	}
+	before, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if before.Mode().IsRegular() {
+		if err := verifyImported(); err != nil {
+			return err
+		}
+		after, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if !sameFileSnapshot(before, after) {
+			return errors.New("the owned file changed before removal")
+		}
+		return os.Remove(path)
+	}
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	opened, err := root.Stat(".")
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(before, opened) {
+		return errors.New("the owned folder changed before removal")
+	}
+	wanted := map[string]bool{}
+	for _, file := range files {
+		wanted[file.Rel] = true
+	}
+	var entries []string
+	snapshots := map[string]os.FileInfo{}
+	found := 0
+	err = fs.WalkDir(root.FS(), ".", func(name string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if name == "." {
+			return nil
+		}
+		if !entry.IsDir() {
+			if !entry.Type().IsRegular() || !wanted[name] {
+				return errors.New("the owned folder changed before removal")
+			}
+			found++
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		snapshots[name] = info
+		entries = append(entries, name)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if found != len(files) {
+		return errors.New("the owned folder changed before removal")
+	}
+	sort.Slice(entries, func(i, j int) bool { return len(entries[i]) > len(entries[j]) })
+	if err := verifyImported(); err != nil {
+		return err
+	}
+	after, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !after.IsDir() || !os.SameFile(opened, after) || !opened.ModTime().Equal(after.ModTime()) {
+		return errors.New("the owned folder changed before removal")
+	}
+	for name, before := range snapshots {
+		after, err := root.Lstat(filepath.FromSlash(name))
+		if err != nil {
+			return err
+		}
+		if !os.SameFile(before, after) || before.Mode() != after.Mode() || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
+			return errors.New("the owned folder changed before removal")
+		}
+	}
+	for _, name := range entries {
+		if err := root.Remove(filepath.FromSlash(name)); err != nil {
+			return err
+		}
+	}
+	if err := root.Close(); err != nil {
+		return err
+	}
+	return os.Remove(path)
 }
 
 // observedTree lists regular files under root (or root itself) and hashes them.
