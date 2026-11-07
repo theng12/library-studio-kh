@@ -1,5 +1,12 @@
 # What's new in Library Studio KH
 
+## 0.7.2 — 2026-11-07
+
+- Optionally skip local staging waits when space falls below your chosen threshold. Clear oldest completed, NAS-verified copies first and stop at the measured target; existing installations keep this override off until chosen.
+- Recheck current NAS content before every permanent cleanup, including normal Trash expiry. Missing, changed or unreadable copies stay protected.
+- Protect downloads being checked, moved or handled by a library app. Confirm completed torrents have stopped and their metadata is removed before moving local files.
+- Show the low-space override, current free space and proposed early removal clearly on Cleanup.
+
 ## 0.7.1 — 2026-11-07
 
 - See monitoring on or off beside every library title and filter by monitoring status. Unreported native settings stay distinct from off.

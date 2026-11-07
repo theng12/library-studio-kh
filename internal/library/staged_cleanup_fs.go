@@ -24,15 +24,31 @@ type CleanupFile struct {
 	SHA256 string `json:"sha256"`
 }
 
+func sameFileSnapshot(before, after os.FileInfo) bool {
+	return after.Mode().IsRegular() && os.SameFile(before, after) && before.Size() == after.Size() && before.ModTime().Equal(after.ModTime())
+}
+
 func hashFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
+	before, err := f.Stat()
+	if err != nil {
 		return "", err
+	}
+	h := sha256.New()
+	n, err := io.Copy(h, f)
+	if err != nil {
+		return "", err
+	}
+	after, err := os.Lstat(path)
+	if err != nil {
+		return "", err
+	}
+	if n != before.Size() || !sameFileSnapshot(before, after) {
+		return "", errors.New("file changed during checksum verification")
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }

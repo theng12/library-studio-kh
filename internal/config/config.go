@@ -32,21 +32,22 @@ type Config struct {
 	DownloadPath  string `json:"downloadPath"`
 	LibraryPath   string `json:"libraryPath"`
 	// Staged local-copy cleanup (docs/STORAGE_POLICY.md). Off unless the owner switches it on.
-	StagedCleanupOn  bool    `json:"stagedCleanupOn"`
-	ManagedTrashPath string  `json:"managedTrashPath"` // empty = DownloadPath/_trash; must stay on a local volume, never the NAS library
-	StagedDays       int     `json:"stagedDays"`       // days in the normal download folder after verified import
-	ManagedTrashDays int     `json:"managedTrashDays"` // extra days in Library's _trash
-	NativeTrashDays  int     `json:"nativeTrashDays"`  // days kept in the OS Trash
-	PressureFreeGB   int     `json:"pressureFreeGB"`   // purge eligible native-Trash items below this; 0 = no pressure purge
-	SeedRatio        float64 `json:"seedRatio"`
-	SeedMinutes      int     `json:"seedMinutes"`
-	QBit             QBit    `json:"qbittorrent"`
-	Sonarr           App     `json:"sonarr"`
-	Radarr           App     `json:"radarr"`
-	Lidarr           App     `json:"lidarr"`
-	Prowlarr         App     `json:"prowlarr"`
-	BazarrOn         bool    `json:"bazarrOn"`
-	Bazarr           App     `json:"bazarr"`
+	StagedCleanupOn         bool    `json:"stagedCleanupOn"`
+	ManagedTrashPath        string  `json:"managedTrashPath"`        // empty = DownloadPath/_trash; must stay on a local volume, never the NAS library
+	StagedDays              int     `json:"stagedDays"`              // days in the normal download folder after verified import
+	ManagedTrashDays        int     `json:"managedTrashDays"`        // extra days in Library's _trash
+	NativeTrashDays         int     `json:"nativeTrashDays"`         // days kept in the OS Trash
+	PressureBypassRetention bool    `json:"pressureBypassRetention"` // explicit pressure override for verified completed local copies
+	PressureFreeGB          int     `json:"pressureFreeGB"`          // purge eligible native-Trash items below this; 0 = no pressure purge
+	SeedRatio               float64 `json:"seedRatio"`
+	SeedMinutes             int     `json:"seedMinutes"`
+	QBit                    QBit    `json:"qbittorrent"`
+	Sonarr                  App     `json:"sonarr"`
+	Radarr                  App     `json:"radarr"`
+	Lidarr                  App     `json:"lidarr"`
+	Prowlarr                App     `json:"prowlarr"`
+	BazarrOn                bool    `json:"bazarrOn"`
+	Bazarr                  App     `json:"bazarr"`
 }
 
 const StagedCleanupNotice = "The old permanent-delete cleanup is retired. Use the staged cleanup switch instead."

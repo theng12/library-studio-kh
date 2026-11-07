@@ -9,7 +9,7 @@ let cleanupState = null;
 let cleanupSerial = 0;
 
 function cleanupPolicy(form) {
-  const patch = { stagedCleanupOn: form.elements.stagedCleanupOn.checked, managedTrashPath: form.elements.managedTrashPath.value.trim() };
+  const patch = { stagedCleanupOn: form.elements.stagedCleanupOn.checked, pressureBypassRetention: !!form.elements.pressureBypassRetention?.checked, managedTrashPath: form.elements.managedTrashPath.value.trim() };
   for (const [key, [min, max]] of Object.entries(CLEANUP_NUMBERS)) {
     const input = form.elements[key], n = Number(input.value);
     if (!input.value.trim() || !Number.isFinite(n) || n < min || n > max || (key !== "seedRatio" && !Number.isInteger(n))) {
@@ -24,6 +24,7 @@ function cleanupFill(settings) {
   const form = $("#cleanup-form");
   for (const key of Object.keys(CLEANUP_NUMBERS)) form.elements[key].value = settings[key] ?? "";
   form.elements.stagedCleanupOn.checked = !!settings.stagedCleanupOn;
+  form.elements.pressureBypassRetention.checked = !!settings.pressureBypassRetention;
   form.elements.managedTrashPath.value = settings.managedTrashPath || "";
 }
 function cleanupPhase(phase) {
@@ -48,6 +49,7 @@ function cleanupRender(status) {
     ["Library’s _trash", status.managedTrashDays + " extra days · " + status.totalDays + " days total"],
     ["macOS Trash", status.nativeTrashDays + " days, or earlier below the free-space threshold"],
     ["Free-space threshold", status.pressureFreeGB ? status.pressureFreeGB + " GB" : "Off"],
+    ["Skip staging waits under pressure", status.pressureBypassRetention && status.pressureFreeGB ? "On · oldest completed, NAS-verified copies first" : "Off"],
     ["Managed folder", status.managedTrashPath || "Not reported"],
     ["Next due", status.nextDue ? stamp(status.nextDue) : "No due time reported"],
   ]);

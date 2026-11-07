@@ -104,27 +104,28 @@ type CleanupItem struct {
 // FreeBytes is nil when unknown, never 0; all byte values are bytes and the
 // threshold is also shown in GB so the unit is explicit.
 type CleanupStatus struct {
-	Enabled           bool           `json:"enabled"`
-	EngineAvailable   bool           `json:"engineAvailable"`
-	NativeTrash       bool           `json:"nativeTrash"`
-	EngineBlocked     []string       `json:"engineBlocked,omitempty"`
-	StagedDays        int            `json:"stagedDays"`
-	ManagedTrashDays  int            `json:"managedTrashDays"`
-	TotalDays         int            `json:"totalDays"`
-	NativeTrashDays   int            `json:"nativeTrashDays"`
-	PressureFreeGB    int            `json:"pressureFreeGB"`
-	PressureFreeBytes int64          `json:"pressureFreeBytes"`
-	SeedRatio         float64        `json:"seedRatio"`
-	SeedMinutes       int            `json:"seedMinutes"`
-	ManagedTrashPath  string         `json:"managedTrashPath,omitempty"`
-	ManagedTrashLocal bool           `json:"managedTrashLocal"`
-	TrashDir          string         `json:"trashDir,omitempty"`
-	FreeBytes         *int64         `json:"freeBytes"`
-	FreeFrom          string         `json:"freeFrom,omitempty"`
-	Phases            []CleanupPhase `json:"phases"`
-	Items             []CleanupItem  `json:"items"`
-	Blocked           []string       `json:"blocked"`
-	NextDue           *time.Time     `json:"nextDue,omitempty"`
+	Enabled                 bool           `json:"enabled"`
+	EngineAvailable         bool           `json:"engineAvailable"`
+	NativeTrash             bool           `json:"nativeTrash"`
+	EngineBlocked           []string       `json:"engineBlocked,omitempty"`
+	StagedDays              int            `json:"stagedDays"`
+	ManagedTrashDays        int            `json:"managedTrashDays"`
+	TotalDays               int            `json:"totalDays"`
+	NativeTrashDays         int            `json:"nativeTrashDays"`
+	PressureBypassRetention bool           `json:"pressureBypassRetention"`
+	PressureFreeGB          int            `json:"pressureFreeGB"`
+	PressureFreeBytes       int64          `json:"pressureFreeBytes"`
+	SeedRatio               float64        `json:"seedRatio"`
+	SeedMinutes             int            `json:"seedMinutes"`
+	ManagedTrashPath        string         `json:"managedTrashPath,omitempty"`
+	ManagedTrashLocal       bool           `json:"managedTrashLocal"`
+	TrashDir                string         `json:"trashDir,omitempty"`
+	FreeBytes               *int64         `json:"freeBytes"`
+	FreeFrom                string         `json:"freeFrom,omitempty"`
+	Phases                  []CleanupPhase `json:"phases"`
+	Items                   []CleanupItem  `json:"items"`
+	Blocked                 []string       `json:"blocked"`
+	NextDue                 *time.Time     `json:"nextDue,omitempty"`
 }
 
 // CleanupResult is returned by preview, run and restore.
@@ -364,6 +365,15 @@ func (x *settleCtx) settleStaging(rec *cleanupRecord) {
 	// recorded, verified whole import is touched; untracked torrents are never.
 	t, listed := x.torrents[strings.ToUpper(rec.Hash)]
 	if listed {
+		if rec.MetadataRemoved {
+			x.block(rec, "qBittorrent still lists the torrent after its removal request; files stay protected.")
+			return
+		}
+		state := strings.ToLower(t.State)
+		if t.Progress < 1 || strings.Contains(state, "check") || state == "moving" {
+			x.block(rec, "qBittorrent is downloading, checking or moving this torrent; it stays protected.")
+			return
+		}
 		if torrentStateError(t.State) {
 			x.block(rec, "qBittorrent reports an error for this torrent; it is left protected.")
 			return
@@ -439,6 +449,18 @@ func (x *settleCtx) settleStaging(rec *cleanupRecord) {
 				return
 			}
 			rec.MetadataRemoved = true
+			after, err := x.e.Source.Torrents()
+			if err != nil {
+				x.block(rec, "torrent metadata removal could not be confirmed; files were not moved.")
+				return
+			}
+			for _, active := range after {
+				if strings.EqualFold(active.Hash, rec.Hash) {
+					x.block(rec, "qBittorrent still lists this torrent; files were not moved.")
+					return
+				}
+			}
+			delete(x.torrents, strings.ToUpper(rec.Hash))
 		}
 	} else if !rec.MetadataRemoved {
 		x.block(rec, "qBittorrent no longer lists this torrent, so its seeding state can't be verified.")
@@ -515,10 +537,10 @@ func (x *settleCtx) purge(recs []*cleanupRecord) {
 	if err != nil {
 		return
 	}
-	threshold := int64(x.c.PressureFreeGB) * 1_000_000_000 // decimal GB, matching the label
+	threshold := int64(x.c.PressureFreeGB) * 1_000_000_000
 	free, err := x.e.FreeBytes(trash)
 	if err != nil {
-		x.problems = append(x.problems, "Free space on the system Trash volume could not be read, so no pressure purge ran.")
+		x.problems = append(x.problems, "Free space could not be read, so no pressure purge ran.")
 		return
 	}
 	if free >= threshold {
@@ -526,7 +548,7 @@ func (x *settleCtx) purge(recs []*cleanupRecord) {
 	}
 	eligible := []*cleanupRecord{}
 	for _, r := range recs {
-		if r.State == phaseNative && r.NativeName != "" {
+		if r.State == phaseNative || (x.c.PressureBypassRetention && (r.State == phaseStaging || r.State == phaseManaged)) {
 			eligible = append(eligible, r)
 		}
 	}
@@ -540,47 +562,82 @@ func (x *settleCtx) purge(recs []*cleanupRecord) {
 		if free >= threshold {
 			break
 		}
-		if !x.execute {
-			path, perr := x.trashPath(rec)
-			if perr != nil {
-				x.block(rec, perr.Error())
+		if app, ok := x.queued[strings.ToUpper(rec.Hash)]; ok {
+			x.block(rec, "still handled by "+app+", so it stays protected.")
+			continue
+		}
+		if t, ok := x.torrents[strings.ToUpper(rec.Hash)]; ok {
+			state := strings.ToLower(t.State)
+			if t.Progress < 1 || torrentStateError(state) || strings.Contains(state, "check") || state == "moving" {
+				x.block(rec, "the torrent is incomplete, being checked or moving; it stays protected.")
+				continue
+			}
+		}
+		if x.c.PressureBypassRetention && rec.State != phaseNative {
+			if err := proveImported(rec.ImportedPath, rec.Files); err != nil {
+				x.block(rec, "the library copy can't be verified: "+err.Error())
+				continue
+			}
+			path := rec.MoveRoot
+			if rec.State == phaseManaged {
+				path = rec.ManagedPath
+			}
+			if !pathIsLocal(x.e.LocalVolume, path) {
+				x.block(rec, "the copy is not on a proven local volume.")
 				continue
 			}
 			if err := verifyTree(path, rec.Files); err != nil {
-				x.block(rec, "the system Trash entry can't be verified: "+err.Error())
+				x.block(rec, "the local copy can't be verified: "+err.Error())
 				continue
 			}
-			x.res.Actions = append(x.res.Actions, "Low space: would permanently remove "+rec.Name+" (oldest verified import first).")
+			if !x.execute {
+				x.res.Actions = append(x.res.Actions, "Low space: would skip retention waits, safely stop completed seeding if needed, and permanently remove "+rec.Name+" after fresh library verification.")
+				break
+			}
+			// Reuse the normal ownership, confirmed-stop and recoverable-move checks.
+			urgent := *x
+			urgent.c.StagedDays, urgent.c.ManagedTrashDays = 0, 0
+			urgent.c.SeedRatio, urgent.c.SeedMinutes = 0, 0
+			urgent.problems = nil
+			for rec.State == phaseStaging || rec.State == phaseManaged {
+				before := rec.State
+				urgent.settle(rec)
+				if rec.State == before {
+					break
+				}
+			}
+			x.problems = append(x.problems, urgent.problems...)
+		}
+		if rec.State != phaseNative {
+			continue
+		}
+		x.purgeOne(rec, "free space is below "+humanBytes(threshold)+" (oldest verified import first)")
+		if !x.execute {
 			break
 		}
-		path, err := x.trashPath(rec)
-		if err != nil {
-			x.block(rec, err.Error())
+		if rec.State != phaseRemoved {
 			continue
 		}
-		if err := verifyTree(path, rec.Files); err != nil {
-			x.block(rec, "the system Trash entry can't be verified: "+err.Error())
-			continue
-		}
-		if err := os.RemoveAll(path); err != nil {
-			x.block(rec, "the system Trash entry could not be removed: "+err.Error())
-			continue
-		}
-		rec.State, rec.RemovedAt, rec.LastBlocked = phaseRemoved, x.now, ""
-		x.res.Purged++
-		x.res.Actions = append(x.res.Actions, fmt.Sprintf("Low space (%s free, below %s): permanently removed %s.", humanBytes(free), humanBytes(threshold), rec.Name))
 		free, err = x.e.FreeBytes(trash)
 		if err != nil {
-			x.problems = append(x.problems, "Free space could not be re-measured after a removal; the pressure purge stopped.")
+			x.problems = append(x.problems, "Free space could not be re-measured; the pressure purge stopped.")
 			return
 		}
 	}
 	if free < threshold {
-		x.problems = append(x.problems, fmt.Sprintf("Free space is %s, below the %s threshold; no more eligible Library-owned Trash items can be removed.", humanBytes(free), humanBytes(threshold)))
+		x.problems = append(x.problems, fmt.Sprintf("Free space is %s, below %s; no more eligible Library-owned copies can be removed.", humanBytes(free), humanBytes(threshold)))
 	}
 }
 
 func (x *settleCtx) purgeOne(rec *cleanupRecord, why string) {
+	if _, listed := x.torrents[strings.ToUpper(rec.Hash)]; listed {
+		x.block(rec, "qBittorrent tracks this Trash item again; it stays protected.")
+		return
+	}
+	if app, ok := x.queued[strings.ToUpper(rec.Hash)]; ok {
+		x.block(rec, "still handled by "+app+", so it stays protected.")
+		return
+	}
 	path, err := x.trashPath(rec)
 	if err != nil {
 		x.block(rec, err.Error())
@@ -588,6 +645,12 @@ func (x *settleCtx) purgeOne(rec *cleanupRecord, why string) {
 	}
 	if err := verifyTree(path, rec.Files); err != nil {
 		x.block(rec, "the system Trash entry can't be verified: "+err.Error())
+		return
+	}
+	// Fresh NAS proof right before the permanent removal: the copy could have
+	// disappeared or changed since it was first verified.
+	if err := proveImported(rec.ImportedPath, rec.Files); err != nil {
+		x.block(rec, "the library copy can't be verified: "+err.Error())
 		return
 	}
 	if !x.execute {
@@ -723,7 +786,7 @@ func (e *StagedCleanup) baseStatus(c config.Config) CleanupStatus {
 	st := CleanupStatus{
 		Enabled: c.StagedCleanupOn, StagedDays: c.StagedDays, ManagedTrashDays: c.ManagedTrashDays,
 		TotalDays: c.StagedDays + c.ManagedTrashDays, NativeTrashDays: c.NativeTrashDays,
-		PressureFreeGB: c.PressureFreeGB, PressureFreeBytes: int64(c.PressureFreeGB) * 1_000_000_000,
+		PressureBypassRetention: c.PressureBypassRetention, PressureFreeGB: c.PressureFreeGB, PressureFreeBytes: int64(c.PressureFreeGB) * 1_000_000_000,
 		SeedRatio: c.SeedRatio, SeedMinutes: c.SeedMinutes, ManagedTrashPath: managedRoot(c),
 		Phases: []CleanupPhase{
 			{Name: phaseStaging, Days: c.StagedDays, Note: "In the normal download folder after a verified whole import."},
@@ -773,6 +836,14 @@ func pathIsLocal(local func(string) (bool, error), path string) bool {
 }
 
 func (e *StagedCleanup) render(st *CleanupStatus, recs []*cleanupRecord, c config.Config, now time.Time) {
+	if st.TrashDir != "" {
+		free, err := e.FreeBytes(st.TrashDir)
+		if err == nil {
+			st.FreeBytes = &free
+		} else {
+			st.FreeBytes = nil
+		}
+	}
 	items := make([]CleanupItem, 0, len(recs))
 	for _, rec := range recs {
 		it := CleanupItem{
@@ -824,6 +895,11 @@ func (e *StagedCleanup) render(st *CleanupStatus, recs []*cleanupRecord, c confi
 		case phaseRestore:
 			it.Proposed = "Restored by the owner; kept."
 			it.RestorePath = rec.MoveRoot
+		}
+		if c.PressureBypassRetention && st.FreeBytes != nil && *st.FreeBytes < st.PressureFreeBytes && len(it.Blocked) == 0 && (rec.State == phaseStaging || rec.State == phaseManaged || rec.State == phaseNative) {
+			due := now
+			it.NextDue = &due
+			it.Proposed = "Low space: skip retention waits and permanently remove, oldest verified import first, after fresh NAS verification."
 		}
 		items = append(items, it)
 	}

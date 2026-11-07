@@ -10,19 +10,19 @@ Only use sources and content you are allowed to download.
 
 ## How removal stays safe
 
-The old permanent-delete cleanup is retired. The optional staged policy is implemented and specified in [docs/STORAGE_POLICY.md](docs/STORAGE_POLICY.md): keep local copies for 3 days after verified import, keep them in the local download folder's `_trash` until day 7 total, then retain them in macOS Trash for up to 30 days; below 50 GB free, only eligible Library-owned native Trash may be removed early, oldest first. The periods, threshold and local managed folder are editable on Cleanup. Preview changes nothing; automatic cleanup starts off and deployment does not turn it on.
+The old permanent-delete cleanup is retired. The optional staged policy is implemented and specified in [docs/STORAGE_POLICY.md](docs/STORAGE_POLICY.md): keep local copies for 3 days after verified import, keep them in the local download folder's `_trash` until day 7 total, then retain them in macOS Trash for up to 30 days; below the editable free-space threshold, eligible Library-owned native Trash may be removed early, oldest first. An explicit pressure override can also bypass staging waits for completed NAS-verified copies; it starts off. The periods, threshold and local managed folder are editable on Cleanup. Preview changes nothing; automatic cleanup starts off and deployment does not turn it on.
 
 Eligibility must satisfy all of these requirements:
 
 1. qBittorrent says the download is complete.
 2. Sonarr, Radarr or Lidarr has a history entry saying the whole download was imported (`downloadFolderImported`, or Lidarr's `downloadImported`).
 3. No library app still lists it in its queue (a partly imported or blocked download stays listed).
-4. The import is at least N days old.
+4. The import is at least N days old, unless the owner explicitly enabled skipping retention waits under pressure.
 5. Every connected app answered this round. If one didn't, nothing is removed.
 
-Downloads that no library app knows about are never touched. Settings saves no longer overwrite the stock seeding/retention policy. Seeding limits and staged retention are separate concerns; 1301 keeps its ratio 2 or 2,880-minute stop policy.
+Downloads that no library app knows about are never touched. Settings saves no longer overwrite the stock seeding/retention policy. Seeding limits and staged retention are separate concerns; the normal ratio/time policy is preserved. The explicit low-space override may stop completed seeding early, confirms the torrent has stopped and its metadata is removed, and never touches an incomplete or checking torrent.
 
-Eligibility and lifecycle checks live in `internal/library` and use mocked apps and isolated directories in tests. The engine verifies every imported video and local file, rejects unsafe paths and unknown proofs, and records clocks and ownership across restarts. Cleanup shows blockers, proposed actions and restore paths; native Trash expiry permanently removes only proven Library-owned copies. Native Trash cleanup is unavailable outside macOS.
+Eligibility and lifecycle checks live in `internal/library` and use mocked apps and isolated directories in tests. The engine verifies every imported video and local file, rejects unsafe paths and unknown proofs, and records clocks and ownership across restarts. Cleanup shows blockers, proposed actions and restore paths; every permanent deletion rechecks the current library content and exact local copy, including at native Trash expiry. Missing, changed or unreadable NAS content blocks deletion. Native Trash cleanup is unavailable outside macOS.
 
 Sources supports explicit Add/Edit/Test/Save through Prowlarr's live schema. New sources start disabled; testing never saves. Companion settings apply only supported fields and report partial success. Release searches/grabs and collection additions run only on user actions through the owning library app.
 
