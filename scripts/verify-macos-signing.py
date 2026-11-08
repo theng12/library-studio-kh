@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify packager signatures and run the packaged host in an isolated launchd job."""
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -126,6 +127,23 @@ def launchd_start(app, expected_version, work):
             run(['launchctl', 'bootout', service])
 
 
+@contextmanager
+def packaged_app(package, work):
+    if package.suffix.lower() != '.dmg':
+        yield package
+        return
+    mount = work / 'mounted'
+    mount.mkdir()
+    attached = run(['hdiutil', 'attach', '-readonly', '-nobrowse', '-plist', '-mountpoint', str(mount), str(package)])
+    entities = plistlib.loads(attached.stdout.encode())['system-entities']
+    device = next(entity['dev-entry'] for entity in entities
+        if re.fullmatch(r'/dev/disk\d+', entity.get('dev-entry', '')))
+    try:
+        yield mount / 'Library Studio KH.app'
+    finally:
+        run(['hdiutil', 'detach', device])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('app', type=Path)
@@ -134,11 +152,12 @@ def main():
     parser.add_argument('--receipt', type=Path, required=True)
     args = parser.parse_args()
     work = Path(tempfile.mkdtemp(prefix='library-signing-test-', dir=args.receipt.parent))
-    result = signed_identity(args.app.resolve(), args.identity)
-    if args.previous_receipt:
-        compare_builds(json.loads(args.previous_receipt.read_text()), result)
-        result['requirementsUnchangedAcrossBuilds'] = True
-    result['launchd'] = launchd_start(args.app.resolve(), result['version'], work)
+    with packaged_app(args.app.resolve(), work) as app:
+        result = signed_identity(app, args.identity)
+        if args.previous_receipt:
+            compare_builds(json.loads(args.previous_receipt.read_text()), result)
+            result['requirementsUnchangedAcrossBuilds'] = True
+        result['launchd'] = launchd_start(app, result['version'], work)
     result['testWork'] = str(work)
     args.receipt.write_text(json.dumps(result, indent=2) + '\n')
     print('Packager signature, certificate-based requirements and isolated launchd start: PASS')
