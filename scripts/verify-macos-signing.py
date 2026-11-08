@@ -45,7 +45,7 @@ def signed_identity(app, expected_authority):
     result = {'version': info['CFBundleShortVersionString'], 'requirements': {}, 'hashes': {}}
     for relative in ['.', 'Contents/MacOS/library-studio-kh', 'Contents/MacOS/library-studio-server']:
         path = app if relative == '.' else app / relative
-        description = run(['codesign', '-d', '-v', '-r-', str(path)])
+        description = run(['codesign', '-d', '-vvv', '-r-', str(path)])
         output = description.stdout + description.stderr
         if 'Authority=' + expected_authority not in output.splitlines():
             raise ValueError('Packaged code does not use the configured signing identity')
