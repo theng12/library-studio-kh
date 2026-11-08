@@ -11,7 +11,9 @@ npm ci
 npm run build:desktop   # builds the Go sidecar for this Mac, then the .app and .dmg
 ```
 
-Output: `src-tauri/target/release/bundle/dmg/Library Studio KH_<version>_aarch64.dmg`. Ad-hoc signed, not notarised (same as the other Studio KH apps).
+Output: `src-tauri/target/release/bundle/dmg/Library Studio KH_<version>_aarch64.dmg`. Tauri signs nested code and the app with the existing `KH Studio Local Signing` identity in this build Mac's login Keychain. This local certificate is not notarised and needs no trust-settings change. Its private key must never leave this Mac. Stop at any password or key-access prompt and leave approval to the owner; never hand-seal the output with `codesign --deep`.
+
+After building, run `python3 -I scripts/verify-macos-signing.py '<path-to-packaged.app>' --receipt '<receipt.json>'`. It verifies the app and executable requirements and starts the packaged host through a unique disposable launchd job with isolated settings and no native connections. Keep the receipt; the next signed release adds `--previous-receipt '<previous-receipt.json>'` to require unchanged designated requirements across differing versions and executable bytes. These checks supplement the full release gate. The rollout also requires a first signed install, the owner's Full Disk Access grant, and a second signed update proving retained access and real app-owned cleanup before other KH apps adopt this identity.
 Rename to `Library Studio KH-<version>.dmg` (shared Studio KH name, no architecture suffix) before handing it to the Updater.
 
 ## Windows and Linux (plan)

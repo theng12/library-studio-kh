@@ -1,5 +1,10 @@
 # What's new in Library Studio KH
 
+## 0.7.4 — 2026-11-08
+
+- Sign macOS packages with the shared local code-signing identity so updates can retain a consistent application identity. Full Disk Access persistence remains subject to the two-update installation check.
+- Verify packaged signatures and background startup through an isolated launchd job; compare designated requirements across signed releases.
+
 ## 0.7.3 — 2026-11-07
 
 - Clear verified folders from macOS Trash without listing the parent Trash directory. Keep removal scoped to the exact owned item, and recheck NAS content immediately before deletion.
