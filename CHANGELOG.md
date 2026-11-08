@@ -1,5 +1,10 @@
 # What's new in Library Studio KH
 
+## 0.7.5 — 2026-11-08
+
+- Keep the same macOS signing identity in the second signed update. Retained Full Disk Access and real cleanup are verified separately on the installed host before wider rollout.
+- Verify the delivered DMG directly, detach its exact disk device, and read complete signer details when checking the app and its background server.
+
 ## 0.7.4 — 2026-11-08
 
 - Sign macOS packages with the shared local code-signing identity so updates can retain a consistent application identity. Full Disk Access persistence remains subject to the two-update installation check.
