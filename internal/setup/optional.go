@@ -119,65 +119,30 @@ type configWriteResult string
 
 const (
 	configCreated configWriteResult = "created"
-	configUpdated configWriteResult = "updated"
 	configKept    configWriteResult = "kept"
 )
 
-// writeOptionalFile writes body privately (0600) to a path that either does
-// not exist yet or already carries Setup's own exact marker AND identical
-// content. An existing file whose content differs from body is kept
-// untouched regardless of allowUpdate: the owner may have added profiles or
-// other choices after Setup's last write, and overwriting would destroy
-// them. allowUpdate only permits refreshing a file whose content matches
-// body exactly (idempotent re-write after a verify failure).
-func writeOptionalFile(path, body string, allowUpdate bool) (configWriteResult, error) {
-	existed := false
-	if data, err := os.ReadFile(path); err == nil {
-		existed = true
-		if !strings.HasPrefix(string(data), optionalFileMarker) {
-			return configKept, nil
-		}
-		if string(data) != body {
-			// Owner-modified or newer vendor schema: never overwrite.
-			return configKept, nil
-		}
-		if !allowUpdate {
-			return configKept, nil
-		}
-		// Content matches exactly; fall through to idempotent re-write.
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("the existing configuration could not be read: %w", err)
-	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+// Existing files belong to the owner, including files created during setup.
+func writeOptionalFile(path, body string) (configWriteResult, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", fmt.Errorf("the configuration folder could not be created: %w", err)
 	}
-	tmp, err := os.CreateTemp(dir, ".library-studio-config-*")
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return configKept, nil
+	}
 	if err != nil {
+		return "", fmt.Errorf("the configuration file could not be created: %w", err)
+	}
+	defer file.Close()
+	if _, err := file.WriteString(body); err != nil {
 		return "", err
 	}
-	failed := func(err error) (configWriteResult, error) { return "", err }
-	if _, err := tmp.WriteString(body); err != nil {
-		tmp.Close()
-		return failed(err)
+	if err := file.Sync(); err != nil {
+		return "", err
 	}
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		return failed(err)
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return failed(err)
-	}
-	if err := tmp.Close(); err != nil {
-		return failed(err)
-	}
-	// Failed writes keep their temp file for repair rather than deleting evidence.
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		return failed(fmt.Errorf("the configuration file could not be saved: %w", err))
-	}
-	if existed {
-		return configUpdated, nil
+	if err := file.Close(); err != nil {
+		return "", err
 	}
 	return configCreated, nil
 }
@@ -258,7 +223,7 @@ func (m *Manager) configureOptional(c config.Config, req Request) bool {
 		}
 
 		detail := ""
-		result, werr := writeOptionalFile(path, expected, true)
+		result, werr := writeOptionalFile(path, expected)
 		switch {
 		case werr != nil:
 			m.block(app.Name, "Configuration file", werr, c)
@@ -275,16 +240,12 @@ func (m *Manager) configureOptional(c config.Config, req Request) bool {
 					m.block(app.Name, "Configuration file", fmt.Errorf("the existing Unpackerr configuration deletes original downloads (delete_orig = true). Turn that off in Unpackerr or in %s before continuing; Library never edits a configuration it did not write", path), c)
 					return false
 				}
-				// Config-only inspection: delete_orig is off in the file we
-				// read, but runtime behaviour was not verified.
-				detail = fmt.Sprintf("Existing configuration kept untouched at %s; delete_orig is off in the file and %d instance section(s) found. Runtime safety was not checked.", path, instances)
+				detail = fmt.Sprintf("Existing configuration kept untouched at %s; no enabled delete_orig setting detected and %d instance section(s) found. Runtime safety was not checked.", path, instances)
 			} else {
 				detail = fmt.Sprintf("Existing Recyclarr configuration kept untouched at %s; Library never edits a file it did not write. Profiles and choices are the owner's.", path)
 			}
 		case result == configCreated:
 			detail = fmt.Sprintf("Configuration written to %s and read back: no deletion, no web server, %d instance(s). The app itself was not started.", path, len(optionalInstances(c, req, instanceIDs(app.ID)...)))
-		case result == configUpdated:
-			detail = fmt.Sprintf("Configuration refreshed at %s and read back: %d instance(s), same safety settings as before.", path, len(optionalInstances(c, req, instanceIDs(app.ID)...)))
 		}
 		if result != configKept {
 			if verr := verifyOptionalFile(path, expected); verr != nil {
@@ -326,7 +287,7 @@ func (m *Manager) prepareOptionalInstallConfigs() bool {
 		m.fail("Unpackerr's configuration folder is unavailable: " + err.Error())
 		return false
 	}
-	if _, err := writeOptionalFile(path, unpackerrConfigBody(c, m.job.View.Request), false); err != nil {
+	if _, err := writeOptionalFile(path, unpackerrConfigBody(c, m.job.View.Request)); err != nil {
 		m.fail("Unpackerr's configuration file could not be written: " + safeSetupError(err, c))
 		return false
 	}
@@ -362,9 +323,11 @@ func (m *Manager) OptionalAction(ctx context.Context, jobID string, appID compan
 	}
 	var binary string
 	var name string
+	var app AppStep
 	found := false
 	for _, step := range m.job.View.Apps {
 		if step.ID == companioninstall.Recyclarr {
+			app = step
 			binary, name, found = step.Path, step.Name, true
 			break
 		}
@@ -381,16 +344,20 @@ func (m *Manager) OptionalAction(ctx context.Context, jobID string, appID compan
 		m.mu.Unlock()
 		return Job{}, errors.New("applying changes your Sonarr and Radarr profiles; confirm the apply when you really want it")
 	}
+	if app.State != "configured" {
+		m.mu.Unlock()
+		return Job{}, errors.New("Recyclarr is not configured yet; finish setup first")
+	}
 	// Reserve busy atomically with the plan/binary validation so a
 	// concurrent Plan or OptionalAction cannot slip in between.
 	m.busy = true
 	m.mu.Unlock()
 
-	if _, err := os.Lstat(binary); err != nil {
-		m.finishWork()
-		return Job{}, errors.New("the installed Recyclarr tool could not be found; install it again from a new plan")
-	}
 	defer m.finishWork()
+	actual, err := m.installer.Detect(ctx, app.ID, appDirectory(app, m.job.View.Request.AppDir))
+	if err != nil || actual.State != companioninstall.DetectAdopt || actual.Path != binary {
+		return Job{}, errors.New("installed Recyclarr identity changed; it was not run")
+	}
 
 	args := []string{"sync", "-c", cfg}
 	if action == "preview" {

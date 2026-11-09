@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"librarystudio/internal/companioninstall"
 	"librarystudio/internal/config"
@@ -49,43 +48,40 @@ func TestOptionalConfigBodiesKeepSafeDefaults(t *testing.T) {
 	}
 }
 
-// A configuration this app did not write is never modified, and ours is only
-// replaced when the caller allows an update.
 func TestWriteOptionalFileNeverOverwritesForeignFiles(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "unpackerr.conf")
-	if err := os.WriteFile(path, []byte("# the owner's own file\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := writeOptionalFile(path, optionalFileMarker+"\nupdated\n", true); err != nil || got != configKept {
-		t.Fatalf("foreign file: got %v, %v; want kept", got, err)
-	}
-	if data, _ := os.ReadFile(path); !strings.Contains(string(data), "the owner's own file") {
-		t.Fatal("foreign file was changed")
-	}
-
-	if got, err := writeOptionalFile(path, optionalFileMarker+"\nfresh\n", false); err != nil || got != configKept {
-		t.Fatalf("marked file without update: got %v, %v; want kept", got, err)
-	}
-	if err := os.Remove(path); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := writeOptionalFile(path, optionalFileMarker+"\nfresh\n", false); err != nil || got != configCreated {
+	body := optionalFileMarker + "\nfresh\n"
+	if got, err := writeOptionalFile(path, body); err != nil || got != configCreated {
 		t.Fatalf("new file: got %v, %v; want created", got, err)
 	}
-	// After creating with "fresh", writing the same body again with
-	// allowUpdate is an idempotent re-write (content matches exactly).
-	if got, err := writeOptionalFile(path, optionalFileMarker+"\nfresh\n", true); err != nil || got != configUpdated {
-		t.Fatalf("idempotent re-write: got %v, %v; want updated", got, err)
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// A different body against the now-"fresh" file is owner-modified: kept.
-	if got, err := writeOptionalFile(path, optionalFileMarker+"\nrefreshed\n", true); err != nil || got != configKept {
-		t.Fatalf("owner-modified marked file: got %v, %v; want kept", got, err)
+	for _, next := range []string{body, "# owner replacement\n"} {
+		if got, err := writeOptionalFile(path, next); err != nil || got != configKept {
+			t.Fatalf("existing file: got %v, %v; want kept", got, err)
+		}
 	}
-	if err := verifyOptionalFile(path, optionalFileMarker+"\nfresh\n"); err != nil {
-		t.Fatalf("verify: %v", err)
+	after, err := os.Stat(path)
+	if err != nil || !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) {
+		t.Fatal("existing file was replaced or rewritten")
+	}
+	if err := verifyOptionalFile(path, body); err != nil {
+		t.Fatal(err)
 	}
 	if err := verifyOptionalFile(path, "something else"); err == nil {
 		t.Fatal("verify accepted a file that does not match")
+	}
+	link := filepath.Join(filepath.Dir(path), "linked.conf")
+	if err := os.Symlink(path, link); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := writeOptionalFile(link, "overwrite"); err != nil || got != configKept {
+		t.Fatalf("symlink: got %v, %v; want kept", got, err)
+	}
+	if err := verifyOptionalFile(path, body); err != nil {
+		t.Fatal("symlink target was changed:", err)
 	}
 }
 
@@ -100,7 +96,7 @@ func TestWriteOptionalFilePreservesOwnerEditsInMarkedFile(t *testing.T) {
 	}
 	setupBody := optionalFileMarker + "\nsonarr:\n  series:\n    base_url: \"http://x\"\n"
 	for i := 0; i < 3; i++ {
-		got, err := writeOptionalFile(path, setupBody, true)
+		got, err := writeOptionalFile(path, setupBody)
 		if err != nil || got != configKept {
 			t.Fatalf("iteration %d: got %v, %v; want kept", i, got, err)
 		}
@@ -140,7 +136,7 @@ func TestUnpackerrInspectionDistinguishesConfigFromRuntime(t *testing.T) {
 func TestVerifyOptionalFileRejectsNonPrivatePermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.conf")
 	body := optionalFileMarker + "\ntest\n"
-	if _, err := writeOptionalFile(path, body, false); err != nil {
+	if _, err := writeOptionalFile(path, body); err != nil {
 		t.Fatal(err)
 	}
 	if err := verifyOptionalFile(path, body); err != nil {
@@ -201,6 +197,7 @@ func TestOptionalActionConfirmGateAndUnknownAction(t *testing.T) {
 // blocks until released so the race window is deterministic.
 func TestOptionalActionConcurrentRequestsSerialize(t *testing.T) {
 	release := make(chan struct{})
+	started := make(chan []string, 1)
 	cfgPath := filepath.Join(t.TempDir(), "recyclarr.yml")
 	if err := os.WriteFile(cfgPath, []byte(optionalFileMarker+"\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -214,9 +211,11 @@ func TestOptionalActionConcurrentRequestsSerialize(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := &Manager{
-		home:  t.TempDir(),
-		store: store,
+		home:      t.TempDir(),
+		store:     store,
+		installer: &optionalPackages{result: companioninstall.DetectResult{State: companioninstall.DetectAdopt, Path: fakeBin}},
 		runTool: func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			started <- args
 			<-release
 			return []byte("done"), nil
 		},
@@ -229,7 +228,7 @@ func TestOptionalActionConcurrentRequestsSerialize(t *testing.T) {
 			ID:    "test-job",
 			State: "ready",
 			Apps: []AppStep{
-				{ID: companioninstall.Recyclarr, Name: "Recyclarr", Path: fakeBin},
+				{ID: companioninstall.Recyclarr, Name: "Recyclarr", Path: fakeBin, State: "configured"},
 			},
 		},
 	}
@@ -239,9 +238,11 @@ func TestOptionalActionConcurrentRequestsSerialize(t *testing.T) {
 		_, err := m.OptionalAction(context.Background(), "test-job", companioninstall.Recyclarr, "preview", false)
 		errCh <- err
 	}()
-	// Give the first goroutine time to acquire busy.
-	for i := 0; i < 100 && !m.busy; i++ {
-		time.Sleep(time.Millisecond)
+	args := <-started
+	if strings.Join(args, "|") != "sync|-c|"+cfgPath+"|--preview" {
+		close(release)
+		<-errCh
+		t.Fatalf("preview arguments: %v", args)
 	}
 	_, secondErr := m.OptionalAction(context.Background(), "test-job", companioninstall.Recyclarr, "preview", false)
 	close(release)

@@ -181,7 +181,8 @@ const SETUP_APP_LABELS = {
   not_checked: "Not checked", adopt: "Existing app — kept", download: "Ready to download",
   needs_open: "Needs you to open it", needs_connection: "Needs sign-in in Settings",
   opened: "Opened — approve in macOS if asked", connected: "Connected", blocked: "Blocked",
-  needs_config: "Installed — configuration checked by Setup",
+  needs_config: "Installed — configuration not checked",
+  configured: "Configured — runtime not checked",
   needs_sources: "Needs sources", needs_restart: "Restart needed",
 };
 
@@ -315,13 +316,13 @@ function setupAppActions(app, view) {
     open.setAttribute("aria-label", "Open " + name);
     actions.append(open);
   }
-  if (setupExistingApp(app) || app.state === "needs_connection") {
+  if (SETUP_APP_IDS.includes(app.id) && (setupExistingApp(app) || app.state === "needs_connection")) {
     const settings = setupButton("Open Settings", "small", () => {});
     settings.dataset.view = "settings";
     settings.setAttribute("aria-label", "Open Settings to connect " + name);
     actions.append(settings);
   }
-  if (app.id === "recyclarr" && (app.state === "connected" || app.state === "needs_config")) {
+  if (!view.active && app.id === "recyclarr" && app.state === "configured") {
     const preview = setupButton("Preview sync", "small", () => setupRun("preview", app.id));
     preview.setAttribute("aria-label", "Preview a Recyclarr sync for " + name);
     const apply = setupButton("Apply sync", "small", () => setupRun("apply", app.id));
@@ -500,7 +501,9 @@ function renderSetupJob() {
 
   if (view.open.length) box.append(setupNode("p", "Choose Open, then complete any macOS approval prompts. Check connections afterward.", "muted"));
   if (view.restart) box.append(setupNode("p", "Quit Library Studio KH completely, then reopen it. Start at login takes effect after that. Setup is not ready until the app has reopened.", "notice"));
-  if (view.ready) box.append(setupNode("p", "Library's own connection checks passed. This setup is ready.", "muted"));
+  if (view.ready) box.append(setupNode("p", (setupJob.apps || []).some((app) => app.state === "configured")
+    ? "Required app checks passed. Optional helper configurations are saved; their runtime has not been checked."
+    : "Library's own connection checks passed. This setup is ready.", "muted"));
 
   if (!setupEditing) {
     const actions = setupNode("div", null, "actions setup-actions");

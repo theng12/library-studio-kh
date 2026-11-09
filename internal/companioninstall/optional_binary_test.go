@@ -151,7 +151,7 @@ func (r *recordingRunner) Run(ctx context.Context, name string, args ...string) 
 
 func TestExtractBinaryArchiveRefusesTraversalHeader(t *testing.T) {
 	spec := recyclarrSpec(t)
-	// Sandbox is the parent of stage so ../../../sentinel lands exactly at
+	// From stage/extract, ../../sentinel lands exactly at
 	// sandbox/sentinel — a real file we can check after extraction.
 	sandbox := t.TempDir()
 	stage := filepath.Join(sandbox, "stage")
@@ -162,7 +162,7 @@ func TestExtractBinaryArchiveRefusesTraversalHeader(t *testing.T) {
 	if err := os.WriteFile(sentinel, []byte("safe"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Build a tar whose header literally contains "../../../sentinel" via
+	// Build a tar whose header literally contains "../../sentinel" via
 	// archive/tar (never materializing ../ on host). bsdtar auto-detects
 	// uncompressed tar even when invoked with -xJf.
 	asset := filepath.Join(stage, "hostile.tar.xz")
@@ -177,7 +177,7 @@ func TestExtractBinaryArchiveRefusesTraversalHeader(t *testing.T) {
 	if _, err := tw.Write(thinMachO(cpuArm64)); err != nil {
 		t.Fatal(err)
 	}
-	if err := tw.WriteHeader(&tar.Header{Name: "../../../sentinel", Size: 7, Mode: 0o644, Typeflag: tar.TypeReg}); err != nil {
+	if err := tw.WriteHeader(&tar.Header{Name: "../../sentinel", Size: 7, Mode: 0o644, Typeflag: tar.TypeReg}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tw.Write([]byte("escaped")); err != nil {
