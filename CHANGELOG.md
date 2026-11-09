@@ -1,5 +1,10 @@
 # What's new in Library Studio KH
 
+## 0.7.6 — 2026-11-09
+
+- Clear verified local copies for one library app even when another app's history is unavailable. Keep active downloads, unfinished seeding and other apps' files protected.
+- Explain failed import-history checks with a safe error category and response status, without exposing private connection details.
+
 ## 0.7.5 — 2026-11-08
 
 - Keep the same macOS signing identity in the second signed update. Retained Full Disk Access and real cleanup are verified separately on the installed host before wider rollout.
