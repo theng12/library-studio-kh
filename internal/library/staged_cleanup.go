@@ -1295,7 +1295,7 @@ func (l liveCleanupSource) Proofs() (map[string][]stock.ImportProof, []string, e
 	for _, a := range arrs(l.get()) {
 		imports, err := a.WholeImports()
 		if err != nil {
-			problems = append(problems, sourceError(a.Name+" history", err))
+			problems = append(problems, a.Name+" history could not be read: "+stock.HistoryReadFailure(err)+".")
 			continue
 		}
 		for id, p := range imports {

@@ -3,6 +3,7 @@ package stock
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -75,7 +76,8 @@ type ImportProof struct {
 // page, and returns the latest whole-download import per download ID. Missing
 // pagination fields, a short page run or a matching record with no library path
 // are errors, so an incomplete history can never read as a verified import.
-func (a *Arr) WholeImports() (map[string]ImportProof, error) {
+func (a *Arr) WholeImports() (result map[string]ImportProof, err error) {
+	defer func() { err = historyFailure(err, http.StatusOK, true) }()
 	out := map[string]ImportProof{}
 	read := 0
 	now := time.Now()

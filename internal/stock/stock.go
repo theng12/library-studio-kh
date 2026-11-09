@@ -183,7 +183,13 @@ func NewArr(name, base, key string) *Arr {
 	return &Arr{Name: name, base: strings.TrimRight(base, "/"), key: key, api: api, c: &http.Client{Timeout: timeout}}
 }
 
-func (a *Arr) do(method, path string, body, out any) error {
+func (a *Arr) do(method, path string, body, out any) (err error) {
+	status := 0
+	defer func() {
+		if strings.HasPrefix(path, "/history?") {
+			err = historyFailure(err, status, false)
+		}
+	}()
 	var rd io.Reader
 	if body != nil {
 		b, _ := json.Marshal(body)
@@ -200,6 +206,7 @@ func (a *Arr) do(method, path string, body, out any) error {
 		return fmt.Errorf("%s is not reachable: %w", a.Name, err)
 	}
 	defer resp.Body.Close()
+	status = resp.StatusCode
 	if resp.StatusCode == http.StatusUnauthorized {
 		return fmt.Errorf("%s refused the API key", a.Name)
 	}
