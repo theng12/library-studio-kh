@@ -70,19 +70,14 @@ def launchd_start(app, expected_version, work):
     label = 'app.librarystudiokh.signing-test.' + uuid.uuid4().hex
     domain = 'gui/' + str(os.getuid())
     service = domain + '/' + label
-    stdout_log = work / 'host.stdout'
-    stderr_log = work / 'host.stderr'
     server = str(app / 'Contents/MacOS/library-studio-server')
     queue = select.kqueue()
     fd = os.open(config, os.O_RDONLY)
     queue.control([select.kevent(fd, filter=select.KQ_FILTER_VNODE,
         flags=select.KQ_EV_ADD | select.KQ_EV_CLEAR, fflags=select.KQ_NOTE_WRITE)], 0, 0)
     try:
-        # launchctl submit avoids importing an external plist whose ownership
-        # ATLAS APFS rejects; env vars are passed inline via /usr/bin/env.
-        run(['launchctl', 'submit', '-l', label,
-             '-o', str(stdout_log), '-e', str(stderr_log),
-             '--', '/usr/bin/env',
+        # Avoid external plist ownership checks and launchd opening protected SSD logs.
+        run(['launchctl', 'submit', '-l', label, '--', '/usr/bin/env',
              'LIBRARY_STUDIO_HOME=' + str(config),
              'LIBRARY_STUDIO_LAUNCHAGENT_DIR=' + str(work / 'test-agents'),
              server, '-service', '-port', str(port)])
@@ -91,7 +86,11 @@ def launchd_start(app, expected_version, work):
         while not descriptor.exists():
             remaining = deadline - time.monotonic()
             if remaining <= 0 or not queue.control(None, 1, remaining):
-                raise RuntimeError('Packaged launchd host did not become ready; retained test logs identify startup failures')
+                state = subprocess.run(['launchctl', 'print', service], capture_output=True,
+                    text=True, timeout=10)
+                (work / 'launchd-status.txt').write_text(state.stdout + state.stderr)
+                raise RuntimeError('Packaged launchd host did not become ready; see retained '
+                    'launchd-status.txt and macOS unified logs for this test service')
         data = json.loads(descriptor.read_text())
         if data['address'] != '127.0.0.1:' + str(port):
             raise ValueError('Unexpected isolated host listener')

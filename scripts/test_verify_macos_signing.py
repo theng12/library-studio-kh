@@ -76,7 +76,7 @@ class SigningChecks(unittest.TestCase):
         def fake_subprocess_run(command, **kwargs):
             calls.append(list(command))
             if command[0] == 'launchctl' and command[1] == 'print':
-                return SimpleNamespace(returncode=0, stdout='pid = 99999\n', stderr=b'')
+                return SimpleNamespace(returncode=0, stdout='pid = 99999\n', stderr='')
             raise AssertionError('unexpected subprocess.run command: ' + repr(command))
 
         with tempfile.TemporaryDirectory(prefix='signing-test-', dir='/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp') as tmp:
@@ -105,10 +105,10 @@ class SigningChecks(unittest.TestCase):
             self.assertIn('-l', submit_call)
             label_idx = submit_call.index('-l') + 1
             self.assertEqual(submit_call[label_idx], 'app.librarystudiokh.signing-test.abcd1234')
-            self.assertIn('-o', submit_call)
-            self.assertIn(str(work / 'host.stdout'), submit_call)
-            self.assertIn('-e', submit_call)
-            self.assertIn(str(work / 'host.stderr'), submit_call)
+            # launchd must not open protected external-volume log files before exec.
+            self.assertNotIn('-o', submit_call)
+            self.assertNotIn('-e', submit_call)
+            self.assertEqual((work / 'launchd-status.txt').read_text(), 'pid = 99999\n')
             env_marker = submit_call.index('/usr/bin/env')
             env_args = submit_call[env_marker:]
             self.assertTrue(any(arg.startswith('LIBRARY_STUDIO_HOME=') and str(work / 'config') in arg for arg in env_args))
