@@ -41,6 +41,13 @@ func (f *fakePackages) Install(_ context.Context, p companioninstall.Package, di
 func managerFixture(t *testing.T) (*Manager, *fakePackages) {
 	t.Helper()
 	home := t.TempDir()
+	// Pre-create fixture folders so ensureSetupFolder's mounted-volume guard
+	// sees them as existing directories when TMPDIR is under /Volumes.
+	for _, sub := range []string{"Applications", "Downloads"} {
+		if err := os.MkdirAll(filepath.Join(home, sub), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	store, err := config.Open(home)
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +129,15 @@ func TestInterruptedSetupAndPrivateFolderRules(t *testing.T) {
 	if err != nil || job.State != "interrupted" {
 		t.Fatal("interrupted setup was not resumable")
 	}
-	path := filepath.Join(t.TempDir(), "new", "media")
+	// Use /tmp directly so ensureSetupFolder's mounted-volume guard does not
+	// short-circuit MkdirAll; this test validates file-vs-folder rejection,
+	// not volume mounting behavior.
+	tmpBase, err := os.MkdirTemp("/tmp", "setup-folder-rules-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(tmpBase) })
+	path := filepath.Join(tmpBase, "new", "media")
 	if err := ensureSetupFolder(path); err != nil {
 		t.Fatal(err)
 	}

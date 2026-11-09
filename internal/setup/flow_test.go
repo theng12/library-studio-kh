@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -329,6 +330,13 @@ func newFlowHarness(t *testing.T) *flowHarness {
 		t.Skip("guided companion setup planning is Apple Silicon macOS only")
 	}
 	home := t.TempDir()
+	// Pre-create fixture folders so ensureSetupFolder's mounted-volume guard
+	// sees them as existing directories when TMPDIR is under /Volumes.
+	for _, sub := range []string{"Applications", "Downloads", "Library/TV", "Library/Films", "Library/Music"} {
+		if err := os.MkdirAll(filepath.Join(home, sub), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	store, err := config.Open(home)
 	if err != nil {
 		t.Fatal(err)
