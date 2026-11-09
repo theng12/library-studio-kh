@@ -129,15 +129,23 @@ func TestInterruptedSetupAndPrivateFolderRules(t *testing.T) {
 	if err != nil || job.State != "interrupted" {
 		t.Fatal("interrupted setup was not resumable")
 	}
-	// Use /tmp directly so ensureSetupFolder's mounted-volume guard does not
-	// short-circuit MkdirAll; this test validates file-vs-folder rejection,
-	// not volume mounting behavior.
-	tmpBase, err := os.MkdirTemp("/tmp", "setup-folder-rules-*")
+	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(tmpBase) })
-	path := filepath.Join(tmpBase, "new", "media")
+	path := filepath.Join(root, "new", "media")
+	if strings.HasPrefix(strings.ToLower(root), string(filepath.Separator)+"volumes"+string(filepath.Separator)) {
+		if err := ensureSetupFolder(path); err == nil {
+			t.Fatal("missing mounted-volume folder accepted")
+		}
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("missing mounted-volume folder was created")
+		}
+		// Mounted-volume destinations must exist before setup can use them.
+		if err := os.MkdirAll(filepath.Join(path, "file"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := ensureSetupFolder(path); err != nil {
 		t.Fatal(err)
 	}
