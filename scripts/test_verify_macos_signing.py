@@ -60,6 +60,68 @@ class SigningChecks(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 verify.compare_builds(first, invalid)
 
+    def test_launchd_submit_uses_isolated_config_env_and_cleans_up_on_failure(self):
+        import tempfile
+        calls = []
+        bootout_called = []
+
+        def fake_run(command):
+            calls.append(list(command))
+            if command[0] == 'launchctl' and command[1] in ('submit', 'print', 'bootout'):
+                if command[1] == 'bootout':
+                    bootout_called.append(list(command))
+                return SimpleNamespace(returncode=0, stdout='pid = 99999\n', stderr='')
+            raise AssertionError('unexpected run command: ' + repr(command))
+
+        def fake_subprocess_run(command, **kwargs):
+            calls.append(list(command))
+            if command[0] == 'launchctl' and command[1] == 'print':
+                return SimpleNamespace(returncode=0, stdout='pid = 99999\n', stderr=b'')
+            raise AssertionError('unexpected subprocess.run command: ' + repr(command))
+
+        with tempfile.TemporaryDirectory(prefix='signing-test-', dir='/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp') as tmp:
+            work = Path(tmp)
+            app = Path('/Volumes/Fixture/Library Studio KH.app')
+            with patch.object(verify, 'run', side_effect=fake_run), \
+                 patch.object(verify.subprocess, 'run', side_effect=fake_subprocess_run), \
+                 patch.object(verify.socket, 'socket') as sock, \
+                 patch.object(verify.select, 'kqueue') as kq, \
+                 patch.object(verify.os, 'open', return_value=42), \
+                 patch.object(verify.os, 'close'), \
+                 patch.object(verify.uuid, 'uuid4', return_value=SimpleNamespace(hex='abcd1234')):
+                sock.return_value.__enter__ = lambda s: s
+                sock.return_value.__exit__ = lambda *a: None
+                sock.return_value.bind = lambda a: None
+                sock.return_value.getsockname = lambda: ('127.0.0.1', 55555)
+                kq_inst = kq.return_value
+                kq_inst.control = lambda *a, **k: None
+                kq_inst.close = lambda: None
+                # Force the readiness wait to fail so we exercise the finally cleanup path.
+                with patch.object(verify.time, 'monotonic', side_effect=[0.0, 31.0]):
+                    with self.assertRaisesRegex(RuntimeError, 'did not become ready'):
+                        verify.launchd_start(app, '0.7.6', work)
+
+            submit_call = next(c for c in calls if c[:2] == ['launchctl', 'submit'])
+            self.assertIn('-l', submit_call)
+            label_idx = submit_call.index('-l') + 1
+            self.assertEqual(submit_call[label_idx], 'app.librarystudiokh.signing-test.abcd1234')
+            self.assertIn('-o', submit_call)
+            self.assertIn(str(work / 'host.stdout'), submit_call)
+            self.assertIn('-e', submit_call)
+            self.assertIn(str(work / 'host.stderr'), submit_call)
+            env_marker = submit_call.index('/usr/bin/env')
+            env_args = submit_call[env_marker:]
+            self.assertTrue(any(arg.startswith('LIBRARY_STUDIO_HOME=') and str(work / 'config') in arg for arg in env_args))
+            self.assertTrue(any(arg.startswith('LIBRARY_STUDIO_LAUNCHAGENT_DIR=') and str(work / 'test-agents') in arg for arg in env_args))
+            self.assertIn(str(app / 'Contents/MacOS/library-studio-server'), submit_call)
+            self.assertIn('-service', submit_call)
+            self.assertIn('55555', submit_call)
+            # No plist file should ever be written; submit replaces bootstrap entirely.
+            self.assertFalse((work / 'host.plist').exists())
+            # Cleanup must target the exact unique service submitted.
+            self.assertEqual(len(bootout_called), 1)
+            self.assertEqual(bootout_called[0], ['launchctl', 'bootout', 'gui/' + str(__import__('os').getuid()) + '/app.librarystudiokh.signing-test.abcd1234'])
+
 
 if __name__ == '__main__':
     unittest.main()

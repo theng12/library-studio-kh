@@ -70,24 +70,22 @@ def launchd_start(app, expected_version, work):
     label = 'app.librarystudiokh.signing-test.' + uuid.uuid4().hex
     domain = 'gui/' + str(os.getuid())
     service = domain + '/' + label
-    job = work / 'host.plist'
-    job.write_bytes(plistlib.dumps({
-        'Label': label,
-        'ProgramArguments': [str(app / 'Contents/MacOS/library-studio-server'), '-service', '-port', str(port)],
-        'EnvironmentVariables': {
-            'LIBRARY_STUDIO_HOME': str(config),
-            'LIBRARY_STUDIO_LAUNCHAGENT_DIR': str(work / 'test-agents'),
-        },
-        'RunAtLoad': True,
-        'StandardOutPath': str(work / 'host.stdout'),
-        'StandardErrorPath': str(work / 'host.stderr'),
-    }))
+    stdout_log = work / 'host.stdout'
+    stderr_log = work / 'host.stderr'
+    server = str(app / 'Contents/MacOS/library-studio-server')
     queue = select.kqueue()
     fd = os.open(config, os.O_RDONLY)
     queue.control([select.kevent(fd, filter=select.KQ_FILTER_VNODE,
         flags=select.KQ_EV_ADD | select.KQ_EV_CLEAR, fflags=select.KQ_NOTE_WRITE)], 0, 0)
     try:
-        run(['launchctl', 'bootstrap', domain, str(job)])
+        # launchctl submit avoids importing an external plist whose ownership
+        # ATLAS APFS rejects; env vars are passed inline via /usr/bin/env.
+        run(['launchctl', 'submit', '-l', label,
+             '-o', str(stdout_log), '-e', str(stderr_log),
+             '--', '/usr/bin/env',
+             'LIBRARY_STUDIO_HOME=' + str(config),
+             'LIBRARY_STUDIO_LAUNCHAGENT_DIR=' + str(work / 'test-agents'),
+             server, '-service', '-port', str(port)])
         descriptor = config / 'host.json'
         deadline = time.monotonic() + 30
         while not descriptor.exists():
