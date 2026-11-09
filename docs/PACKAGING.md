@@ -49,7 +49,7 @@ Run the lanes covering the change and its callers with `testctl run library <lan
 | `version` | Version/What's New agreement; Go module, root Go, changelog and bundle manifests |
 | `host` | Mock-only host-manager and signing-verifier checks; scripts and shell configuration |
 | `fast` | Cheap global vet for macOS, Windows and Linux; always assess for a release |
-| `package` | Fresh dependency install and normal signed desktop packaging on the frozen release source |
+| `package` | Fresh dependency install and normal signed desktop packaging on the frozen release source; `CI=true` uses Tauri's headless DMG layout in detached jobs |
 
 The shared runner also keys lockfiles, commands, configured environment and local tool versions. A dependency/toolchain/shared-core change can invalidate several lanes; a full regression means running every configured testing lane (frontend, core, setup, version, host, fast) rather than a separate lane. Force it only when an actual dependency, toolchain or reach change requires fresh full checks; fresh packaging, signature and launch verification are always separate. Do not narrow paths to manufacture reuse. Keep covered tests, imported helpers and fixtures in the lane's inputs when adding a dependency.
 

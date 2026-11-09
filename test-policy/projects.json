@@ -42,7 +42,7 @@
         },
         "package": {
           "commands": [["npm", "ci"], ["npm", "run", "build:desktop"]],
-          "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1", "GOCACHE": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/go", "GOTMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp", "TMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp", "CARGO_BUILD_JOBS": "1"},
+          "env": {"CI": "true", "GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1", "GOCACHE": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/go", "GOTMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp", "TMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp", "CARGO_BUILD_JOBS": "1"},
           "timeoutMin": 90
         }
       },
