@@ -404,6 +404,14 @@
               <p class="muted">Setup only installs the apps you select. It never removes an app, a download or a library file, and it does not download media.</p>
             </fieldset>
             <fieldset class="setup-fieldset">
+              <legend>Optional helpers</legend>
+              <div class="setup-checks">
+                <label class="check"><input type="checkbox" name="app.recyclarr"> Recyclarr — profile sync for Sonarr and Radarr</label>
+                <label class="check"><input type="checkbox" name="app.unpackerr"> Unpackerr — unpacks finished downloads</label>
+              </div>
+              <p class="muted">Off by default and never chosen for you. Setup writes their configuration files and keeps original archives; nothing is deleted. A Recyclarr sync runs only when you press Preview or Apply, and Apply asks first.</p>
+            </fieldset>
+            <fieldset class="setup-fieldset">
               <legend>Folders</legend>
               <label>App install folder <input name="appDir" autocomplete="off" placeholder="Choose a folder on this computer"></label>
               <label>Download folder <input name="downloadPath" autocomplete="off" placeholder="Where downloads are saved"></label>

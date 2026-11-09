@@ -5,10 +5,13 @@
 
 /* Pure helpers (unit tested; no DOM) */
 const SETUP_APP_IDS = ["qbittorrent", "sonarr", "radarr", "lidarr", "prowlarr"];
+// Optional helpers own no port or library folder and are never chosen by a
+// default; they only join the plan when the owner ticks them.
+const SETUP_OPTIONAL_IDS = ["recyclarr", "unpackerr"];
 const SETUP_ROOT_IDS = ["sonarr", "radarr", "lidarr"];
 const SETUP_ACTIVE_STATES = ["planning", "installing", "checking", "configuring"];
 const SETUP_OPEN_STATES = ["needs_open", "opened", "blocked"];
-const SETUP_APP_NAMES = { qbittorrent: "qBittorrent", sonarr: "Sonarr", radarr: "Radarr", lidarr: "Lidarr", prowlarr: "Prowlarr" };
+const SETUP_APP_NAMES = { qbittorrent: "qBittorrent", sonarr: "Sonarr", radarr: "Radarr", lidarr: "Lidarr", prowlarr: "Prowlarr", recyclarr: "Recyclarr", unpackerr: "Unpackerr" };
 
 function setupClientTarget(value) {
   const raw = String(value == null ? "" : value).trim();
@@ -71,7 +74,7 @@ function setupPreferencesRequest(job, qualityProfileId, metadataProfileId) {
 function setupRequest(values, defaults) {
   const given = values || {}, server = defaults || {};
   const apps = [];
-  for (const id of SETUP_APP_IDS) {
+  for (const id of SETUP_APP_IDS.concat(SETUP_OPTIONAL_IDS)) {
     const chosen = given.apps && Object.prototype.hasOwnProperty.call(given.apps, id)
       ? !!given.apps[id]
       : Array.isArray(server.apps) ? server.apps.includes(id) : id === "qbittorrent";
@@ -86,6 +89,7 @@ function setupRequest(values, defaults) {
   for (const id of SETUP_APP_IDS) ports[id] = setupPort(given.ports && given.ports[id], server.ports && server.ports[id]);
   const usedPorts = new Map();
   for (const id of apps) {
+    if (!SETUP_APP_IDS.includes(id)) continue; // optional helpers have no port
     const other = usedPorts.get(ports[id]);
     if (other) throw new Error((SETUP_APP_NAMES[other] || other) + " and " + (SETUP_APP_NAMES[id] || id) + " both use port " + ports[id] + ". Choose a different port for one of them.");
     usedPorts.set(ports[id], id);
@@ -158,6 +162,11 @@ function setupJobRequest(job, action, app) {
     if (!app) throw new Error("Choose an app to open.");
     return { path: "/api/setup/open", body: { id: job.id, app } };
   }
+  if (action === "preview" || action === "apply") {
+    if (!app) throw new Error("Choose an optional helper first.");
+    // Preview is the default; apply is only ever sent after the owner confirms.
+    return { path: "/api/setup/optional", body: { id: job.id, app, action, confirm: action === "apply" } };
+  }
   throw new Error("Unknown setup action.");
 }
 
@@ -172,6 +181,7 @@ const SETUP_APP_LABELS = {
   not_checked: "Not checked", adopt: "Existing app — kept", download: "Ready to download",
   needs_open: "Needs you to open it", needs_connection: "Needs sign-in in Settings",
   opened: "Opened — approve in macOS if asked", connected: "Connected", blocked: "Blocked",
+  needs_config: "Installed — configuration checked by Setup",
   needs_sources: "Needs sources", needs_restart: "Restart needed",
 };
 
@@ -230,7 +240,7 @@ function fillSetupForm(defaults, force) {
   if (!setupForm || (!force && setupForm.dataset.filled === "1")) return;
   const d = defaults || {};
   const chosen = Array.isArray(d.apps) ? new Set(d.apps) : null;
-  for (const id of SETUP_APP_IDS) setupSetField("app." + id, chosen ? chosen.has(id) : id === "qbittorrent");
+  for (const id of SETUP_APP_IDS.concat(SETUP_OPTIONAL_IDS)) setupSetField("app." + id, chosen ? chosen.has(id) : id === "qbittorrent");
   setupSetField("appDir", d.appDir);
   setupSetField("downloadPath", d.downloadPath);
   for (const id of SETUP_ROOT_IDS) {
@@ -256,6 +266,10 @@ function readSetupForm() {
     const field = setupField("app." + id);
     apps[id] = !!(field && field.checked);
     ports[id] = setupField("port." + id) ? setupField("port." + id).value : "";
+  }
+  for (const id of SETUP_OPTIONAL_IDS) {
+    const field = setupField("app." + id);
+    apps[id] = !!(field && field.checked);
   }
   for (const id of SETUP_ROOT_IDS) {
     roots[id] = setupField("root." + id) ? setupField("root." + id).value : "";
@@ -306,6 +320,13 @@ function setupAppActions(app, view) {
     settings.dataset.view = "settings";
     settings.setAttribute("aria-label", "Open Settings to connect " + name);
     actions.append(settings);
+  }
+  if (app.id === "recyclarr" && (app.state === "connected" || app.state === "needs_config")) {
+    const preview = setupButton("Preview sync", "small", () => setupRun("preview", app.id));
+    preview.setAttribute("aria-label", "Preview a Recyclarr sync for " + name);
+    const apply = setupButton("Apply sync", "small", () => setupRun("apply", app.id));
+    apply.setAttribute("aria-label", "Apply a Recyclarr sync for " + name);
+    actions.append(preview, apply);
   }
   if (app.state === "needs_sources") {
     const sources = setupButton("Open Sources", "small", () => {});
@@ -495,12 +516,14 @@ function renderSetupJob() {
 
 async function setupRun(action, app) {
   if (setupBusy || !setupJob) return;
+  // Apply changes the native app through Recyclarr, so it always asks first.
+  if (action === "apply" && !window.confirm("Apply this Recyclarr sync now? It updates profiles in the connected Sonarr or Radarr app.")) return;
   let request;
   try { request = setupJobRequest(setupJob, action, app); }
   catch (e) { setupSay(e.message); return; }
   const generation = setupGeneration;
   setupBusy = true;
-  setupSay(action === "open" ? "Opening…" : action === "check" ? "Checking connections…" : "Starting…");
+  setupSay(action === "open" ? "Opening…" : action === "check" ? "Checking connections…" : action === "preview" ? "Running a preview…" : action === "apply" ? "Applying the sync…" : "Starting…");
   let failure = "";
   try {
     const job = await setupApi(request.path, request.body, true);

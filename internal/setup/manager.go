@@ -94,10 +94,14 @@ type Manager struct {
 	hostPort         int
 	installHost      func(platform.HostServiceSpec) (platform.HostServiceStatus, error)
 	installCompanion func(platform.CompanionServiceSpec) (platform.CompanionServiceStatus, error)
+	// runTool executes a vendor command-line tool for an explicit owner
+	// action (Recyclarr preview/apply). Tests inject a fake; the setup flow
+	// itself never calls it.
+	runTool func(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
 func NewManager(home string, store *config.Store) *Manager {
-	m := &Manager{home: home, store: store, installer: companioninstall.New(companioninstall.Options{}), openApp: openNativeApp}
+	m := &Manager{home: home, store: store, installer: companioninstall.New(companioninstall.Options{}), openApp: openNativeApp, runTool: defaultRunTool}
 	m.installHost = platform.NewHostService(nil, nil).Install
 	m.installCompanion = platform.NewCompanionService(nil).Install
 	m.applicationDirs = []string{"/Applications"}
@@ -325,6 +329,11 @@ func validateRequest(req Request) error {
 			return errors.New("select each supported companion only once")
 		}
 		seen[id] = true
+		if companioninstall.Optional(id) {
+			// Optional helpers have no port or library of their own; they are
+			// configured from the instances they assist.
+			continue
+		}
 		port := req.Ports[string(id)]
 		if port < 1024 || port > 65535 || ports[port] {
 			return errors.New("choose a different port from 1024 to 65535 for each selected app")

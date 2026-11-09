@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"librarystudio/internal/companioninstall"
 	"librarystudio/internal/platform"
 )
 
@@ -22,6 +23,11 @@ func (m *Manager) installStartup() (bool, error) {
 	}
 	for _, app := range m.job.View.Apps {
 		if !app.Managed {
+			continue
+		}
+		if companioninstall.Optional(app.ID) {
+			// Optional helpers never get a Library-managed login job; whether
+			// a vendor app starts at login is the owner's own switch.
 			continue
 		}
 		status, err := m.installCompanion(platform.CompanionServiceSpec{ID: platform.CompanionID(app.ID), AppPath: app.Path, ProfileDir: filepath.Join(m.home, "companions", string(app.ID)), Home: m.home, AtLogin: true})

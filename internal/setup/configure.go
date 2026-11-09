@@ -18,6 +18,11 @@ func (m *Manager) configure() {
 	req := m.job.View.Request
 	blocked := false
 	for index, app := range m.job.View.Apps {
+		if companioninstall.Optional(app.ID) {
+			// Optional helpers have no native account here; they are written
+			// and verified after every selected connection exists.
+			continue
+		}
 		err := m.checkManagedProfile(app, &c)
 		if err == nil {
 			err = nativePing(c, app)
@@ -82,7 +87,7 @@ func (m *Manager) configure() {
 		}
 	}
 	for _, app := range m.job.View.Apps {
-		if app.ID == companioninstall.QBittorrent || app.ID == companioninstall.Prowlarr {
+		if app.ID == companioninstall.QBittorrent || app.ID == companioninstall.Prowlarr || companioninstall.Optional(app.ID) {
 			continue
 		}
 		if c.QBit.URL == "" {
@@ -197,6 +202,11 @@ func (m *Manager) configure() {
 	}
 	if err := m.store.SaveIfUnchanged(before, next); err != nil {
 		m.block("Library", "Save connections", err, c)
+		return
+	}
+	// Only after the connections are safely saved do the optional helpers get
+	// their own configuration files, written and read back as real checks.
+	if !m.configureOptional(c, req) {
 		return
 	}
 	if err := m.verifySources(c); err != nil {

@@ -154,6 +154,71 @@ func topLevelBundles(root string) ([]string, error) {
 	return out, nil
 }
 
+// extractBinaryArchive unpacks the vendor's xz tar with the system bsdtar and
+// returns the single top-level regular file named after the spec. bsdtar
+// fails closed on ".." entries, strips absolute paths and refuses writes
+// through symlinks; the walk below re-checks what actually landed: no
+// symlinks, no special files, one executable of the expected name, bounded
+// total size. shortcut: the tar is read straight to disk, so a huge
+// vendor archive fills space before the size walk; the vendor digest gates
+// that and the cap still fails closed afterwards.
+func (i *Installer) extractBinaryArchive(ctx context.Context, asset, stage string, spec appSpec, downloadCap int64) (string, error) {
+	root := filepath.Join(stage, "extract")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return "", err
+	}
+	if _, err := i.executeCommand(ctx, i.tar, "-xJf", asset, "-C", root); err != nil {
+		return "", fmt.Errorf("companioninstall: extract official archive: %w", err)
+	}
+	target := filepath.Join(root, spec.bundleName)
+	sizeCap := zipExpansionCap(downloadCap)
+	var total int64
+	found := false
+	walkErr := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if p == root {
+			return nil
+		}
+		rel, relErr := filepath.Rel(root, p)
+		if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			return fmt.Errorf("companioninstall: archive entry escapes the staging folder: %q", rel)
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("companioninstall: refusing symlink in official archive: %q", rel)
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return fmt.Errorf("companioninstall: refusing special file in official archive: %q", rel)
+		}
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+		if info.Size() > sizeCap-total {
+			return fmt.Errorf("companioninstall: official archive expands beyond the %d byte cap", sizeCap)
+		}
+		total += info.Size()
+		if p == target {
+			found = true
+			if info.Mode().Perm()&0o111 == 0 {
+				return fmt.Errorf("companioninstall: official archive's %q is not executable", spec.bundleName)
+			}
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return "", walkErr
+	}
+	if !found {
+		return "", fmt.Errorf("companioninstall: official archive has no top-level executable %q", spec.bundleName)
+	}
+	return target, nil
+}
+
 // extractDMG mounts the official disk image read-only, copies the single app
 // bundle with ditto, and always attempts to detach the image. It never clears
 // quarantine or any other extended attribute.

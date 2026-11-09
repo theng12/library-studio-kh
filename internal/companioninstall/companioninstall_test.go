@@ -312,8 +312,8 @@ func qbitDoer(t *testing.T, version, digest string, image []byte) doerFunc {
 
 func TestRegistryHasOfficialApps(t *testing.T) {
 	apps := Registry()
-	if len(apps) != 5 {
-		t.Fatalf("got %d apps, want 5", len(apps))
+	if len(apps) != 7 {
+		t.Fatalf("got %d apps, want 7", len(apps))
 	}
 	want := map[AppID]string{
 		QBittorrent: "org.qbittorrent.qBittorrent",
@@ -321,12 +321,70 @@ func TestRegistryHasOfficialApps(t *testing.T) {
 		Radarr:      "com.osx.radarr.video",
 		Lidarr:      "com.osx.lidarr.audio",
 		Prowlarr:    "com.osx.prowlarr.com",
+		Recyclarr:   "",
+		Unpackerr:   "io.golift.unpackerr",
 	}
+	wantOptional := map[AppID]bool{Recyclarr: true, Unpackerr: true}
 	for _, app := range apps {
 		if app.BundleID != want[app.ID] {
 			t.Errorf("%s bundle = %q, want %q", app.ID, app.BundleID, want[app.ID])
 		}
+		if app.Optional != wantOptional[app.ID] {
+			t.Errorf("%s optional = %v, want %v", app.ID, app.Optional, wantOptional[app.ID])
+		}
+		if Optional(app.ID) != app.Optional {
+			t.Errorf("Optional(%s) disagrees with the registry", app.ID)
+		}
 	}
+	if !Optional(Recyclarr) || !Optional(Unpackerr) || Optional(Sonarr) || Optional(AppID("readarr")) {
+		t.Fatal("optional helpers are not marked correctly; Readarr is not part of this app at all")
+	}
+}
+
+func TestResolveGitHubLatestPicksTheOfficialMacAsset(t *testing.T) {
+	specs := map[AppID]string{Recyclarr: "recyclarr-osx-arm64.tar.xz", Unpackerr: "Unpackerr.dmg"}
+	for id, asset := range specs {
+		spec, err := shared.spec(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assetURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/v9.1.0/%s", spec.owner, spec.repo, asset)
+		release := fmt.Sprintf(`{"tag_name":"v9.1.0","assets":[`+
+			`{"name":%q,"size":12345,"digest":"sha256:%s","browser_download_url":%q},`+
+			`{"name":"other-linux-x64.tar.gz","size":99,"digest":"sha256:%s","browser_download_url":%q}]}`,
+			asset, strings.Repeat("ab", 32), assetURL,
+			strings.Repeat("cd", 32), fmt.Sprintf("https://github.com/%s/%s/releases/download/v9.1.0/other-linux-x64.tar.gz", spec.owner, spec.repo))
+		d := doerFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() == spec.endpoint {
+				return response(req, http.StatusOK, release, ""), nil
+			}
+			return nil, fmt.Errorf("unexpected URL %s", req.URL)
+		})
+		i := New(Options{HTTPClient: d})
+		pkg, err := i.Resolve(context.Background(), id)
+		if err != nil {
+			t.Fatalf("%s resolve: %v", id, err)
+		}
+		if pkg.OfficialAssetURL != assetURL || pkg.ReleaseVersion != "9.1.0" || pkg.ExpectedBytes != 12345 {
+			t.Errorf("%s package = %+v", id, pkg)
+		}
+		if pkg.ExpectedSHA256 != strings.Repeat("ab", 32) || pkg.SizeCap != 12345+(1<<20) {
+			t.Errorf("%s digest/cap not from live metadata: %+v", id, pkg)
+		}
+		if pkg.AppID != spec.app.ID || pkg.BundleID != spec.app.BundleID || pkg.NativeArchitecture != "arm64" {
+			t.Errorf("%s identity mismatch: %+v", id, pkg)
+		}
+	}
+
+	// The vendor dropping the macOS asset must fail closed, never substitute.
+	spec, _ := shared.spec(Recyclarr)
+	d := doerFunc(func(req *http.Request) (*http.Response, error) {
+		return response(req, http.StatusOK, `{"tag_name":"v9.1.0","assets":[{"name":"recyclarr-linux-x64.tar.xz","size":5,"digest":"sha256:`+strings.Repeat("ab", 32)+`","browser_download_url":"https://github.com/recyclarr/recyclarr/releases/download/v9.1.0/recyclarr-linux-x64.tar.xz"}]}`, ""), nil
+	})
+	if _, err := New(Options{HTTPClient: d}).Resolve(context.Background(), Recyclarr); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("missing macOS asset must be ErrUnavailable, got %v", err)
+	}
+	_ = spec
 }
 
 func TestResolveServarrUsesLiveAssetDigest(t *testing.T) {

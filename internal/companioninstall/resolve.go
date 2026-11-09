@@ -129,6 +129,134 @@ func readMetadata(resp *http.Response) ([]byte, error) {
 	return body, nil
 }
 
+// githubRelease and githubAsset are the trusted fields of GitHub release
+// metadata; everything a Package carries is read from them, never assumed.
+type githubRelease struct {
+	TagName string        `json:"tag_name"`
+	Assets  []githubAsset `json:"assets"`
+}
+
+type githubAsset struct {
+	Name               string  `json:"name"`
+	Size               int64   `json:"size"`
+	Digest             *string `json:"digest"`
+	BrowserDownloadURL string  `json:"browser_download_url"`
+}
+
+// applyGitHubRelease fills pkg from live release metadata for the exact asset
+// name. Version, URL, size and SHA-256 all come from GitHub's response; a
+// missing or malformed digest refuses the package instead of guessing.
+func (i *Installer) applyGitHubRelease(pkg *Package, spec appSpec, owner, repo, tag, assetName, apiURL string, release githubRelease) error {
+	if release.TagName != tag {
+		return fmt.Errorf("resolve %s: metadata tag %q does not match asset tag %q", spec.app.ID, release.TagName, tag)
+	}
+	var found *githubAsset
+	for idx := range release.Assets {
+		if release.Assets[idx].Name == assetName {
+			if found != nil {
+				return fmt.Errorf("resolve %s: release has more than one %q asset", spec.app.ID, assetName)
+			}
+			found = &release.Assets[idx]
+		}
+	}
+	if found == nil {
+		return fmt.Errorf("resolve %s: release metadata has no asset named %q", spec.app.ID, assetName)
+	}
+	if found.Digest == nil || !strings.HasPrefix(*found.Digest, "sha256:") {
+		return fmt.Errorf("%w: release asset %q has no official SHA-256 digest", ErrUnavailable, assetName)
+	}
+	digest := strings.TrimPrefix(*found.Digest, "sha256:")
+	if len(digest) != 64 || !isHex(digest) {
+		return fmt.Errorf("%w: release asset %q has a malformed SHA-256 digest", ErrUnavailable, assetName)
+	}
+	if found.Size <= 0 {
+		return fmt.Errorf("%w: release asset %q has no published size", ErrUnavailable, assetName)
+	}
+	downloadURL, err := url.Parse(found.BrowserDownloadURL)
+	if err != nil {
+		return fmt.Errorf("resolve %s: bad published asset URL: %w", spec.app.ID, err)
+	}
+	if err := checkOfficialURL(downloadURL); err != nil {
+		return err
+	}
+	dparts := strings.Split(strings.Trim(downloadURL.Path, "/"), "/")
+	if len(dparts) != 6 || dparts[0] != owner || dparts[1] != repo ||
+		dparts[2] != "releases" || dparts[3] != "download" ||
+		dparts[4] != tag || dparts[5] != assetName {
+		return fmt.Errorf("resolve %s: published asset URL does not match the selected asset", spec.app.ID)
+	}
+
+	pkg.ReleaseVersion = strings.TrimPrefix(tag, "v")
+	pkg.OfficialAssetURL = found.BrowserDownloadURL
+	pkg.ExpectedSHA256 = strings.ToLower(digest)
+	pkg.ExpectedBytes = found.Size
+	if found.Size > int64(^uint64(0)>>1)-(1<<20) {
+		return errors.New("companioninstall: published asset size is implausible")
+	}
+	pkg.SizeCap = found.Size + (1 << 20)
+	pkg.Provenance = Provenance{
+		ResolverURL:  spec.endpoint,
+		MetadataURL:  apiURL,
+		SHA256Source: "GitHub release asset digest (sha256)",
+		ReleaseTag:   tag,
+		ResolvedAt:   i.now().UTC(),
+	}
+	return nil
+}
+
+// resolveGitHubLatest reads the vendor's live GitHub "latest" release and
+// picks the single macOS asset matching the spec's fixed pattern. If the
+// vendor stops publishing that asset the resolution fails with
+// ErrUnavailable rather than substituting another file.
+func (i *Installer) resolveGitHubLatest(ctx context.Context, spec appSpec) (Package, error) {
+	pkg := basePackage(spec, i.sizeCap)
+	if spec.assetPattern == "" {
+		return Package{}, fmt.Errorf("companioninstall: %s has no release asset pattern", spec.app.ID)
+	}
+	pattern := regexp.MustCompile(spec.assetPattern)
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest",
+		url.PathEscape(spec.owner), url.PathEscape(spec.repo))
+	resp, err := i.get(ctx, i.http, apiURL, "application/vnd.github+json")
+	if err != nil {
+		return Package{}, fmt.Errorf("resolve %s: %w", spec.app.ID, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return Package{}, fmt.Errorf("resolve %s: release metadata returned HTTP %d", spec.app.ID, resp.StatusCode)
+	}
+	body, err := readMetadata(resp)
+	if err != nil {
+		return Package{}, fmt.Errorf("resolve %s: %w", spec.app.ID, err)
+	}
+	var release githubRelease
+	if err := json.Unmarshal(body, &release); err != nil {
+		return Package{}, fmt.Errorf("resolve %s: bad release metadata: %w", spec.app.ID, err)
+	}
+	if release.TagName == "" {
+		return Package{}, fmt.Errorf("%w: official release has no tag", ErrUnavailable)
+	}
+	var matches []string
+	for _, asset := range release.Assets {
+		if pattern.MatchString(asset.Name) {
+			matches = append(matches, asset.Name)
+		}
+	}
+	if len(matches) == 0 {
+		return Package{}, fmt.Errorf("%w: official release %s publishes no %s asset", ErrUnavailable, release.TagName, spec.assetPattern)
+	}
+	if len(matches) > 1 {
+		return Package{}, fmt.Errorf("resolve %s: official release %s publishes %d matching assets: %s",
+			spec.app.ID, release.TagName, len(matches), strings.Join(matches, ", "))
+	}
+	if err := i.applyGitHubRelease(&pkg, spec, spec.owner, spec.repo, release.TagName, matches[0], apiURL, release); err != nil {
+		return Package{}, err
+	}
+	if err := validatePackage(pkg, spec); err != nil {
+		return Package{}, err
+	}
+	return pkg, nil
+}
+
 func (i *Installer) resolveServarr(ctx context.Context, spec appSpec) (Package, error) {
 	pkg := basePackage(spec, i.sizeCap)
 
@@ -187,77 +315,12 @@ func (i *Installer) resolveServarr(ctx context.Context, spec appSpec) (Package, 
 	if err != nil {
 		return Package{}, fmt.Errorf("resolve %s: %w", spec.app.ID, err)
 	}
-	var release struct {
-		TagName string `json:"tag_name"`
-		Assets  []struct {
-			Name               string  `json:"name"`
-			Size               int64   `json:"size"`
-			Digest             *string `json:"digest"`
-			BrowserDownloadURL string  `json:"browser_download_url"`
-		} `json:"assets"`
-	}
+	var release githubRelease
 	if err := json.Unmarshal(body, &release); err != nil {
 		return Package{}, fmt.Errorf("resolve %s: bad release metadata: %w", spec.app.ID, err)
 	}
-	if release.TagName != tag {
-		return Package{}, fmt.Errorf("resolve %s: metadata tag %q does not match asset tag %q", spec.app.ID, release.TagName, tag)
-	}
-
-	var found *struct {
-		Name               string  `json:"name"`
-		Size               int64   `json:"size"`
-		Digest             *string `json:"digest"`
-		BrowserDownloadURL string  `json:"browser_download_url"`
-	}
-	for idx := range release.Assets {
-		if release.Assets[idx].Name == assetName {
-			if found != nil {
-				return Package{}, fmt.Errorf("resolve %s: release has more than one %q asset", spec.app.ID, assetName)
-			}
-			found = &release.Assets[idx]
-		}
-	}
-	if found == nil {
-		return Package{}, fmt.Errorf("resolve %s: release metadata has no asset named %q", spec.app.ID, assetName)
-	}
-	if found.Digest == nil || !strings.HasPrefix(*found.Digest, "sha256:") {
-		return Package{}, fmt.Errorf("%w: release asset %q has no official SHA-256 digest", ErrUnavailable, assetName)
-	}
-	digest := strings.TrimPrefix(*found.Digest, "sha256:")
-	if len(digest) != 64 || !isHex(digest) {
-		return Package{}, fmt.Errorf("%w: release asset %q has a malformed SHA-256 digest", ErrUnavailable, assetName)
-	}
-	if found.Size <= 0 {
-		return Package{}, fmt.Errorf("%w: release asset %q has no published size", ErrUnavailable, assetName)
-	}
-	downloadURL, err := url.Parse(found.BrowserDownloadURL)
-	if err != nil {
-		return Package{}, fmt.Errorf("resolve %s: bad published asset URL: %w", spec.app.ID, err)
-	}
-	if err := checkOfficialURL(downloadURL); err != nil {
+	if err := i.applyGitHubRelease(&pkg, spec, owner, repo, tag, assetName, apiURL, release); err != nil {
 		return Package{}, err
-	}
-	dparts := strings.Split(strings.Trim(downloadURL.Path, "/"), "/")
-	if len(dparts) != 6 || dparts[0] != owner || dparts[1] != repo ||
-		dparts[2] != "releases" || dparts[3] != "download" ||
-		dparts[4] != tag || dparts[5] != assetName {
-		return Package{}, fmt.Errorf("resolve %s: published asset URL does not match the selected asset", spec.app.ID)
-	}
-
-	pkg.ReleaseVersion = strings.TrimPrefix(tag, "v")
-	pkg.OfficialAssetURL = found.BrowserDownloadURL
-	pkg.ExpectedSHA256 = strings.ToLower(digest)
-	pkg.ExpectedBytes = found.Size
-	if found.Size > int64(^uint64(0)>>1)-(1<<20) {
-		return Package{}, errors.New("companioninstall: published asset size is implausible")
-	}
-	pkg.SizeCap = found.Size + (1 << 20)
-	pkg.Provenance = Provenance{
-		ResolverURL:  spec.endpoint,
-		MetadataURL:  apiURL,
-		SHA256Source: "GitHub release asset digest (sha256)",
-		ReleaseTag:   tag,
-		ResolvedAt:   i.now().UTC(),
 	}
 	if err := validatePackage(pkg, spec); err != nil {
 		return Package{}, err
@@ -411,6 +474,8 @@ func (i *Installer) Resolve(ctx context.Context, id AppID) (Package, error) {
 		return i.resolveServarr(ctx, spec)
 	case qbittorrentSource:
 		return i.resolveQBittorrent(ctx, spec)
+	case githubSource, binarySource:
+		return i.resolveGitHubLatest(ctx, spec)
 	default:
 		return Package{}, fmt.Errorf("companioninstall: unknown source for %q", id)
 	}
