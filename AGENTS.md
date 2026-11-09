@@ -22,11 +22,7 @@ A media management application over separate official qBittorrent, Sonarr, Radar
 
 ## Verify before claiming done
 
-```sh
-go vet ./... && GOOS=windows go vet ./... && GOOS=linux go vet ./... && go test ./...
-node --test tests/*.test.mjs
-npm ci && npm run build:desktop
-```
+Use the shared `~/Developer/portfolio/bin/testctl` with this repo's `test-policy/projects.json`; see [docs/PACKAGING.md](docs/PACKAGING.md#change-aware-checks). Start with `testctl plan library --config test-policy/projects.json`, run the changed lanes and their callers, then the cheap global `fast` checks. Reuse unchanged passing receipts with their original commit; report them as skipped, never freshly passed. Run `full` only when reach cannot safely be bounded or full evidence is unavailable. A release also needs a fresh packaged launch/signature/update check and Developer's go; a lane receipt alone is not a release proof.
 
 Tests use mocks only. Never call real stock apps, the NAS or the 1301 Mac from a test.
 

@@ -9,3 +9,5 @@ src-tauri/gen/
 _trash
 CLAUDE.local.md
 .claude/launch.json
+.test-receipts/
+.test-tmp/
