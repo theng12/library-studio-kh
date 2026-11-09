@@ -40,11 +40,6 @@
           "env": {"TMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp"},
           "timeoutMin": 5
         },
-        "full": {
-          "commands": [["go", "test", "./..."], ["node", "--test", "tests"], ["node", "scripts/manage-host.mjs", "--self-test"], ["python3", "-I", "scripts/test_verify_macos_signing.py"]],
-          "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1", "GOCACHE": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/go", "GOTMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp", "TMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp"},
-          "timeoutMin": 40
-        },
         "package": {
           "commands": [["npm", "ci"], ["npm", "run", "build:desktop"]],
           "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1", "GOCACHE": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/go", "GOTMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp", "TMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp", "CARGO_BUILD_JOBS": "1"},

@@ -22,7 +22,7 @@ A media management application over separate official qBittorrent, Sonarr, Radar
 
 ## Verify before claiming done
 
-Use the shared `~/Developer/portfolio/bin/testctl` with this repo's `test-policy/projects.json`; see [docs/PACKAGING.md](docs/PACKAGING.md#change-aware-checks). Start with `testctl plan library --config test-policy/projects.json`, run the changed lanes and their callers, then the cheap global `fast` checks. Reuse unchanged passing receipts with their original commit; report them as skipped, never freshly passed. Run `full` only when reach cannot safely be bounded or full evidence is unavailable. A release also needs a fresh packaged launch/signature/update check and Developer's go; a lane receipt alone is not a release proof.
+Use the shared `~/Developer/portfolio/bin/testctl` with this repo's `test-policy/projects.json`; see [docs/PACKAGING.md](docs/PACKAGING.md#change-aware-checks). Start with `testctl plan library --config test-policy/projects.json`, run the changed lanes and their callers, then the cheap global `fast` checks. Reuse unchanged passing receipts with their original commit; report them as skipped, never freshly passed. A full regression means running every configured testing lane (frontend, core, setup, version, host, fast); force it only when an actual dependency, toolchain or reach change requires fresh full checks. Fresh packaging, signature and launch verification are always separate from lane execution. A release also needs a fresh packaged launch/signature/update check and Developer's go; a lane receipt alone is not a release proof.
 
 Tests use mocks only. Never call real stock apps, the NAS or the 1301 Mac from a test.
 

@@ -49,10 +49,9 @@ Run the lanes covering the change and its callers with `testctl run library <lan
 | `version` | Version/What's New agreement; Go module, root Go, changelog and bundle manifests |
 | `host` | Mock-only host-manager and signing-verifier checks; scripts and shell configuration |
 | `fast` | Cheap global vet for macOS, Windows and Linux; always assess for a release |
-| `full` | Full mock regression fallback when reach cannot safely be bounded or prior full evidence is unavailable |
 | `package` | Fresh dependency install and normal signed desktop packaging on the frozen release source |
 
-The shared runner also keys lockfiles, commands, configured environment and local tool versions. A dependency/toolchain/shared-core change can invalidate several lanes; use `full` when its reach is uncertain. Do not narrow paths to manufacture reuse. Keep covered tests, imported helpers and fixtures in the lane's inputs when adding a dependency.
+The shared runner also keys lockfiles, commands, configured environment and local tool versions. A dependency/toolchain/shared-core change can invalidate several lanes; a full regression means running every configured testing lane (frontend, core, setup, version, host, fast) rather than a separate lane. Force it only when an actual dependency, toolchain or reach change requires fresh full checks; fresh packaging, signature and launch verification are always separate. Do not narrow paths to manufacture reuse. Keep covered tests, imported helpers and fixtures in the lane's inputs when adding a dependency.
 
 Before release, freeze a clean commit, run `plan`, and retain the matching receipts and exact logs. Reused coverage must read `skipped (unchanged since <original commit>)`; keep its original receipt and log hash rather than claiming a fresh pass. Do not import a historical receipt merely because a similarly named test passed. The existing 0.7.5 full-gate receipt remains historical evidence, not a fabricated testctl receipt.
 
