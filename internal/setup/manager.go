@@ -97,11 +97,12 @@ type Manager struct {
 	// runTool executes a vendor command-line tool for an explicit owner
 	// action (Recyclarr preview/apply). Tests inject a fake; the setup flow
 	// itself never calls it.
-	runTool func(ctx context.Context, name string, args ...string) ([]byte, error)
+	runTool          func(ctx context.Context, name string, args ...string) ([]byte, error)
+	recyclarrCfgPath func() (string, error)
 }
 
 func NewManager(home string, store *config.Store) *Manager {
-	m := &Manager{home: home, store: store, installer: companioninstall.New(companioninstall.Options{}), openApp: openNativeApp, runTool: defaultRunTool}
+	m := &Manager{home: home, store: store, installer: companioninstall.New(companioninstall.Options{}), openApp: openNativeApp, runTool: defaultRunTool, recyclarrCfgPath: recyclarrConfigPath}
 	m.installHost = platform.NewHostService(nil, nil).Install
 	m.installCompanion = platform.NewCompanionService(nil).Install
 	m.applicationDirs = []string{"/Applications"}

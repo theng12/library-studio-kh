@@ -224,7 +224,7 @@ func (m *Manager) configure() {
 			return
 		}
 	}
-	_ = m.update("ready", "Selected apps, folders, native links and search sources passed their checks. Automatic cleanup remains at your saved setting.", -1, nil)
+	_ = m.update("ready", "Selected apps, folders, native links and search sources passed their checks. Optional helper configurations were written or kept; their runtime was not started or verified. Automatic cleanup remains at your saved setting.", -1, nil)
 }
 
 func (m *Manager) verifySources(c config.Config) error {
