@@ -49,7 +49,7 @@ func (a *Arr) CompanionSettings() (ArrSettings, error) {
 			RemoveCompletedDownloads: c["removeCompletedDownloads"] == true,
 		})
 	}
-	if a.Name == "Sonarr" || a.Name == "Radarr" {
+	if a.Name == "Sonarr" || a.Name == "Radarr" || a.Name == "Whisparr" {
 		cfg, err := a.namingConfig()
 		if err != nil {
 			out.NamingError = a.SafeError(err).Error()

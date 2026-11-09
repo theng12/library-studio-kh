@@ -330,7 +330,7 @@ func validateRequest(req Request) error {
 			return errors.New("select each supported companion only once")
 		}
 		seen[id] = true
-		if companioninstall.Optional(id) {
+		if helperApp(id) {
 			// Optional helpers have no port or library of their own; they are
 			// configured from the instances they assist.
 			continue
@@ -340,7 +340,7 @@ func validateRequest(req Request) error {
 			return errors.New("choose a different port from 1024 to 65535 for each selected app")
 		}
 		ports[port] = true
-		if id == companioninstall.Sonarr || id == companioninstall.Radarr || id == companioninstall.Lidarr {
+		if id == companioninstall.Sonarr || id == companioninstall.Radarr || id == companioninstall.Lidarr || id == companioninstall.Whisparr {
 			if !filepath.IsAbs(req.Roots[string(id)]) {
 				return errors.New("choose an absolute library root for each selected media app")
 			}

@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"librarystudio/internal/companioninstall"
 	"librarystudio/internal/platform"
 )
 
@@ -25,7 +24,7 @@ func (m *Manager) installStartup() (bool, error) {
 		if !app.Managed {
 			continue
 		}
-		if companioninstall.Optional(app.ID) {
+		if helperApp(app.ID) {
 			// Optional helpers never get a Library-managed login job; whether
 			// a vendor app starts at login is the owner's own switch.
 			continue

@@ -1043,7 +1043,7 @@ func defaultCategory(app string) string {
 }
 
 func canonicalArrName(s string) string {
-	for _, name := range []string{"Sonarr", "Radarr", "Lidarr"} {
+	for _, name := range []string{"Sonarr", "Radarr", "Lidarr", "Whisparr"} {
 		if strings.EqualFold(strings.TrimSpace(s), name) {
 			return name
 		}

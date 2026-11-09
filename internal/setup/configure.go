@@ -18,7 +18,7 @@ func (m *Manager) configure() {
 	req := m.job.View.Request
 	blocked := false
 	for index, app := range m.job.View.Apps {
-		if companioninstall.Optional(app.ID) {
+		if helperApp(app.ID) {
 			// Optional helpers have no native account here; they are written
 			// and verified after every selected connection exists.
 			continue
@@ -87,7 +87,7 @@ func (m *Manager) configure() {
 		}
 	}
 	for _, app := range m.job.View.Apps {
-		if app.ID == companioninstall.QBittorrent || app.ID == companioninstall.Prowlarr || companioninstall.Optional(app.ID) {
+		if app.ID == companioninstall.QBittorrent || app.ID == companioninstall.Prowlarr || helperApp(app.ID) {
 			continue
 		}
 		if c.QBit.URL == "" {
@@ -171,6 +171,13 @@ func (m *Manager) configure() {
 	}
 	// Only new managed connections are merged; edits made during checking win.
 	next := before
+	if selected(req, companioninstall.Whisparr) {
+		if before.WhisparrOn != m.job.Baseline.WhisparrOn {
+			m.block("Whisparr", "Save connection", errors.New("Whisparr's enable setting changed after planning; it was preserved"), c)
+			return
+		}
+		next.WhisparrOn = true
+	}
 	for _, app := range m.job.View.Apps {
 		if app.Managed || app.ConnectionDetected {
 			if app.ID == companioninstall.QBittorrent {
@@ -260,7 +267,7 @@ func (m *Manager) block(app, name string, err error, c config.Config) {
 
 func safeSetupError(err error, c config.Config) string {
 	text := err.Error()
-	for _, secret := range []string{c.QBit.Password, c.Sonarr.APIKey, c.Radarr.APIKey, c.Lidarr.APIKey, c.Prowlarr.APIKey, c.Bazarr.APIKey} {
+	for _, secret := range []string{c.QBit.Password, c.Sonarr.APIKey, c.Radarr.APIKey, c.Lidarr.APIKey, c.Prowlarr.APIKey, c.Bazarr.APIKey, c.Whisparr.APIKey} {
 		if secret != "" {
 			text = strings.ReplaceAll(text, secret, "[private]")
 		}

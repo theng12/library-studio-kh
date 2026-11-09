@@ -195,7 +195,7 @@ func unpackerrInspection(data []byte) (deletes bool, instances int) {
 // blocked the setup (the job is already marked blocked).
 func (m *Manager) configureOptional(c config.Config, req Request) bool {
 	for index, app := range m.job.View.Apps {
-		if !companioninstall.Optional(app.ID) {
+		if !helperApp(app.ID) {
 			continue
 		}
 		var (

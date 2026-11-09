@@ -80,7 +80,7 @@ func (m *Manager) install(ctx context.Context) {
 			}
 			app.State = "needs_open"
 			app.Detail = "Open this app through macOS and complete any first-launch approval, then check connections."
-		} else if companioninstall.Optional(app.ID) {
+		} else if helperApp(app.ID) {
 			app.State = "needs_config"
 			app.Detail = "Existing installation kept exactly as it is. Setup reviews its configuration while checking; nothing was changed now."
 		} else {
@@ -129,6 +129,8 @@ func setArr(c *config.Config, id companioninstall.AppID, a config.App) {
 		c.Lidarr = a
 	case companioninstall.Prowlarr:
 		c.Prowlarr = a
+	case companioninstall.Whisparr:
+		c.Whisparr = a
 	}
 }
 func getArr(c config.Config, id companioninstall.AppID) config.App {
@@ -141,6 +143,8 @@ func getArr(c config.Config, id companioninstall.AppID) config.App {
 		return c.Lidarr
 	case companioninstall.Prowlarr:
 		return c.Prowlarr
+	case companioninstall.Whisparr:
+		return c.Whisparr
 	}
 	return config.App{}
 }
@@ -229,6 +233,9 @@ func (m *Manager) Continue(id string) (Job, error) {
 
 func (m *Manager) connectionConfig() config.Config {
 	c := m.store.Get()
+	if selected(m.job.View.Request, companioninstall.Whisparr) {
+		c.WhisparrOn = true
+	}
 	for _, app := range m.job.View.Apps {
 		if app.Managed || app.ConnectionDetected {
 			if app.ID == companioninstall.QBittorrent {
@@ -249,6 +256,9 @@ func (m *Manager) addCheck(app, name, state, detail string) error {
 }
 
 func nativePing(c config.Config, app AppStep) error {
+	if app.ID == companioninstall.Whisparr && !c.WhisparrOn {
+		return errors.New("Whisparr is not enabled")
+	}
 	if app.ID == companioninstall.QBittorrent {
 		if c.QBit.URL == "" {
 			return errors.New("connect the existing qBittorrent account in Settings")
@@ -261,6 +271,11 @@ func nativePing(c config.Config, app AppStep) error {
 		return fmt.Errorf("connect the existing %s account in Settings", app.Name)
 	}
 	return stock.NewArr(app.Name, a.URL, a.APIKey).Ping()
+}
+
+// Helpers use configuration files; optional native apps still need API readiness.
+func helperApp(id companioninstall.AppID) bool {
+	return id == companioninstall.Recyclarr || id == companioninstall.Unpackerr
 }
 
 func selected(req Request, id companioninstall.AppID) bool {
