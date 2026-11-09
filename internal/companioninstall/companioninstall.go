@@ -37,6 +37,10 @@ const (
 	// select them explicitly, and nothing runs them on its own.
 	Recyclarr AppID = "recyclarr"
 	Unpackerr AppID = "unpackerr"
+	// Whisparr is an optional native Arr app (v3, Radarr-derived). It is off
+	// by default and never part of the stock five. The owner must enable it
+	// explicitly; nothing queries or starts it without that choice.
+	Whisparr AppID = "whisparr"
 )
 
 // App is one entry in the official companion registry.
@@ -413,6 +417,19 @@ var specs = []appSpec{
 		repo:         "unpackerr",
 		endpoint:     "https://api.github.com/repos/Unpackerr/unpackerr/releases/latest",
 		assetPattern: `^Unpackerr\.dmg$`,
+	},
+	// Whisparr v3 (Radarr-derived) ships a macOS arm64 app zip from its own
+	// GitHub repo. The official source is whisparr/whisparr-eros, not the
+	// v2-develop whisparr/whisparr. Version, URL, digest and size always
+	// come from the live release; nothing here is pinned.
+	{
+		app:          App{ID: Whisparr, Name: "Whisparr", BundleID: "com.osx.whisparr.video", Optional: true},
+		bundleName:   "Whisparr.app",
+		kind:         githubSource,
+		owner:        "whisparr",
+		repo:         "whisparr-eros",
+		endpoint:     "https://api.github.com/repos/whisparr/whisparr-eros/releases/latest",
+		assetPattern: `^osx-arm64-app\.zip$`,
 	},
 }
 

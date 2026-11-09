@@ -312,8 +312,8 @@ func qbitDoer(t *testing.T, version, digest string, image []byte) doerFunc {
 
 func TestRegistryHasOfficialApps(t *testing.T) {
 	apps := Registry()
-	if len(apps) != 7 {
-		t.Fatalf("got %d apps, want 7", len(apps))
+	if len(apps) != 8 {
+		t.Fatalf("got %d apps, want 8", len(apps))
 	}
 	want := map[AppID]string{
 		QBittorrent: "org.qbittorrent.qBittorrent",
@@ -323,8 +323,9 @@ func TestRegistryHasOfficialApps(t *testing.T) {
 		Prowlarr:    "com.osx.prowlarr.com",
 		Recyclarr:   "",
 		Unpackerr:   "io.golift.unpackerr",
+		Whisparr:    "com.osx.whisparr.video",
 	}
-	wantOptional := map[AppID]bool{Recyclarr: true, Unpackerr: true}
+	wantOptional := map[AppID]bool{Recyclarr: true, Unpackerr: true, Whisparr: true}
 	for _, app := range apps {
 		if app.BundleID != want[app.ID] {
 			t.Errorf("%s bundle = %q, want %q", app.ID, app.BundleID, want[app.ID])
@@ -336,7 +337,7 @@ func TestRegistryHasOfficialApps(t *testing.T) {
 			t.Errorf("Optional(%s) disagrees with the registry", app.ID)
 		}
 	}
-	if !Optional(Recyclarr) || !Optional(Unpackerr) || Optional(Sonarr) || Optional(AppID("readarr")) {
+	if !Optional(Recyclarr) || !Optional(Unpackerr) || !Optional(Whisparr) || Optional(Sonarr) || Optional(AppID("readarr")) {
 		t.Fatal("optional helpers are not marked correctly; Readarr is not part of this app at all")
 	}
 }

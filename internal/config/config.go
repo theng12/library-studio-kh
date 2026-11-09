@@ -48,6 +48,10 @@ type Config struct {
 	Prowlarr                App     `json:"prowlarr"`
 	BazarrOn                bool    `json:"bazarrOn"`
 	Bazarr                  App     `json:"bazarr"`
+	// Whisparr is an optional native Arr app (v3, Radarr-derived). Off by
+	// default; nothing queries or starts it unless the owner enables it.
+	WhisparrOn bool `json:"whisparrOn"`
+	Whisparr   App  `json:"whisparr"`
 }
 
 const StagedCleanupNotice = "The old permanent-delete cleanup is retired. Use the staged cleanup switch instead."
@@ -91,8 +95,11 @@ func (c Config) Validate() error {
 	if c.StagedCleanupOn && c.DownloadPath == "" && strings.TrimSpace(c.ManagedTrashPath) == "" {
 		return errors.New("set the local download folder or a managed _trash folder before turning staged cleanup on")
 	}
-	for name, u := range map[string]string{"qBittorrent": c.QBit.URL, "Sonarr": c.Sonarr.URL, "Radarr": c.Radarr.URL, "Lidarr": c.Lidarr.URL, "Prowlarr": c.Prowlarr.URL, "Bazarr": c.Bazarr.URL} {
+	for name, u := range map[string]string{"qBittorrent": c.QBit.URL, "Sonarr": c.Sonarr.URL, "Radarr": c.Radarr.URL, "Lidarr": c.Lidarr.URL, "Prowlarr": c.Prowlarr.URL, "Bazarr": c.Bazarr.URL, "Whisparr": c.Whisparr.URL} {
 		if name == "Bazarr" && !c.BazarrOn {
+			continue
+		}
+		if name == "Whisparr" && !c.WhisparrOn {
 			continue
 		}
 		if u == "" {
