@@ -33,7 +33,7 @@ func (f *fakeSource) Files(hash string) ([]stock.TorrentFile, error) {
 	}
 	return fs, nil
 }
-func (f *fakeSource) Proofs() (map[string][]stock.ImportProof, []string, error) {
+func (f *fakeSource) Proofs(app string) (map[string][]stock.ImportProof, []string, error) {
 	return f.proofs, f.proofProblems, nil
 }
 func (f *fakeSource) Queued() (map[string]string, []string, error) { return f.queued, nil, nil }

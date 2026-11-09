@@ -37,7 +37,7 @@ const (
 type CleanupSource interface {
 	Torrents() ([]stock.CleanupTorrent, error)
 	Files(hash string) ([]stock.TorrentFile, error)
-	Proofs() (map[string][]stock.ImportProof, []string, error)
+	Proofs(app string) (map[string][]stock.ImportProof, []string, error)
 	Queued() (map[string]string, []string, error)
 	Stop(hash string) error
 	RemoveMetadata(hash string) error
@@ -130,6 +130,7 @@ type CleanupStatus struct {
 
 // CleanupResult is returned by preview, run and restore.
 type CleanupResult struct {
+	App      string        `json:"app,omitempty"`
 	Status   CleanupStatus `json:"status"`
 	Actions  []string      `json:"actions"`
 	Purged   int           `json:"purged"`
@@ -182,24 +183,38 @@ func (e *StagedCleanup) Status(c config.Config) CleanupStatus {
 // Preview is the dry run: it reads the apps and verifies candidates, but never
 // stops a torrent, moves a file or changes saved state.
 func (e *StagedCleanup) Preview(c config.Config) (CleanupResult, error) {
-	return e.plan(c, false)
+	return e.PreviewApp(c, "")
+}
+
+// PreviewApp restricts candidates to one native app while checking every app's queue.
+func (e *StagedCleanup) PreviewApp(c config.Config, app string) (CleanupResult, error) {
+	return e.plan(c, false, app)
 }
 
 // Run applies every stage that is due, and refuses when the owner has not
 // switched the policy on.
 func (e *StagedCleanup) Run(c config.Config) (CleanupResult, error) {
+	return e.RunApp(c, "")
+}
+
+func (e *StagedCleanup) RunApp(c config.Config, app string) (CleanupResult, error) {
 	if !c.StagedCleanupOn {
 		return CleanupResult{Status: e.Status(c)}, ErrCleanupDisabled
 	}
-	return e.plan(c, true)
+	return e.plan(c, true, app)
 }
 
-func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, error) {
+var ErrCleanupApp = errors.New("choose Sonarr, Radarr or Lidarr for scoped cleanup")
+
+func (e *StagedCleanup) plan(c config.Config, execute bool, app string) (CleanupResult, error) {
+	if app != "" && app != "Sonarr" && app != "Radarr" && app != "Lidarr" {
+		return CleanupResult{}, ErrCleanupApp
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	now := e.Now()
 	st := e.baseStatus(c)
-	res := CleanupResult{Status: st, Actions: []string{}}
+	res := CleanupResult{App: app, Status: st, Actions: []string{}}
 	recs, err := e.load()
 	if err != nil {
 		return res, err
@@ -218,7 +233,16 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 		res.Status = st
 		return res, nil
 	}
-	e.reconcile(recs, c, now)
+	selected := recs
+	if app != "" {
+		selected = nil
+		for _, rec := range recs {
+			if rec.App == app {
+				selected = append(selected, rec)
+			}
+		}
+	}
+	e.reconcile(selected, c, now)
 
 	block := func(reason string) { st.Blocked = append(st.Blocked, reason) }
 	torrents, err := e.Source.Torrents()
@@ -230,7 +254,7 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 	for _, t := range torrents {
 		byTorrent[strings.ToUpper(t.Hash)] = t
 	}
-	proofs, proofProblems, err := e.Source.Proofs()
+	proofs, proofProblems, err := e.Source.Proofs(app)
 	if err != nil {
 		block("Library history could not be read, so nothing is changed this round.")
 	}
@@ -245,7 +269,7 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 		block(p)
 	}
 	global := len(st.Blocked) > 0
-	ctx := &settleCtx{e: e, c: c, now: now, execute: execute, torrents: byTorrent, queued: queued, res: &res}
+	ctx := &settleCtx{e: e, c: c, app: app, now: now, execute: execute, torrents: byTorrent, queued: queued, res: &res}
 	if !global && c.PressureBypassRetention && execute {
 		// Free already-verified space before hashing any new large downloads.
 		ctx.purge(recs, false)
@@ -290,6 +314,9 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 				continue
 			}
 			p := ps[0]
+			if app != "" && p.App != app {
+				continue
+			}
 			// A missing or future import time would skip or misplace every
 			// retention wait, so it is never guessed.
 			if p.ImportedAt.IsZero() || p.ImportedAt.After(now.Add(clockSkew)) {
@@ -369,6 +396,7 @@ func (e *StagedCleanup) plan(c config.Config, execute bool) (CleanupResult, erro
 }
 
 type settleCtx struct {
+	app      string
 	e        *StagedCleanup
 	c        config.Config
 	now      time.Time
@@ -385,6 +413,9 @@ func (x *settleCtx) block(rec *cleanupRecord, reason string) {
 }
 
 func (x *settleCtx) settle(rec *cleanupRecord) {
+	if x.app != "" && rec.App != x.app {
+		return
+	}
 	if app, ok := x.queued[strings.ToUpper(rec.Hash)]; ok {
 		x.block(rec, "still handled by "+app+", so it stays protected.")
 		return
@@ -588,6 +619,9 @@ func (x *settleCtx) purge(recs []*cleanupRecord, reportShortfall bool) {
 	}
 	eligible := []*cleanupRecord{}
 	for _, r := range recs {
+		if x.app != "" && r.App != x.app {
+			continue
+		}
 		if r.State == phaseNative || (x.c.PressureBypassRetention && (r.State == phaseStaging || r.State == phaseManaged)) {
 			eligible = append(eligible, r)
 		}
@@ -612,6 +646,10 @@ func (x *settleCtx) purge(recs []*cleanupRecord, reportShortfall bool) {
 				x.block(rec, "the torrent is incomplete, being checked or moving; it stays protected.")
 				continue
 			}
+		}
+		if t, listed := x.torrents[strings.ToUpper(rec.Hash)]; listed && x.app != "" && !seedRuleMet(x.c, t) {
+			x.block(rec, "the seeding limit has not been reached; it stays protected.")
+			continue
 		}
 		if x.c.PressureBypassRetention && rec.State != phaseNative {
 			if err := proveImported(rec.ImportedPath, rec.Files); err != nil {
@@ -1290,17 +1328,24 @@ func (l liveCleanupSource) Files(hash string) ([]stock.TorrentFile, error) {
 	return qb.TorrentFiles(hash)
 }
 
-func (l liveCleanupSource) Proofs() (map[string][]stock.ImportProof, []string, error) {
+func (l liveCleanupSource) Proofs(app string) (map[string][]stock.ImportProof, []string, error) {
 	out, problems := map[string][]stock.ImportProof{}, []string{}
+	configured := app == ""
 	for _, a := range arrs(l.get()) {
+		configured = configured || a.Name == app
 		imports, err := a.WholeImports()
 		if err != nil {
-			problems = append(problems, a.Name+" history could not be read: "+stock.HistoryReadFailure(err)+".")
+			if app == "" || app == a.Name {
+				problems = append(problems, a.Name+" history could not be read: "+stock.HistoryReadFailure(err)+".")
+			}
 			continue
 		}
 		for id, p := range imports {
 			out[id] = append(out[id], p)
 		}
+	}
+	if !configured {
+		return nil, nil, errors.New("selected cleanup app is not configured")
 	}
 	return out, problems, nil
 }

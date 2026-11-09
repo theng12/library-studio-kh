@@ -27,7 +27,7 @@ func TestHistoryDiagnosticKeepsCleanupClosed(t *testing.T) {
 			defer server.Close()
 			c := config.Config{Lidarr: config.App{URL: server.URL, APIKey: "private-key-private-host"}}
 			native := liveCleanupSource{get: func() config.Config { return c }}
-			proofs, problems, err := native.Proofs()
+			proofs, problems, err := native.Proofs("")
 			want := "Lidarr history could not be read: " + tc.detail + "."
 			if err != nil || len(proofs) != 0 || len(problems) != 1 || problems[0] != want {
 				t.Fatalf("unexpected proof result: %v %v %v", proofs, problems, err)

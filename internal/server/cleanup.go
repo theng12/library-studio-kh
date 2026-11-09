@@ -16,7 +16,11 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 		writeJSON(w, 200, s.cleanup.Status(s.Store.Get()))
 	})
 	mux.HandleFunc("POST /api/cleanup/preview", func(w http.ResponseWriter, r *http.Request) {
-		res, err := s.cleanup.Preview(s.Store.Get())
+		res, err := s.cleanup.PreviewApp(s.Store.Get(), r.URL.Query().Get("app"))
+		if errors.Is(err, library.ErrCleanupApp) {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
 		if err != nil {
 			writeJSON(w, 500, map[string]string{"error": err.Error()})
 			return
@@ -24,7 +28,11 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 		writeJSON(w, 200, res)
 	})
 	mux.HandleFunc("POST /api/cleanup/run", func(w http.ResponseWriter, r *http.Request) {
-		res, err := s.cleanup.Run(s.Store.Get())
+		res, err := s.cleanup.RunApp(s.Store.Get(), r.URL.Query().Get("app"))
+		if errors.Is(err, library.ErrCleanupApp) {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
 		if errors.Is(err, library.ErrCleanupDisabled) {
 			writeJSON(w, 409, map[string]string{"error": "Turn staged cleanup on in Settings first."})
 			return
