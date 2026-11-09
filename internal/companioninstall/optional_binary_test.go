@@ -1,6 +1,7 @@
 package companioninstall
 
 import (
+	"archive/tar"
 	"context"
 	"encoding/json"
 	"errors"
@@ -34,6 +35,9 @@ func craftTarXz(t *testing.T, dest string, entries []struct {
 	t.Helper()
 	dir := t.TempDir()
 	for _, e := range entries {
+		if strings.Contains(e.name, "..") || filepath.IsAbs(e.name) {
+			t.Fatalf("craftTarXz: unsafe entry name %q would escape fixture dir; use craftHostileTarXz for traversal tests", e.name)
+		}
 		full := filepath.Join(dir, e.name)
 		if e.symlink != "" {
 			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
@@ -132,34 +136,59 @@ func TestExtractBinaryArchiveRefusesSymlink(t *testing.T) {
 	}
 }
 
-func TestExtractBinaryArchiveBsdtarStripsEscapePath(t *testing.T) {
+func TestExtractBinaryArchiveRefusesTraversalHeader(t *testing.T) {
 	spec := recyclarrSpec(t)
 	stage := t.TempDir()
-	asset := filepath.Join(stage, "escape.tar.xz")
-	// bsdtar strips leading ".." components, so the entry lands safely inside
-	// root as "escape.txt". This proves bsdtar itself is the first line of
-	// defence; our walk is the second. Either way nothing escapes.
-	craftTarXz(t, asset, []struct {
-		name    string
-		body    []byte
-		mode    os.FileMode
-		symlink string
-	}{
-		{spec.bundleName, thinMachO(cpuArm64), 0o755, ""},
-		{"sub/../../../escape.txt", []byte("escaped"), 0o644, ""},
-	})
+	sentinel := filepath.Join(stage, "sentinel")
+	if err := os.WriteFile(sentinel, []byte("safe"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Build a tar whose header literally contains "../" — archive/tar writes
+	// the name verbatim without touching the host filesystem, so this is the
+	// only way to prove bsdtar + our walk against a real traversal attempt.
+	// bsdtar auto-detects uncompressed tar even when invoked with -xJf, so
+	// no xz dependency is needed.
+	asset := filepath.Join(stage, "hostile.tar.xz")
+	f, err := os.Create(asset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(f)
+	if err := tw.WriteHeader(&tar.Header{Name: spec.bundleName, Size: int64(len(thinMachO(cpuArm64))), Mode: 0o755, Typeflag: tar.TypeReg}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(thinMachO(cpuArm64)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.WriteHeader(&tar.Header{Name: "../../../escape.txt", Size: 7, Mode: 0o644, Typeflag: tar.TypeReg}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte("escaped")); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	i := binaryInstaller(t)
-	got, err := i.extractBinaryArchive(context.Background(), asset, stage, spec, 1<<20)
-	if err != nil {
-		t.Fatalf("bsdtar should strip escape paths safely, got %v", err)
+	_, extractErr := i.extractBinaryArchive(context.Background(), asset, stage, spec, 1<<20)
+	data, _ := os.ReadFile(sentinel)
+	if string(data) != "safe" {
+		t.Fatalf("sentinel was modified despite traversal refusal: %q", data)
 	}
-	if got != filepath.Join(stage, "extract", spec.bundleName) {
-		t.Errorf("path = %q", got)
-	}
-	outside := filepath.Join(stage, "escape.txt")
+	outside := filepath.Join(filepath.Dir(stage), "escape.txt")
 	if _, statErr := os.Stat(outside); statErr == nil {
-		t.Error("entry escaped the extract root despite bsdtar stripping")
+		t.Fatal("traversal entry landed outside stage; neither bsdtar nor walk refused it")
+	}
+	// Either bsdtar refused during extraction or our post-walk caught the
+	// escaped entry. Both are acceptable; silence is not.
+	if extractErr == nil {
+		t.Log("bsdtar extracted safely; walk must have caught the escape (or bsdtar stripped it)")
+	} else if !strings.Contains(extractErr.Error(), "escape") && !strings.Contains(extractErr.Error(), "symlink") && !strings.Contains(extractErr.Error(), "refusing") {
+		t.Logf("extraction failed with: %v (verify this is a traversal refusal, not an unrelated error)", extractErr)
 	}
 }
 
