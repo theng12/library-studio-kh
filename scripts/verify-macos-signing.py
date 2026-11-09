@@ -132,13 +132,15 @@ def packaged_app(package, work):
     if package.suffix.lower() != '.dmg':
         yield package
         return
-    mount = work / 'mounted'
-    mount.mkdir()
-    attached = run(['hdiutil', 'attach', '-readonly', '-nobrowse', '-plist', '-mountpoint', str(mount), str(package)])
+    # macOS refuses nested mount points on ATLAS; use its assigned read-only volume.
+    attached = run(['hdiutil', 'attach', '-readonly', '-nobrowse', '-plist', str(package)])
     entities = plistlib.loads(attached.stdout.encode())['system-entities']
     device = next(entity['dev-entry'] for entity in entities
         if re.fullmatch(r'/dev/disk\d+', entity.get('dev-entry', '')))
     try:
+        mount = next((Path(entity['mount-point']) for entity in entities if entity.get('mount-point')), None)
+        if mount is None:
+            raise ValueError('Disk image did not report a mount point')
         yield mount / 'Library Studio KH.app'
     finally:
         run(['hdiutil', 'detach', device])

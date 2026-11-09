@@ -34,14 +34,23 @@ class SigningChecks(unittest.TestCase):
 
     def test_dmg_detaches_by_device_even_when_check_fails(self):
         attached = verify.plistlib.dumps({'system-entities': [
-            {'dev-entry': '/dev/disk99'}, {'dev-entry': '/dev/disk99s1'}]}).decode()
-        with patch.object(verify, 'run', return_value=SimpleNamespace(stdout=attached)) as command, patch.object(Path, 'mkdir'):
+            {'dev-entry': '/dev/disk99'}, {'dev-entry': '/dev/disk99s1', 'mount-point': '/Volumes/Assigned Fixture'}]}).decode()
+        with patch.object(verify, 'run', return_value=SimpleNamespace(stdout=attached)) as command:
             with self.assertRaises(RuntimeError):
                 with verify.packaged_app(Path('fixture.dmg'), Path('work')) as app:
-                    self.assertEqual(app, Path('work/mounted/Library Studio KH.app'))
+                    self.assertEqual(app, Path('/Volumes/Assigned Fixture/Library Studio KH.app'))
                     raise RuntimeError('fixture failure')
             self.assertEqual(command.call_args.args[0], ['hdiutil', 'detach', '/dev/disk99'])
             self.assertIn('-readonly', command.call_args_list[0].args[0])
+            self.assertNotIn('-mountpoint', command.call_args_list[0].args[0])
+
+    def test_missing_mount_point_still_detaches_device(self):
+        attached = verify.plistlib.dumps({'system-entities': [{'dev-entry': '/dev/disk99'}]}).decode()
+        with patch.object(verify, 'run', return_value=SimpleNamespace(stdout=attached)) as command:
+            with self.assertRaisesRegex(ValueError, 'mount point'):
+                with verify.packaged_app(Path('fixture.dmg'), Path('work')):
+                    self.fail('missing mount point accepted')
+            self.assertEqual(command.call_args.args[0], ['hdiutil', 'detach', '/dev/disk99'])
 
     def test_differing_builds_keep_requirements(self):
         first = {'version': '0.7.4', 'requirements': {'app': 'anchor H"abc"'}, 'hashes': {'server': 'one'}}
