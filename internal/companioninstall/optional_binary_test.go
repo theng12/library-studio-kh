@@ -136,18 +136,35 @@ func TestExtractBinaryArchiveRefusesSymlink(t *testing.T) {
 	}
 }
 
+// recordingRunner wraps realTarRunner and retains the combined stdout+stderr
+// output even when the command fails, so tests can assert against the actual
+// bsdtar diagnostic rather than just "exit status 1".
+type recordingRunner struct {
+	lastOutput []byte
+}
+
+func (r *recordingRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
+	out, err := realTarRunner{}.Run(ctx, name, args...)
+	r.lastOutput = out
+	return out, err
+}
+
 func TestExtractBinaryArchiveRefusesTraversalHeader(t *testing.T) {
 	spec := recyclarrSpec(t)
-	stage := t.TempDir()
-	sentinel := filepath.Join(stage, "sentinel")
+	// Sandbox is the parent of stage so ../../../sentinel lands exactly at
+	// sandbox/sentinel — a real file we can check after extraction.
+	sandbox := t.TempDir()
+	stage := filepath.Join(sandbox, "stage")
+	if err := os.MkdirAll(stage, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(sandbox, "sentinel")
 	if err := os.WriteFile(sentinel, []byte("safe"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Build a tar whose header literally contains "../" — archive/tar writes
-	// the name verbatim without touching the host filesystem, so this is the
-	// only way to prove bsdtar + our walk against a real traversal attempt.
-	// bsdtar auto-detects uncompressed tar even when invoked with -xJf, so
-	// no xz dependency is needed.
+	// Build a tar whose header literally contains "../../../sentinel" via
+	// archive/tar (never materializing ../ on host). bsdtar auto-detects
+	// uncompressed tar even when invoked with -xJf.
 	asset := filepath.Join(stage, "hostile.tar.xz")
 	f, err := os.Create(asset)
 	if err != nil {
@@ -160,7 +177,7 @@ func TestExtractBinaryArchiveRefusesTraversalHeader(t *testing.T) {
 	if _, err := tw.Write(thinMachO(cpuArm64)); err != nil {
 		t.Fatal(err)
 	}
-	if err := tw.WriteHeader(&tar.Header{Name: "../../../escape.txt", Size: 7, Mode: 0o644, Typeflag: tar.TypeReg}); err != nil {
+	if err := tw.WriteHeader(&tar.Header{Name: "../../../sentinel", Size: 7, Mode: 0o644, Typeflag: tar.TypeReg}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tw.Write([]byte("escaped")); err != nil {
@@ -173,22 +190,22 @@ func TestExtractBinaryArchiveRefusesTraversalHeader(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	i := binaryInstaller(t)
+	recorder := &recordingRunner{}
+	i := New(Options{
+		Tar:      "/usr/bin/tar",
+		Commands: recorder,
+		Now:      func() time.Time { return time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC) },
+	})
 	_, extractErr := i.extractBinaryArchive(context.Background(), asset, stage, spec, 1<<20)
+	if extractErr == nil {
+		t.Fatal("extraction must fail for a traversal header; got nil")
+	}
+	if !strings.Contains(string(recorder.lastOutput), "Path contains '..'") {
+		t.Fatalf("bsdtar output must contain traversal diagnostic 'Path contains '..'', got output: %q, error: %v", recorder.lastOutput, extractErr)
+	}
 	data, _ := os.ReadFile(sentinel)
 	if string(data) != "safe" {
-		t.Fatalf("sentinel was modified despite traversal refusal: %q", data)
-	}
-	outside := filepath.Join(filepath.Dir(stage), "escape.txt")
-	if _, statErr := os.Stat(outside); statErr == nil {
-		t.Fatal("traversal entry landed outside stage; neither bsdtar nor walk refused it")
-	}
-	// Either bsdtar refused during extraction or our post-walk caught the
-	// escaped entry. Both are acceptable; silence is not.
-	if extractErr == nil {
-		t.Log("bsdtar extracted safely; walk must have caught the escape (or bsdtar stripped it)")
-	} else if !strings.Contains(extractErr.Error(), "escape") && !strings.Contains(extractErr.Error(), "symlink") && !strings.Contains(extractErr.Error(), "refusing") {
-		t.Logf("extraction failed with: %v (verify this is a traversal refusal, not an unrelated error)", extractErr)
+		t.Fatalf("sentinel was overwritten despite traversal refusal: %q", data)
 	}
 }
 
