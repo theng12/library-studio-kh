@@ -426,10 +426,10 @@ var specs = []appSpec{
 		app:          App{ID: Whisparr, Name: "Whisparr", BundleID: "com.osx.whisparr.video", Optional: true},
 		bundleName:   "Whisparr.app",
 		kind:         githubSource,
-		owner:        "whisparr",
-		repo:         "whisparr-eros",
-		endpoint:     "https://api.github.com/repos/whisparr/whisparr-eros/releases/latest",
-		assetPattern: `^osx-arm64-app\.zip$`,
+		owner:        "Whisparr",
+		repo:         "Whisparr-Eros",
+		endpoint:     "https://api.github.com/repos/Whisparr/Whisparr-Eros/releases/latest",
+		assetPattern: `^Whisparr\.eros\.[0-9]+(?:\.[0-9]+)+(?:-[0-9A-Za-z.-]+)?\.osx-arm64-app\.zip$`,
 	},
 }
 

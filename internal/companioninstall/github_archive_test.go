@@ -15,8 +15,8 @@ func TestInstallGitHubArchiveRoutes(t *testing.T) {
 		id          AppID
 		foreign     bool
 	}{
-		{"Whisparr ZIP", "osx-arm64-app.zip", Whisparr, false},
-		{"Whisparr foreign bundle", "osx-arm64-app.zip", Whisparr, true},
+		{"Whisparr ZIP", "Whisparr.eros.9.1.0.osx-arm64-app.zip", Whisparr, false},
+		{"Whisparr foreign bundle", "Whisparr.eros.9.1.0.osx-arm64-app.zip", Whisparr, true},
 		{"Unpackerr DMG", "Unpackerr.dmg", Unpackerr, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -1,0 +1,24 @@
+{
+  "sourceMetadataSHA256": "9cd022175f04608fcac40a3c69a46bb86bd6434815ef387810206351c9b7abbc",
+  "tag_name": "v3.6.5-release.1886",
+  "assets": [
+    {
+      "name": "Whisparr.eros.3.6.5-release.1886.osx-arm64-app.zip",
+      "size": 82827892,
+      "digest": "sha256:d18ad000d44189ff6b8bc2d644588c7a7f57257a16145d27f31047c6de222f01",
+      "browser_download_url": "https://github.com/Whisparr/Whisparr-Eros/releases/download/v3.6.5-release.1886/Whisparr.eros.3.6.5-release.1886.osx-arm64-app.zip"
+    },
+    {
+      "name": "Whisparr.eros.3.6.5-release.1886.osx-arm64.tar.gz",
+      "size": 118837860,
+      "digest": "sha256:c20eae33d4e058ea86bfc9252ec0615f948f828a34071ce73238183d70f33404",
+      "browser_download_url": "https://github.com/Whisparr/Whisparr-Eros/releases/download/v3.6.5-release.1886/Whisparr.eros.3.6.5-release.1886.osx-arm64.tar.gz"
+    },
+    {
+      "name": "Whisparr.eros.3.6.5-release.1886.osx-x64-app.zip",
+      "size": 86689647,
+      "digest": "sha256:e0fa08e1ea692d3b1f8b00cab648f7c0ec294d2abe15ab53bb359bde3566dace",
+      "browser_download_url": "https://github.com/Whisparr/Whisparr-Eros/releases/download/v3.6.5-release.1886/Whisparr.eros.3.6.5-release.1886.osx-x64-app.zip"
+    }
+  ]
+}
