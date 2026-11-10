@@ -8,9 +8,9 @@ let token = sessionStorage.getItem("token") || "";
 function clearLocalToken() { token = ""; sessionStorage.removeItem("token"); }
 window.libraryClearToken = clearLocalToken;
 const $ = (s) => document.querySelector(s);
-const ARRS = ["sonarr", "radarr", "lidarr", "prowlarr", "bazarr"];
-const NAMES = { sonarr: "Sonarr (TV)", radarr: "Radarr (films)", lidarr: "Lidarr (music)", prowlarr: "Prowlarr (search sites)", bazarr: "Bazarr (subtitles · optional)" };
-const PORTS = { sonarr: 8989, radarr: 7878, lidarr: 8686, prowlarr: 9696, bazarr: 6767 };
+const ARRS = ["sonarr", "radarr", "lidarr", "prowlarr", "bazarr", "whisparr"];
+const NAMES = { sonarr: "Sonarr (TV)", radarr: "Radarr (films)", lidarr: "Lidarr (music)", prowlarr: "Prowlarr (search sites)", bazarr: "Bazarr (subtitles · optional)", whisparr: "Whisparr (optional)" };
+const PORTS = { sonarr: 8989, radarr: 7878, lidarr: 8686, prowlarr: 9696, bazarr: 6767, whisparr: 6969 };
 const AUTH_FORM_PATHS = new Set(["/api/auth/login", "/api/auth/setup", "/api/auth/password"]);
 const AUTH = { available: false, authenticated: false, setupRequired: false, rememberDays: 30, sessionHours: 12, minPasswordLength: 6 };
 let current = null;
@@ -519,6 +519,7 @@ function fillForm(st) {
   $("#remote-link-box").hidden = !remote.url;
   $("#remote-link").value = remote.url || "";
   f.bazarrOn.checked = !!c.bazarrOn;
+  f.whisparrOn.checked = !!c.whisparrOn;
   f.downloadPath.value = c.downloadPath;
   f.libraryPath.value = c.libraryPath;
   f["qbittorrent.url"].value = c.qbittorrent.url;
@@ -538,6 +539,7 @@ function buildArrFields() {
     box.insertAdjacentHTML("beforeend",
       `<fieldset class="panel"><legend>${NAMES[a]}</legend>` +
       (a === "bazarr" ? `<label class="check"><input type="checkbox" name="bazarrOn"> Enable subtitle controls</label><p class="muted">English searches run when you request them in Library. Bazarr's own background tasks are controlled separately.</p>` : "") +
+      (a === "whisparr" ? `<label class="check"><input type="checkbox" name="whisparrOn"> Enable Whisparr connection</label><p class="muted">Off by default. Save an address and API key to connect an existing app. Installation and first-run compatibility remain unverified. Check Activity for connection health; saving alone does not prove it is running.</p>` : "") +
       `<label>Address <input name="${a}.url" placeholder="http://127.0.0.1:${PORTS[a]}" inputmode="url"></label>` +
       `<label>API key <span class="hint">· in ${NAMES[a].split(" ")[0]}, Settings → General</span><input name="${a}.apiKey" type="password" autocomplete="off" data-secret="${a}"></label></fieldset>`);
   }
@@ -918,7 +920,7 @@ $("#form").addEventListener("submit", async (ev) => {
   const f = ev.target, msg = $("#form-msg"), btn = f.querySelector("button.primary");
   const body = {
     tailscaleOn: f.tailscaleOn.checked, tailscalePort: Number(f.tailscalePort.value),
-    bazarrOn: f.bazarrOn.checked,
+    bazarrOn: f.bazarrOn.checked, whisparrOn: f.whisparrOn.checked,
     downloadPath: f.downloadPath.value.trim(), libraryPath: f.libraryPath.value.trim(),
     qbittorrent: { url: f["qbittorrent.url"].value.trim(), username: f["qbittorrent.username"].value.trim(), password: f["qbittorrent.password"].value },
   };

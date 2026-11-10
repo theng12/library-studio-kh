@@ -5,13 +5,13 @@
 
 /* Pure helpers (unit tested; no DOM) */
 const SETUP_APP_IDS = ["qbittorrent", "sonarr", "radarr", "lidarr", "prowlarr"];
-// Optional helpers own no port or library folder and are never chosen by a
-// default; they only join the plan when the owner ticks them.
-const SETUP_OPTIONAL_IDS = ["recyclarr", "unpackerr"];
-const SETUP_ROOT_IDS = ["sonarr", "radarr", "lidarr"];
+// Optional apps only join the plan when selected; Whisparr is a native app.
+const SETUP_OPTIONAL_IDS = ["recyclarr", "unpackerr", "whisparr"];
+const SETUP_NATIVE_IDS = SETUP_APP_IDS.concat("whisparr");
+const SETUP_ROOT_IDS = ["sonarr", "radarr", "lidarr", "whisparr"];
 const SETUP_ACTIVE_STATES = ["planning", "installing", "checking", "configuring"];
 const SETUP_OPEN_STATES = ["needs_open", "opened", "blocked"];
-const SETUP_APP_NAMES = { qbittorrent: "qBittorrent", sonarr: "Sonarr", radarr: "Radarr", lidarr: "Lidarr", prowlarr: "Prowlarr", recyclarr: "Recyclarr", unpackerr: "Unpackerr" };
+const SETUP_APP_NAMES = { qbittorrent: "qBittorrent", sonarr: "Sonarr", radarr: "Radarr", lidarr: "Lidarr", prowlarr: "Prowlarr", recyclarr: "Recyclarr", unpackerr: "Unpackerr", whisparr: "Whisparr" };
 
 function setupClientTarget(value) {
   const raw = String(value == null ? "" : value).trim();
@@ -82,14 +82,14 @@ function setupRequest(values, defaults) {
   }
   if (!apps.length) throw new Error("Choose at least one app to set up.");
   const roots = {}, categories = {}, ports = {};
-  for (const id of SETUP_ROOT_IDS) {
+  for (const id of SETUP_ROOT_IDS.filter((id) => id !== "whisparr" || apps.includes(id))) {
     roots[id] = setupString(given.roots && given.roots[id], server.roots && server.roots[id]);
     categories[id] = setupString(given.categories && given.categories[id], server.categories && server.categories[id]);
   }
-  for (const id of SETUP_APP_IDS) ports[id] = setupPort(given.ports && given.ports[id], server.ports && server.ports[id]);
+  for (const id of SETUP_NATIVE_IDS.filter((id) => id !== "whisparr" || apps.includes(id))) ports[id] = setupPort(given.ports && given.ports[id], server.ports && server.ports[id]);
   const usedPorts = new Map();
   for (const id of apps) {
-    if (!SETUP_APP_IDS.includes(id)) continue; // optional helpers have no port
+    if (!SETUP_NATIVE_IDS.includes(id)) continue; // helpers have no port
     const other = usedPorts.get(ports[id]);
     if (other) throw new Error((SETUP_APP_NAMES[other] || other) + " and " + (SETUP_APP_NAMES[id] || id) + " both use port " + ports[id] + ". Choose a different port for one of them.");
     usedPorts.set(ports[id], id);
@@ -248,7 +248,7 @@ function fillSetupForm(defaults, force) {
     setupSetField("root." + id, d.roots && d.roots[id]);
     setupSetField("category." + id, d.categories && d.categories[id]);
   }
-  for (const id of SETUP_APP_IDS) setupSetField("port." + id, d.ports && d.ports[id]);
+  for (const id of SETUP_NATIVE_IDS) setupSetField("port." + id, d.ports && d.ports[id]);
   setupSetField("renameTV", d.renameTV !== false);
   setupSetField("startAtLogin", d.startAtLogin === true);
   setupForm.dataset.filled = "1";
@@ -263,7 +263,7 @@ function setupRememberMusicProfiles(request) {
 
 function readSetupForm() {
   const apps = {}, roots = {}, categories = {}, ports = {};
-  for (const id of SETUP_APP_IDS) {
+  for (const id of SETUP_NATIVE_IDS) {
     const field = setupField("app." + id);
     apps[id] = !!(field && field.checked);
     ports[id] = setupField("port." + id) ? setupField("port." + id).value : "";
@@ -299,9 +299,9 @@ function setupReview(request) {
   add("Apps", (request.apps || []).map((id) => SETUP_APP_NAMES[id] || id).join(", "));
   add("App folder", request.appDir);
   add("Download folder", request.downloadPath);
-  add("Root folders", SETUP_ROOT_IDS.map((id) => SETUP_APP_NAMES[id] + ": " + ((request.roots && request.roots[id]) || "not set")).join(" · "));
-  add("Ports", SETUP_APP_IDS.map((id) => SETUP_APP_NAMES[id] + ": " + ((request.ports && request.ports[id]) || "not reported")).join(" · "));
-  add("Categories", SETUP_ROOT_IDS.map((id) => SETUP_APP_NAMES[id] + ": " + ((request.categories && request.categories[id]) || "not set")).join(" · "));
+  add("Root folders", SETUP_ROOT_IDS.filter((id) => id !== "whisparr" || request.apps.includes(id)).map((id) => SETUP_APP_NAMES[id] + ": " + ((request.roots && request.roots[id]) || "not set")).join(" · "));
+  add("Ports", SETUP_NATIVE_IDS.filter((id) => id !== "whisparr" || request.apps.includes(id)).map((id) => SETUP_APP_NAMES[id] + ": " + ((request.ports && request.ports[id]) || "not reported")).join(" · "));
+  add("Categories", SETUP_ROOT_IDS.filter((id) => id !== "whisparr" || request.apps.includes(id)).map((id) => SETUP_APP_NAMES[id] + ": " + ((request.categories && request.categories[id]) || "not set")).join(" · "));
   add("Rename TV", request.renameTV ? "On" : "Off");
   add("Start at login", request.startAtLogin ? "On" : "Off");
   box.append(facts);
@@ -316,7 +316,7 @@ function setupAppActions(app, view) {
     open.setAttribute("aria-label", "Open " + name);
     actions.append(open);
   }
-  if (SETUP_APP_IDS.includes(app.id) && (setupExistingApp(app) || app.state === "needs_connection")) {
+  if (SETUP_NATIVE_IDS.includes(app.id) && (setupExistingApp(app) || app.state === "needs_connection")) {
     const settings = setupButton("Open Settings", "small", () => {});
     settings.dataset.view = "settings";
     settings.setAttribute("aria-label", "Open Settings to connect " + name);

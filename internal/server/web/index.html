@@ -404,13 +404,15 @@
               <p class="muted">Setup only installs the apps you select. It never removes an app, a download or a library file, and it does not download media.</p>
             </fieldset>
             <fieldset class="setup-fieldset">
-              <legend>Optional helpers</legend>
+              <legend>Optional apps and helpers</legend>
               <div class="setup-checks">
                 <label class="check"><input type="checkbox" name="app.recyclarr"> Recyclarr — profile sync for Sonarr and Radarr</label>
                 <label class="check"><input type="checkbox" name="app.unpackerr"> Unpackerr — unpacks finished downloads</label>
+                <label class="check"><input type="checkbox" name="app.whisparr" aria-describedby="whisparr-setup-note"> Whisparr — optional library app</label>
               </div>
               <p class="muted">Off by default. New configurations keep original archives, and existing files stay untouched. Configuration checks do not prove the helper is running. Recyclarr runs only when you choose Preview or Apply; Apply asks first.</p>
             </fieldset>
+            <p id="whisparr-setup-note" class="muted">Whisparr is off by default. Its installation and first-run compatibility remain unverified. Review its setup checks before use; an unavailable package or failed connection blocks its setup. You can connect an existing app in Settings.</p>
             <fieldset class="setup-fieldset">
               <legend>Folders</legend>
               <label>App install folder <input name="appDir" autocomplete="off" placeholder="Choose a folder on this computer"></label>
@@ -419,6 +421,7 @@
                 <label>Sonarr library folder <input name="root.sonarr" autocomplete="off"></label>
                 <label>Radarr library folder <input name="root.radarr" autocomplete="off"></label>
                 <label>Lidarr library folder <input name="root.lidarr" autocomplete="off"></label>
+                <label>Whisparr library folder <span class="hint">· only when selected</span><input name="root.whisparr" autocomplete="off"></label>
               </div>
             </fieldset>
             <fieldset class="setup-fieldset">
@@ -429,6 +432,7 @@
                 <label>Radarr <input name="port.radarr" type="number" min="1024" max="65535" inputmode="numeric"></label>
                 <label>Lidarr <input name="port.lidarr" type="number" min="1024" max="65535" inputmode="numeric"></label>
                 <label>Prowlarr <input name="port.prowlarr" type="number" min="1024" max="65535" inputmode="numeric"></label>
+                <label>Whisparr <span class="hint">· only when selected</span><input name="port.whisparr" type="number" min="1024" max="65535" inputmode="numeric"></label>
               </div>
             </fieldset>
             <fieldset class="setup-fieldset">
@@ -437,6 +441,7 @@
                 <label>Sonarr category <input name="category.sonarr" autocomplete="off"></label>
                 <label>Radarr category <input name="category.radarr" autocomplete="off"></label>
                 <label>Lidarr category <input name="category.lidarr" autocomplete="off"></label>
+                <label>Whisparr category <span class="hint">· only when selected</span><input name="category.whisparr" autocomplete="off"></label>
               </div>
             </fieldset>
             <fieldset class="setup-fieldset">
@@ -527,7 +532,17 @@
       </details>
 
       <details class="panel help-step">
-        <summary>LazyLibrarian, Mylar3 and Whisparr <span class="badge planned">Planned</span></summary>
+        <summary>Whisparr — optional library app</summary>
+        <dl class="help-facts">
+          <dt>Why</dt><dd>Connects an optional Whisparr library using its own address and API key.</dd>
+          <dt>Required</dt><dd>Optional and off by default. Enable its connection in Settings, or explicitly select it in Set up this computer.</dd>
+          <dt>Check</dt><dd>Installation and first-run compatibility remain unverified. A saved address is not a running-app check. When enabled, Activity reports connection health; setup reports failed or unavailable checks without claiming Ready.</dd>
+          <dt>Fix</dt><dd>Connect an existing app in Settings using its API key from Settings → General. Leave the key empty to keep a saved key. If setup cannot verify the official package or connect, read its error and keep Whisparr off until resolved. Turning the connection off keeps its saved address and key.</dd>
+        </dl>
+      </details>
+
+      <details class="panel help-step">
+        <summary>LazyLibrarian and Mylar3 <span class="badge planned">Planned</span></summary>
         <dl class="help-facts">
           <dt>Why</dt><dd>These are optional library apps for books, comics and other collections.</dd>
           <dt>Required</dt><dd>Optional. Not controlled here yet.</dd>
