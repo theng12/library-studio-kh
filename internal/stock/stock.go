@@ -174,7 +174,7 @@ type Arr struct {
 	c                    *http.Client
 }
 
-// NewArr: Sonarr and Radarr use API v3, Lidarr and Prowlarr use v1.
+// NewArr: Sonarr, Radarr and Whisparr use API v3; Lidarr and Prowlarr use v1.
 func NewArr(name, base, key string) *Arr {
 	api := "v3"
 	if name == "Lidarr" || name == "Prowlarr" {

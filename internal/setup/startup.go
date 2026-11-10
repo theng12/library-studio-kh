@@ -24,6 +24,11 @@ func (m *Manager) installStartup() (bool, error) {
 		if !app.Managed {
 			continue
 		}
+		if helperApp(app.ID) {
+			// Optional helpers never get a Library-managed login job; whether
+			// a vendor app starts at login is the owner's own switch.
+			continue
+		}
 		status, err := m.installCompanion(platform.CompanionServiceSpec{ID: platform.CompanionID(app.ID), AppPath: app.Path, ProfileDir: filepath.Join(m.home, "companions", string(app.ID)), Home: m.home, AtLogin: true})
 		if err != nil {
 			return false, err

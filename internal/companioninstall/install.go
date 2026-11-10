@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type bundleInfo struct {
@@ -46,6 +47,9 @@ func (i *Installer) detect(ctx context.Context, spec appSpec, appDir string) (De
 	}
 	if !info.IsDir() {
 		return result, fmt.Errorf("companioninstall: destination %q is not a folder", appDir)
+	}
+	if spec.kind == binarySource {
+		return i.detectBinary(spec, appDir)
 	}
 	bundles, err := listBundles(appDir)
 	if err != nil {
@@ -98,6 +102,65 @@ func (i *Installer) detect(ctx context.Context, spec appSpec, appDir string) (De
 	default:
 		return result, nil
 	}
+}
+
+// detectBinary reports the state of a bare command-line tool at
+// appDir/<bundleName>. Anything that is not a plain arm64 Mach-O executable we
+// installed is kept untouched (keep), and a missing file is simply missing.
+func (i *Installer) detectBinary(spec appSpec, appDir string) (DetectResult, error) {
+	result := DetectResult{AppID: spec.app.ID, State: DetectMissing}
+	path := filepath.Join(appDir, spec.bundleName)
+	st, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return result, nil
+	}
+	if err != nil {
+		return result, err
+	}
+	keep := DetectResult{AppID: spec.app.ID, Path: path, State: DetectKeep}
+	if st.Mode()&os.ModeSymlink != 0 || !st.Mode().IsRegular() || st.Size() == 0 {
+		return keep, nil
+	}
+	if err := checkArchitecture(path, defaultArm64Label); err != nil {
+		return keep, nil
+	}
+	version := i.receiptVersion(appDir, spec, path)
+	return DetectResult{
+		AppID:    spec.app.ID,
+		Path:     path,
+		Version:  version,
+		BundleID: spec.app.BundleID,
+		State:    DetectAdopt,
+	}, nil
+}
+
+// receiptVersion reads the installed version back from the immutable install
+// receipts for this exact path. Without a receipt the version stays unknown;
+// it is never read by running the binary.
+func (i *Installer) receiptVersion(appDir string, spec appSpec, path string) string {
+	entries, err := os.ReadDir(filepath.Join(appDir, receiptDirName))
+	if err != nil {
+		return ""
+	}
+	best := Receipt{InstalledAt: time.Time{}}
+	for _, entry := range entries {
+		if entry.Type()&fs.ModeSymlink != 0 || !strings.HasPrefix(entry.Name(), string(spec.app.ID)+"-") || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(appDir, receiptDirName, entry.Name()))
+		if err != nil {
+			continue
+		}
+		var receipt Receipt
+		if json.Unmarshal(data, &receipt) != nil {
+			continue
+		}
+		if receipt.InstalledPath != path || receipt.InstalledAt.Before(best.InstalledAt) {
+			continue
+		}
+		best = receipt
+	}
+	return best.InstalledVersion
 }
 
 // Install verifies and copies pkg into appDir. Existing bundles are adopted or
@@ -187,6 +250,14 @@ func (i *Installer) Install(ctx context.Context, pkg Package, appDir string) (re
 	switch spec.kind {
 	case qbittorrentSource:
 		bundlePath, err = i.extractDMG(ctx, asset, stage)
+	case githubSource:
+		if strings.HasSuffix(strings.ToLower(pkg.OfficialAssetURL), ".zip") {
+			bundlePath, err = extractZipBundle(asset, stage, zipExpansionCap(pkg.SizeCap))
+		} else {
+			bundlePath, err = i.extractDMG(ctx, asset, stage)
+		}
+	case binarySource:
+		bundlePath, err = i.extractBinaryArchive(ctx, asset, stage, spec, pkg.SizeCap)
 	default:
 		bundlePath, err = extractZipBundle(asset, stage, zipExpansionCap(pkg.SizeCap))
 	}
@@ -194,9 +265,16 @@ func (i *Installer) Install(ctx context.Context, pkg Package, appDir string) (re
 		return InstallResult{}, err
 	}
 
-	found, err := i.readBundle(ctx, bundlePath)
-	if err != nil {
-		return InstallResult{}, err
+	var found bundleInfo
+	if spec.kind == binarySource {
+		// The bare binary has no property list; identity comes from the
+		// digest-verified release asset, architecture from the Mach-O header.
+		found = bundleInfo{Identifier: pkg.BundleID, Version: pkg.ReleaseVersion, Executable: bundlePath, Path: bundlePath}
+	} else {
+		found, err = i.readBundle(ctx, bundlePath)
+		if err != nil {
+			return InstallResult{}, err
+		}
 	}
 	if found.Identifier != pkg.BundleID {
 		return InstallResult{}, fmt.Errorf("%w: downloaded bundle identifies as %q, expected %q", ErrBundleConflict, found.Identifier, pkg.BundleID)

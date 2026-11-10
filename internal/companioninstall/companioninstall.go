@@ -33,13 +33,35 @@ const (
 	Radarr      AppID = "radarr"
 	Lidarr      AppID = "lidarr"
 	Prowlarr    AppID = "prowlarr"
+	// Optional helpers. They are never in the default plan; the owner must
+	// select them explicitly, and nothing runs them on its own.
+	Recyclarr AppID = "recyclarr"
+	Unpackerr AppID = "unpackerr"
+	// Whisparr is an optional native Arr app (v3, Radarr-derived). It is off
+	// by default and never part of the stock five. The owner must enable it
+	// explicitly; nothing queries or starts it without that choice.
+	Whisparr AppID = "whisparr"
 )
 
 // App is one entry in the official companion registry.
 type App struct {
-	ID       AppID
-	Name     string
-	BundleID string
+	ID       AppID  `json:"id"`
+	Name     string `json:"name"`
+	BundleID string `json:"bundleId"`
+	// Optional marks helpers that are off by default in every plan and are
+	// never part of the stock five.
+	Optional bool `json:"optional"`
+}
+
+// Optional reports whether id is an optional helper that must be chosen
+// explicitly and is never enabled by a default.
+func Optional(id AppID) bool {
+	for _, s := range specs {
+		if s.app.ID == id {
+			return s.app.Optional
+		}
+	}
+	return false
 }
 
 // Package is a resolved, vendor-published macOS build. Every field is data
@@ -179,6 +201,7 @@ type Options struct {
 	Ditto   string
 	Plutil  string
 	Xattr   string
+	Tar     string
 
 	ResolveTimeout  time.Duration
 	DownloadTimeout time.Duration
@@ -213,6 +236,7 @@ type Installer struct {
 	ditto           string
 	plutil          string
 	xattr           string
+	tar             string
 	resolveTimeout  time.Duration
 	downloadTimeout time.Duration
 	sizeCap         int64
@@ -230,6 +254,7 @@ func New(opts Options) *Installer {
 		ditto:           opts.Ditto,
 		plutil:          opts.Plutil,
 		xattr:           opts.Xattr,
+		tar:             opts.Tar,
 		resolveTimeout:  opts.ResolveTimeout,
 		downloadTimeout: opts.DownloadTimeout,
 		sizeCap:         opts.SizeCap,
@@ -253,6 +278,9 @@ func New(opts Options) *Installer {
 	}
 	if i.xattr == "" {
 		i.xattr = "xattr"
+	}
+	if i.tar == "" {
+		i.tar = "tar"
 	}
 	if i.resolveTimeout <= 0 {
 		i.resolveTimeout = defaultResolve
@@ -306,6 +334,12 @@ type sourceKind int
 const (
 	servarrSource sourceKind = iota
 	qbittorrentSource
+	// githubSource reads the vendor's own GitHub "latest" release and picks
+	// the single macOS asset matching assetPattern.
+	githubSource
+	// binarySource is an official archive containing a bare command-line
+	// binary instead of an .app bundle (Recyclarr).
+	binarySource
 )
 
 // Endpoints are the vendors' live "latest" addresses. The returned asset is
@@ -317,6 +351,10 @@ type appSpec struct {
 	owner      string
 	repo       string
 	endpoint   string
+	// assetPattern names the one supported macOS arm64 asset in a GitHub
+	// release; the pattern is fixed here, the version, URL, digest and size
+	// always come from the live release.
+	assetPattern string
 }
 
 var specs = []appSpec{
@@ -357,6 +395,41 @@ var specs = []appSpec{
 		owner:      "Prowlarr",
 		repo:       "Prowlarr",
 		endpoint:   "https://prowlarr.servarr.com/v1/update/master/updatefile?os=osx&runtime=netcore&arch=arm64&installer=true",
+	},
+	// Recyclarr ships a bare macOS arm64 command-line binary, not an app
+	// bundle. It never runs by itself; Library only ever runs it for an
+	// owner-requested preview or apply.
+	{
+		app:          App{ID: Recyclarr, Name: "Recyclarr", Optional: true},
+		bundleName:   "recyclarr",
+		kind:         binarySource,
+		owner:        "recyclarr",
+		repo:         "recyclarr",
+		endpoint:     "https://api.github.com/repos/recyclarr/recyclarr/releases/latest",
+		assetPattern: `^recyclarr-osx-arm64\.tar\.xz$`,
+	},
+	// Unpackerr ships a macOS disk image with a real app bundle.
+	{
+		app:          App{ID: Unpackerr, Name: "Unpackerr", BundleID: "io.golift.unpackerr", Optional: true},
+		bundleName:   "Unpackerr.app",
+		kind:         githubSource,
+		owner:        "Unpackerr",
+		repo:         "unpackerr",
+		endpoint:     "https://api.github.com/repos/Unpackerr/unpackerr/releases/latest",
+		assetPattern: `^Unpackerr\.dmg$`,
+	},
+	// Whisparr v3 (Radarr-derived) ships a macOS arm64 app zip from its own
+	// GitHub repo. The official source is whisparr/whisparr-eros, not the
+	// v2-develop whisparr/whisparr. Version, URL, digest and size always
+	// come from the live release; nothing here is pinned.
+	{
+		app:          App{ID: Whisparr, Name: "Whisparr", BundleID: "com.osx.whisparr.com", Optional: true},
+		bundleName:   "Whisparr.app",
+		kind:         githubSource,
+		owner:        "Whisparr",
+		repo:         "Whisparr-Eros",
+		endpoint:     "https://api.github.com/repos/Whisparr/Whisparr-Eros/releases/latest",
+		assetPattern: `^Whisparr\.eros\.[0-9]+(?:\.[0-9]+)+(?:-[0-9A-Za-z.-]+)?\.osx-arm64-app\.zip$`,
 	},
 }
 
@@ -410,10 +483,11 @@ func (i *Installer) ttl(ctx context.Context, d time.Duration) (context.Context, 
 }
 
 // executeCommand refuses anything but the configured macOS built-ins, then
-// delegates to the injectable runner.
+// delegates to the injectable runner. tar is the system bsdtar: it reads the
+// vendor xz archive and fails closed on escaping or symlinked entries.
 func (i *Installer) executeCommand(ctx context.Context, tool string, args ...string) ([]byte, error) {
 	switch tool {
-	case i.hdiutil, i.ditto, i.plutil, i.xattr:
+	case i.hdiutil, i.ditto, i.plutil, i.xattr, i.tar:
 	default:
 		return nil, fmt.Errorf("companioninstall: refusing to run %q", tool)
 	}

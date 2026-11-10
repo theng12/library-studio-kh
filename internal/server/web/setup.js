@@ -5,10 +5,13 @@
 
 /* Pure helpers (unit tested; no DOM) */
 const SETUP_APP_IDS = ["qbittorrent", "sonarr", "radarr", "lidarr", "prowlarr"];
-const SETUP_ROOT_IDS = ["sonarr", "radarr", "lidarr"];
+// Optional apps only join the plan when selected; Whisparr is a native app.
+const SETUP_OPTIONAL_IDS = ["recyclarr", "unpackerr", "whisparr"];
+const SETUP_NATIVE_IDS = SETUP_APP_IDS.concat("whisparr");
+const SETUP_ROOT_IDS = ["sonarr", "radarr", "lidarr", "whisparr"];
 const SETUP_ACTIVE_STATES = ["planning", "installing", "checking", "configuring"];
 const SETUP_OPEN_STATES = ["needs_open", "opened", "blocked"];
-const SETUP_APP_NAMES = { qbittorrent: "qBittorrent", sonarr: "Sonarr", radarr: "Radarr", lidarr: "Lidarr", prowlarr: "Prowlarr" };
+const SETUP_APP_NAMES = { qbittorrent: "qBittorrent", sonarr: "Sonarr", radarr: "Radarr", lidarr: "Lidarr", prowlarr: "Prowlarr", recyclarr: "Recyclarr", unpackerr: "Unpackerr", whisparr: "Whisparr" };
 
 function setupClientTarget(value) {
   const raw = String(value == null ? "" : value).trim();
@@ -71,7 +74,7 @@ function setupPreferencesRequest(job, qualityProfileId, metadataProfileId) {
 function setupRequest(values, defaults) {
   const given = values || {}, server = defaults || {};
   const apps = [];
-  for (const id of SETUP_APP_IDS) {
+  for (const id of SETUP_APP_IDS.concat(SETUP_OPTIONAL_IDS)) {
     const chosen = given.apps && Object.prototype.hasOwnProperty.call(given.apps, id)
       ? !!given.apps[id]
       : Array.isArray(server.apps) ? server.apps.includes(id) : id === "qbittorrent";
@@ -79,13 +82,14 @@ function setupRequest(values, defaults) {
   }
   if (!apps.length) throw new Error("Choose at least one app to set up.");
   const roots = {}, categories = {}, ports = {};
-  for (const id of SETUP_ROOT_IDS) {
+  for (const id of SETUP_ROOT_IDS.filter((id) => id !== "whisparr" || apps.includes(id))) {
     roots[id] = setupString(given.roots && given.roots[id], server.roots && server.roots[id]);
     categories[id] = setupString(given.categories && given.categories[id], server.categories && server.categories[id]);
   }
-  for (const id of SETUP_APP_IDS) ports[id] = setupPort(given.ports && given.ports[id], server.ports && server.ports[id]);
+  for (const id of SETUP_NATIVE_IDS.filter((id) => id !== "whisparr" || apps.includes(id))) ports[id] = setupPort(given.ports && given.ports[id], server.ports && server.ports[id]);
   const usedPorts = new Map();
   for (const id of apps) {
+    if (!SETUP_NATIVE_IDS.includes(id)) continue; // helpers have no port
     const other = usedPorts.get(ports[id]);
     if (other) throw new Error((SETUP_APP_NAMES[other] || other) + " and " + (SETUP_APP_NAMES[id] || id) + " both use port " + ports[id] + ". Choose a different port for one of them.");
     usedPorts.set(ports[id], id);
@@ -158,6 +162,11 @@ function setupJobRequest(job, action, app) {
     if (!app) throw new Error("Choose an app to open.");
     return { path: "/api/setup/open", body: { id: job.id, app } };
   }
+  if (action === "preview" || action === "apply") {
+    if (!app) throw new Error("Choose an optional helper first.");
+    // Preview is the default; apply is only ever sent after the owner confirms.
+    return { path: "/api/setup/optional", body: { id: job.id, app, action, confirm: action === "apply" } };
+  }
   throw new Error("Unknown setup action.");
 }
 
@@ -172,6 +181,8 @@ const SETUP_APP_LABELS = {
   not_checked: "Not checked", adopt: "Existing app — kept", download: "Ready to download",
   needs_open: "Needs you to open it", needs_connection: "Needs sign-in in Settings",
   opened: "Opened — approve in macOS if asked", connected: "Connected", blocked: "Blocked",
+  needs_config: "Installed — configuration not checked",
+  configured: "Configured — runtime not checked",
   needs_sources: "Needs sources", needs_restart: "Restart needed",
 };
 
@@ -230,14 +241,14 @@ function fillSetupForm(defaults, force) {
   if (!setupForm || (!force && setupForm.dataset.filled === "1")) return;
   const d = defaults || {};
   const chosen = Array.isArray(d.apps) ? new Set(d.apps) : null;
-  for (const id of SETUP_APP_IDS) setupSetField("app." + id, chosen ? chosen.has(id) : id === "qbittorrent");
+  for (const id of SETUP_APP_IDS.concat(SETUP_OPTIONAL_IDS)) setupSetField("app." + id, chosen ? chosen.has(id) : id === "qbittorrent");
   setupSetField("appDir", d.appDir);
   setupSetField("downloadPath", d.downloadPath);
   for (const id of SETUP_ROOT_IDS) {
     setupSetField("root." + id, d.roots && d.roots[id]);
     setupSetField("category." + id, d.categories && d.categories[id]);
   }
-  for (const id of SETUP_APP_IDS) setupSetField("port." + id, d.ports && d.ports[id]);
+  for (const id of SETUP_NATIVE_IDS) setupSetField("port." + id, d.ports && d.ports[id]);
   setupSetField("renameTV", d.renameTV !== false);
   setupSetField("startAtLogin", d.startAtLogin === true);
   setupForm.dataset.filled = "1";
@@ -252,10 +263,14 @@ function setupRememberMusicProfiles(request) {
 
 function readSetupForm() {
   const apps = {}, roots = {}, categories = {}, ports = {};
-  for (const id of SETUP_APP_IDS) {
+  for (const id of SETUP_NATIVE_IDS) {
     const field = setupField("app." + id);
     apps[id] = !!(field && field.checked);
     ports[id] = setupField("port." + id) ? setupField("port." + id).value : "";
+  }
+  for (const id of SETUP_OPTIONAL_IDS) {
+    const field = setupField("app." + id);
+    apps[id] = !!(field && field.checked);
   }
   for (const id of SETUP_ROOT_IDS) {
     roots[id] = setupField("root." + id) ? setupField("root." + id).value : "";
@@ -284,9 +299,9 @@ function setupReview(request) {
   add("Apps", (request.apps || []).map((id) => SETUP_APP_NAMES[id] || id).join(", "));
   add("App folder", request.appDir);
   add("Download folder", request.downloadPath);
-  add("Root folders", SETUP_ROOT_IDS.map((id) => SETUP_APP_NAMES[id] + ": " + ((request.roots && request.roots[id]) || "not set")).join(" · "));
-  add("Ports", SETUP_APP_IDS.map((id) => SETUP_APP_NAMES[id] + ": " + ((request.ports && request.ports[id]) || "not reported")).join(" · "));
-  add("Categories", SETUP_ROOT_IDS.map((id) => SETUP_APP_NAMES[id] + ": " + ((request.categories && request.categories[id]) || "not set")).join(" · "));
+  add("Root folders", SETUP_ROOT_IDS.filter((id) => id !== "whisparr" || request.apps.includes(id)).map((id) => SETUP_APP_NAMES[id] + ": " + ((request.roots && request.roots[id]) || "not set")).join(" · "));
+  add("Ports", SETUP_NATIVE_IDS.filter((id) => id !== "whisparr" || request.apps.includes(id)).map((id) => SETUP_APP_NAMES[id] + ": " + ((request.ports && request.ports[id]) || "not reported")).join(" · "));
+  add("Categories", SETUP_ROOT_IDS.filter((id) => id !== "whisparr" || request.apps.includes(id)).map((id) => SETUP_APP_NAMES[id] + ": " + ((request.categories && request.categories[id]) || "not set")).join(" · "));
   add("Rename TV", request.renameTV ? "On" : "Off");
   add("Start at login", request.startAtLogin ? "On" : "Off");
   box.append(facts);
@@ -301,11 +316,18 @@ function setupAppActions(app, view) {
     open.setAttribute("aria-label", "Open " + name);
     actions.append(open);
   }
-  if (setupExistingApp(app) || app.state === "needs_connection") {
+  if (SETUP_NATIVE_IDS.includes(app.id) && (setupExistingApp(app) || app.state === "needs_connection")) {
     const settings = setupButton("Open Settings", "small", () => {});
     settings.dataset.view = "settings";
     settings.setAttribute("aria-label", "Open Settings to connect " + name);
     actions.append(settings);
+  }
+  if (!view.active && app.id === "recyclarr" && app.state === "configured") {
+    const preview = setupButton("Preview sync", "small", () => setupRun("preview", app.id));
+    preview.setAttribute("aria-label", "Preview a Recyclarr sync for " + name);
+    const apply = setupButton("Apply sync", "small", () => setupRun("apply", app.id));
+    apply.setAttribute("aria-label", "Apply a Recyclarr sync for " + name);
+    actions.append(preview, apply);
   }
   if (app.state === "needs_sources") {
     const sources = setupButton("Open Sources", "small", () => {});
@@ -479,7 +501,9 @@ function renderSetupJob() {
 
   if (view.open.length) box.append(setupNode("p", "Choose Open, then complete any macOS approval prompts. Check connections afterward.", "muted"));
   if (view.restart) box.append(setupNode("p", "Quit Library Studio KH completely, then reopen it. Start at login takes effect after that. Setup is not ready until the app has reopened.", "notice"));
-  if (view.ready) box.append(setupNode("p", "Library's own connection checks passed. This setup is ready.", "muted"));
+  if (view.ready) box.append(setupNode("p", (setupJob.apps || []).some((app) => app.state === "configured")
+    ? "Required app checks passed. Optional helper configurations are saved; their runtime has not been checked."
+    : "Library's own connection checks passed. This setup is ready.", "muted"));
 
   if (!setupEditing) {
     const actions = setupNode("div", null, "actions setup-actions");
@@ -495,12 +519,14 @@ function renderSetupJob() {
 
 async function setupRun(action, app) {
   if (setupBusy || !setupJob) return;
+  // Apply changes the native app through Recyclarr, so it always asks first.
+  if (action === "apply" && !window.confirm("Apply this Recyclarr sync now? It updates profiles in the connected Sonarr or Radarr app.")) return;
   let request;
   try { request = setupJobRequest(setupJob, action, app); }
   catch (e) { setupSay(e.message); return; }
   const generation = setupGeneration;
   setupBusy = true;
-  setupSay(action === "open" ? "Opening…" : action === "check" ? "Checking connections…" : "Starting…");
+  setupSay(action === "open" ? "Opening…" : action === "check" ? "Checking connections…" : action === "preview" ? "Running a preview…" : action === "apply" ? "Applying the sync…" : "Starting…");
   let failure = "";
   try {
     const job = await setupApi(request.path, request.body, true);

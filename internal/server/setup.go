@@ -76,6 +76,19 @@ func (s *Server) registerSetup(mux *http.ServeMux) {
 		setupReply(w, job, err)
 	})
 	mux.HandleFunc("POST /api/setup/client", s.setupClient)
+	mux.HandleFunc("POST /api/setup/optional", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID      string                 `json:"id"`
+			App     companioninstall.AppID `json:"app"`
+			Action  string                 `json:"action"`
+			Confirm bool                   `json:"confirm"`
+		}
+		if !readSetup(w, r, &req) {
+			return
+		}
+		job, err := s.setup.OptionalAction(r.Context(), req.ID, req.App, req.Action, req.Confirm)
+		setupReply(w, job, err)
+	})
 }
 
 func readSetup(w http.ResponseWriter, r *http.Request, out any) bool {
@@ -122,7 +135,13 @@ func (s *Server) setupStatus(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"supported": runtime.GOOS == "darwin" && runtime.GOARCH == "arm64", "platform": runtime.GOOS + "/" + runtime.GOARCH, "defaults": defaults, "job": job, "clientAllowed": s.bootstrap(r) && loopbackPeer(r)})
+	writeJSON(w, 200, map[string]any{
+		"supported":   runtime.GOOS == "darwin" && runtime.GOARCH == "arm64",
+		"platform":    runtime.GOOS + "/" + runtime.GOARCH,
+		// The full official catalog, so the UI can show which entries are
+		// optional helpers; defaults never include them.
+		"apps": companioninstall.Registry(),
+		"defaults": defaults, "job": job, "clientAllowed": s.bootstrap(r) && loopbackPeer(r)})
 }
 
 func (s *Server) setupClient(w http.ResponseWriter, r *http.Request) {

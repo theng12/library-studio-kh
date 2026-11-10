@@ -204,8 +204,8 @@ func (s *Server) guard(next http.Handler) http.Handler {
 
 // public hides the keys and password; the screen only learns whether each one is saved.
 func public(c config.Config) (config.Config, map[string]bool) {
-	saved := map[string]bool{"qbittorrent": c.QBit.Password != "", "sonarr": c.Sonarr.APIKey != "", "radarr": c.Radarr.APIKey != "", "lidarr": c.Lidarr.APIKey != "", "prowlarr": c.Prowlarr.APIKey != "", "bazarr": c.Bazarr.APIKey != ""}
-	c.QBit.Password, c.Sonarr.APIKey, c.Radarr.APIKey, c.Lidarr.APIKey, c.Prowlarr.APIKey, c.Bazarr.APIKey = "", "", "", "", "", ""
+	saved := map[string]bool{"qbittorrent": c.QBit.Password != "", "sonarr": c.Sonarr.APIKey != "", "radarr": c.Radarr.APIKey != "", "lidarr": c.Lidarr.APIKey != "", "prowlarr": c.Prowlarr.APIKey != "", "bazarr": c.Bazarr.APIKey != "", "whisparr": c.Whisparr.APIKey != ""}
+	c.QBit.Password, c.Sonarr.APIKey, c.Radarr.APIKey, c.Lidarr.APIKey, c.Prowlarr.APIKey, c.Bazarr.APIKey, c.Whisparr.APIKey = "", "", "", "", "", "", ""
 	return c, saved
 }
 
@@ -245,6 +245,7 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 	keep(&c.Lidarr.APIKey, old.Lidarr.APIKey)
 	keep(&c.Prowlarr.APIKey, old.Prowlarr.APIKey)
 	keep(&c.Bazarr.APIKey, old.Bazarr.APIKey)
+	keep(&c.Whisparr.APIKey, old.Whisparr.APIKey)
 	if err := s.Store.Save(c); err != nil {
 		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return

@@ -14,10 +14,19 @@ import (
 func (m *Manager) configure() {
 	defer m.finishWork()
 	before := m.store.Get()
-	c := m.connectionConfig()
 	req := m.job.View.Request
+	if selected(req, companioninstall.Whisparr) && before.WhisparrOn != m.job.Baseline.WhisparrOn {
+		m.block("Whisparr", "Save connection", errors.New("Whisparr's enable setting changed after planning; it was preserved"), before)
+		return
+	}
+	c := m.connectionConfig()
 	blocked := false
 	for index, app := range m.job.View.Apps {
+		if helperApp(app.ID) {
+			// Optional helpers have no native account here; they are written
+			// and verified after every selected connection exists.
+			continue
+		}
 		err := m.checkManagedProfile(app, &c)
 		if err == nil {
 			err = nativePing(c, app)
@@ -82,7 +91,7 @@ func (m *Manager) configure() {
 		}
 	}
 	for _, app := range m.job.View.Apps {
-		if app.ID == companioninstall.QBittorrent || app.ID == companioninstall.Prowlarr {
+		if app.ID == companioninstall.QBittorrent || app.ID == companioninstall.Prowlarr || helperApp(app.ID) {
 			continue
 		}
 		if c.QBit.URL == "" {
@@ -166,6 +175,9 @@ func (m *Manager) configure() {
 	}
 	// Only new managed connections are merged; edits made during checking win.
 	next := before
+	if selected(req, companioninstall.Whisparr) {
+		next.WhisparrOn = true
+	}
 	for _, app := range m.job.View.Apps {
 		if app.Managed || app.ConnectionDetected {
 			if app.ID == companioninstall.QBittorrent {
@@ -199,6 +211,22 @@ func (m *Manager) configure() {
 		m.block("Library", "Save connections", err, c)
 		return
 	}
+	if selected(req, companioninstall.Whisparr) {
+		// Persist our own enable change so later owner OFF wins on retries and resume.
+		m.mu.Lock()
+		m.job.Baseline.WhisparrOn = next.WhisparrOn
+		err := m.saveLocked()
+		m.mu.Unlock()
+		if err != nil {
+			m.block("Whisparr", "Save setup state", err, c)
+			return
+		}
+	}
+	// Only after the connections are safely saved do the optional helpers get
+	// their own configuration files, written and read back as real checks.
+	if !m.configureOptional(c, req) {
+		return
+	}
 	if err := m.verifySources(c); err != nil {
 		if m.addCheck("Prowlarr", "Search sources", "not_checked", safeSetupError(err, c)) != nil {
 			return
@@ -214,7 +242,7 @@ func (m *Manager) configure() {
 			return
 		}
 	}
-	_ = m.update("ready", "Selected apps, folders, native links and search sources passed their checks. Automatic cleanup remains at your saved setting.", -1, nil)
+	_ = m.update("ready", "Selected apps, folders, native links and search sources passed their checks. Optional helper configurations were written or kept; their runtime was not started or verified. Automatic cleanup remains at your saved setting.", -1, nil)
 }
 
 func (m *Manager) verifySources(c config.Config) error {
@@ -250,7 +278,7 @@ func (m *Manager) block(app, name string, err error, c config.Config) {
 
 func safeSetupError(err error, c config.Config) string {
 	text := err.Error()
-	for _, secret := range []string{c.QBit.Password, c.Sonarr.APIKey, c.Radarr.APIKey, c.Lidarr.APIKey, c.Prowlarr.APIKey, c.Bazarr.APIKey} {
+	for _, secret := range []string{c.QBit.Password, c.Sonarr.APIKey, c.Radarr.APIKey, c.Lidarr.APIKey, c.Prowlarr.APIKey, c.Bazarr.APIKey, c.Whisparr.APIKey} {
 		if secret != "" {
 			text = strings.ReplaceAll(text, secret, "[private]")
 		}

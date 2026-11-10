@@ -67,13 +67,22 @@ func (m *Manager) install(ctx context.Context) {
 			app.Path = detected.Path
 			app.Version = detected.Version
 		}
-		if app.Managed {
+		if app.Managed && app.ID == companioninstall.Unpackerr {
+			app.State = "needs_open"
+			app.Detail = "Open this app through macOS and complete any first-launch approval. Its configuration file is written by Setup before it starts."
+		} else if app.Managed && app.ID == companioninstall.Recyclarr {
+			app.State = "needs_config"
+			app.Detail = "Installed as a command-line tool. Setup writes its configuration while checking; nothing runs it on its own."
+		} else if app.Managed {
 			if err := m.prepareConnection(app); err != nil {
 				m.fail(app.Name + " profile is not ready: " + err.Error())
 				return
 			}
 			app.State = "needs_open"
 			app.Detail = "Open this app through macOS and complete any first-launch approval, then check connections."
+		} else if helperApp(app.ID) {
+			app.State = "needs_config"
+			app.Detail = "Existing installation kept exactly as it is. Setup reviews its configuration while checking; nothing was changed now."
 		} else {
 			app.State = "needs_connection"
 			app.Detail = "Existing app preserved. Connect its existing native account in Settings, then check connections."
@@ -81,6 +90,11 @@ func (m *Manager) install(ctx context.Context) {
 		if err := m.update("installing", "Preparing the next selected app…", index, &app); err != nil {
 			return
 		}
+	}
+	// Unpackerr's config lands now — still before any owner can open the new
+	// app — so a first launch can never race Setup into an empty default file.
+	if !m.prepareOptionalInstallConfigs() {
+		return
 	}
 	_ = m.update("needs_approval", "Apps are installed. Open each new app, complete its macOS prompts, then check connections.", -1, nil)
 }
@@ -115,6 +129,8 @@ func setArr(c *config.Config, id companioninstall.AppID, a config.App) {
 		c.Lidarr = a
 	case companioninstall.Prowlarr:
 		c.Prowlarr = a
+	case companioninstall.Whisparr:
+		c.Whisparr = a
 	}
 }
 func getArr(c config.Config, id companioninstall.AppID) config.App {
@@ -127,6 +143,8 @@ func getArr(c config.Config, id companioninstall.AppID) config.App {
 		return c.Lidarr
 	case companioninstall.Prowlarr:
 		return c.Prowlarr
+	case companioninstall.Whisparr:
+		return c.Whisparr
 	}
 	return config.App{}
 }
@@ -162,11 +180,19 @@ func (m *Manager) Open(ctx context.Context, id string, appID companioninstall.Ap
 	if app.ID == companioninstall.QBittorrent {
 		args = []string{"--profile=" + filepath.Join(m.home, "companions", string(app.ID))}
 	}
+	if app.ID == companioninstall.Unpackerr {
+		// The GUI app reads its own ~/.unpackerr config; it takes no flags.
+		args = nil
+	}
 	if err := m.openApp(ctx, app.Path, args); err != nil {
 		return Job{}, errors.New("macOS did not open the app. Review its first-launch prompt and try again")
 	}
 	app.State = "opened"
-	app.Detail = "Open requested through macOS; native readiness is not checked yet."
+	if app.ID == companioninstall.Unpackerr {
+		app.Detail = "Open requested through macOS. Its configuration file was written by Setup; the app was not started by anything else."
+	} else {
+		app.Detail = "Open requested through macOS; native readiness is not checked yet."
+	}
 	if err := m.update("needs_approval", "Complete any app prompts, then check the native connections.", index, &app); err != nil {
 		return Job{}, err
 	}
@@ -177,7 +203,11 @@ func openNativeApp(ctx context.Context, path string, args []string) error {
 	if runtime.GOOS != "darwin" {
 		return errors.New("native app opening is not supported on this platform")
 	}
-	argv := append([]string{"-g", "-a", path, "--args"}, args...)
+	argv := []string{"-g", "-a", path}
+	if len(args) > 0 {
+		argv = append(argv, "--args")
+		argv = append(argv, args...)
+	}
 	return exec.CommandContext(ctx, "/usr/bin/open", argv...).Run()
 }
 
@@ -203,6 +233,9 @@ func (m *Manager) Continue(id string) (Job, error) {
 
 func (m *Manager) connectionConfig() config.Config {
 	c := m.store.Get()
+	if selected(m.job.View.Request, companioninstall.Whisparr) {
+		c.WhisparrOn = true
+	}
 	for _, app := range m.job.View.Apps {
 		if app.Managed || app.ConnectionDetected {
 			if app.ID == companioninstall.QBittorrent {
@@ -223,6 +256,9 @@ func (m *Manager) addCheck(app, name, state, detail string) error {
 }
 
 func nativePing(c config.Config, app AppStep) error {
+	if app.ID == companioninstall.Whisparr && !c.WhisparrOn {
+		return errors.New("Whisparr is not enabled")
+	}
 	if app.ID == companioninstall.QBittorrent {
 		if c.QBit.URL == "" {
 			return errors.New("connect the existing qBittorrent account in Settings")
@@ -235,6 +271,11 @@ func nativePing(c config.Config, app AppStep) error {
 		return fmt.Errorf("connect the existing %s account in Settings", app.Name)
 	}
 	return stock.NewArr(app.Name, a.URL, a.APIKey).Ping()
+}
+
+// Helpers use configuration files; optional native apps still need API readiness.
+func helperApp(id companioninstall.AppID) bool {
+	return id == companioninstall.Recyclarr || id == companioninstall.Unpackerr
 }
 
 func selected(req Request, id companioninstall.AppID) bool {

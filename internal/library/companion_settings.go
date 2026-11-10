@@ -98,11 +98,17 @@ type arrTarget struct {
 }
 
 func companionArrs(c config.Config) []arrTarget {
-	return []arrTarget{
+	targets := []arrTarget{
 		{"Sonarr", c.Sonarr},
 		{"Radarr", c.Radarr},
 		{"Lidarr", c.Lidarr},
 	}
+	// Whisparr is optional and off by default; only include it when the owner
+	// has explicitly enabled it.
+	if c.WhisparrOn {
+		targets = append(targets, arrTarget{"Whisparr", c.Whisparr})
+	}
+	return targets
 }
 
 // CompanionSettings reads the actual supported settings from each connected app.
@@ -244,10 +250,15 @@ func ApplyCompanionSettings(c config.Config, p CompanionPatch) (CompanionApp, er
 	switch p.App {
 	case "Sonarr", "Radarr", "Lidarr":
 		return applyArrCompanion(c, p)
+	case "Whisparr":
+		if !c.WhisparrOn {
+			return CompanionApp{}, invalid("Whisparr is not enabled. Turn it on in Settings first.")
+		}
+		return applyArrCompanion(c, p)
 	case "qBittorrent":
 		return applyQBitCompanion(c, p)
 	}
-	return CompanionApp{}, invalid("Choose Sonarr, Radarr, Lidarr or qBittorrent.")
+	return CompanionApp{}, invalid("Choose Sonarr, Radarr, Lidarr, Whisparr or qBittorrent.")
 }
 
 func applyArrCompanion(c config.Config, p CompanionPatch) (CompanionApp, error) {
@@ -270,8 +281,8 @@ func applyArrCompanion(c config.Config, p CompanionPatch) (CompanionApp, error) 
 	if p.RenameEpisodes != nil && p.App != "Sonarr" {
 		return CompanionApp{}, invalid("Only Sonarr renames episodes.")
 	}
-	if p.RenameMovies != nil && p.App != "Radarr" {
-		return CompanionApp{}, invalid("Only Radarr renames films.")
+	if p.RenameMovies != nil && p.App != "Radarr" && p.App != "Whisparr" {
+		return CompanionApp{}, invalid("Only Radarr and Whisparr rename films.")
 	}
 	if p.RemoveCompletedDownloads != nil && *p.RemoveCompletedDownloads {
 		return CompanionApp{}, invalid("Library never turns immediate removal on. It can only turn it off.")

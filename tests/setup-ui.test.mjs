@@ -191,7 +191,7 @@ test("owner results are stale-guarded, editable while inactive, and copy never p
   assert.match(setup, /fillSetupForm\(setupJob\.request \|\| setupDefaults \|\| \{\}, true\)/);
   assert.match(setup, /if \(!\(setupEditing && !nextJob\)\) setupJob = nextJob;/);
   assert.match(html, /id="setup-cancel-edit" hidden/);
-  assert.equal((html.match(/type="number" min="1024" max="65535"/g) || []).length, 5);
+  assert.equal((html.match(/type="number" min="1024" max="65535"/g) || []).length, 6);
 });
 
 test("music preferences use only live server profiles and are preserved on edits", () => {

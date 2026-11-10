@@ -16,6 +16,9 @@ const (
 	CompanionRadarr      CompanionID = "radarr"
 	CompanionLidarr      CompanionID = "lidarr"
 	CompanionProwlarr    CompanionID = "prowlarr"
+	// CompanionWhisparr is an optional native Arr app (v3, Radarr-derived).
+	// It is off by default; the owner must enable it explicitly.
+	CompanionWhisparr CompanionID = "whisparr"
 )
 
 const companionLabelPrefix = "kh.librarystudio.companion."
@@ -37,6 +40,7 @@ var companionApps = map[CompanionID]companionApp{
 	CompanionRadarr:      {bundle: "Radarr.app", args: arrArgs},
 	CompanionLidarr:      {bundle: "Lidarr.app", args: arrArgs},
 	CompanionProwlarr:    {bundle: "Prowlarr.app", args: arrArgs},
+	CompanionWhisparr:    {bundle: "Whisparr.app", args: arrArgs},
 }
 
 // CompanionServiceSpec is the only input to the companion at-login manager.
