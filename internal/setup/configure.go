@@ -14,8 +14,12 @@ import (
 func (m *Manager) configure() {
 	defer m.finishWork()
 	before := m.store.Get()
-	c := m.connectionConfig()
 	req := m.job.View.Request
+	if selected(req, companioninstall.Whisparr) && before.WhisparrOn != m.job.Baseline.WhisparrOn {
+		m.block("Whisparr", "Save connection", errors.New("Whisparr's enable setting changed after planning; it was preserved"), before)
+		return
+	}
+	c := m.connectionConfig()
 	blocked := false
 	for index, app := range m.job.View.Apps {
 		if helperApp(app.ID) {
@@ -172,10 +176,6 @@ func (m *Manager) configure() {
 	// Only new managed connections are merged; edits made during checking win.
 	next := before
 	if selected(req, companioninstall.Whisparr) {
-		if before.WhisparrOn != m.job.Baseline.WhisparrOn {
-			m.block("Whisparr", "Save connection", errors.New("Whisparr's enable setting changed after planning; it was preserved"), c)
-			return
-		}
 		next.WhisparrOn = true
 	}
 	for _, app := range m.job.View.Apps {
@@ -210,6 +210,17 @@ func (m *Manager) configure() {
 	if err := m.store.SaveIfUnchanged(before, next); err != nil {
 		m.block("Library", "Save connections", err, c)
 		return
+	}
+	if selected(req, companioninstall.Whisparr) {
+		// Persist our own enable change so later owner OFF wins on retries and resume.
+		m.mu.Lock()
+		m.job.Baseline.WhisparrOn = next.WhisparrOn
+		err := m.saveLocked()
+		m.mu.Unlock()
+		if err != nil {
+			m.block("Whisparr", "Save setup state", err, c)
+			return
+		}
 	}
 	// Only after the connections are safely saved do the optional helpers get
 	// their own configuration files, written and read back as real checks.

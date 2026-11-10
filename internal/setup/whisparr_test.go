@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -100,7 +101,9 @@ func TestWhisparrManagedSetupUsesNativeProfileFoldersAndLinks(t *testing.T) {
 	h := newFlowHarness(t)
 	arr := newFlowArr("Whisparr")
 	key := ""
+	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
 		if !strings.HasPrefix(r.URL.Path, "/api/v3/") || r.Header.Get("X-Api-Key") != key {
 			t.Error("wrong Whisparr API version or credential")
 		}
@@ -111,6 +114,10 @@ func TestWhisparrManagedSetupUsesNativeProfileFoldersAndLinks(t *testing.T) {
 	port, _ := strconv.Atoi(u.Port())
 	m := h.manager
 	req := Request{Apps: []companioninstall.AppID{companioninstall.Whisparr}, AppDir: filepath.Join(h.home, "Applications"), DownloadPath: filepath.Join(h.home, "Downloads"), Ports: map[string]int{"whisparr": port}, Roots: map[string]string{"whisparr": filepath.Join(h.home, "Library", "Optional")}, Categories: map[string]string{"whisparr": "entertainment"}}
+	// Mounted-volume setup requires an existing selected root, including in this mock.
+	if err := os.MkdirAll(req.Roots["whisparr"], 0o755); err != nil {
+		t.Fatal(err)
+	}
 	c := h.store.Get()
 	c.QBit = config.QBit{URL: h.servers[companioninstall.QBittorrent].URL, Username: "admin", Password: "fixture-password"}
 	c.Prowlarr = config.App{URL: h.servers[companioninstall.Prowlarr].URL, APIKey: "prowlarr-fixture"}
@@ -159,6 +166,40 @@ func TestWhisparrManagedSetupUsesNativeProfileFoldersAndLinks(t *testing.T) {
 	data, _ := json.Marshal(job)
 	if strings.Contains(string(data), key) {
 		t.Fatal("managed key entered job response")
+	}
+	for _, resume := range []bool{false, true} {
+		if resume {
+			m = NewManager(h.home, h.store)
+		}
+		if !m.job.Baseline.WhisparrOn {
+			t.Fatal("successful enable was not retained as the expected state")
+		}
+		if _, err := m.Continue(job.ID); err != nil {
+			t.Fatal(err)
+		}
+		checked := flowWait(t, m, "ready", "blocked")
+		if checked.State != "ready" || !h.store.Get().WhisparrOn {
+			t.Fatalf("repeat/resumed check failed (resume=%t): %+v", resume, checked)
+		}
+	}
+	// The owner returns OFF to the original plan value after successful setup.
+	after = h.store.Get()
+	after.WhisparrOn = false
+	if err := h.store.Save(after); err != nil {
+		t.Fatal(err)
+	}
+	for _, resume := range []bool{false, true} {
+		if resume {
+			m = NewManager(h.home, h.store)
+		}
+		beforeCalls := calls
+		if _, err := m.Continue(job.ID); err != nil {
+			t.Fatal(err)
+		}
+		checked := flowWait(t, m, "blocked", "ready")
+		if checked.State != "blocked" || h.store.Get() != after || calls != beforeCalls {
+			t.Fatalf("later owner OFF was not protected before native requests (resume=%t)", resume)
+		}
 	}
 }
 

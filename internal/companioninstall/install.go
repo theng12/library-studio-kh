@@ -248,9 +248,14 @@ func (i *Installer) Install(ctx context.Context, pkg Package, appDir string) (re
 	}
 	var bundlePath string
 	switch spec.kind {
-	case qbittorrentSource, githubSource:
-		// Both vendors publish a single-app disk image for this pattern set.
+	case qbittorrentSource:
 		bundlePath, err = i.extractDMG(ctx, asset, stage)
+	case githubSource:
+		if strings.HasSuffix(strings.ToLower(pkg.OfficialAssetURL), ".zip") {
+			bundlePath, err = extractZipBundle(asset, stage, zipExpansionCap(pkg.SizeCap))
+		} else {
+			bundlePath, err = i.extractDMG(ctx, asset, stage)
+		}
 	case binarySource:
 		bundlePath, err = i.extractBinaryArchive(ctx, asset, stage, spec, pkg.SizeCap)
 	default:
