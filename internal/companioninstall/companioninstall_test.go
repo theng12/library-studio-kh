@@ -323,7 +323,7 @@ func TestRegistryHasOfficialApps(t *testing.T) {
 		Prowlarr:    "com.osx.prowlarr.com",
 		Recyclarr:   "",
 		Unpackerr:   "io.golift.unpackerr",
-		Whisparr:    "com.osx.whisparr.video",
+		Whisparr:    "com.osx.whisparr.com",
 	}
 	wantOptional := map[AppID]bool{Recyclarr: true, Unpackerr: true, Whisparr: true}
 	for _, app := range apps {

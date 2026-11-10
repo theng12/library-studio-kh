@@ -423,7 +423,7 @@ var specs = []appSpec{
 	// v2-develop whisparr/whisparr. Version, URL, digest and size always
 	// come from the live release; nothing here is pinned.
 	{
-		app:          App{ID: Whisparr, Name: "Whisparr", BundleID: "com.osx.whisparr.video", Optional: true},
+		app:          App{ID: Whisparr, Name: "Whisparr", BundleID: "com.osx.whisparr.com", Optional: true},
 		bundleName:   "Whisparr.app",
 		kind:         githubSource,
 		owner:        "Whisparr",
