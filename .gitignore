@@ -11,3 +11,4 @@ CLAUDE.local.md
 .claude/launch.json
 .test-receipts/
 .test-tmp/
+.release-dist.lock

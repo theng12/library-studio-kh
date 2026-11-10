@@ -35,7 +35,7 @@
           "timeoutMin": 20
         },
         "host": {
-          "commands": [["node", "scripts/manage-host.mjs", "--self-test"], ["python3", "-I", "scripts/test_verify_macos_signing.py"]],
+          "commands": [["node", "scripts/manage-host.mjs", "--self-test"], ["python3", "-I", "scripts/test_verify_macos_signing.py"], ["python3", "-I", "scripts/test_release_dist.py"]],
           "paths": ["scripts", "package.json", "src-tauri"],
           "env": {"TMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp"},
           "timeoutMin": 5

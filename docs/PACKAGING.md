@@ -63,3 +63,25 @@ Packaging and the delivered-DMG signing/launchd check above are still required f
 Follow the Updater lead's route: build the DMG, record its path, SHA-256, version and one-line description, and hand that to the Updater lead. They publish with `khu publish --description` (current + one previous) only after Developer gives the go. This repo never publishes itself.
 
 Suggested description: "See what's downloading, what's in your library and what's coming up, and clear local copies once they're safely on the NAS."
+
+## Installed acceptance and local installer retention
+
+Finish the normal release flow after Updater installation and intended-machine verification by retaining the accepted installer plus its previous verified rollback in the canonical project's `dist/`. Use the shared portfolio `tools/release-dist.py` contract described in its README, **Release dist retention**. `npm run retain:accepted` invokes that helper directly; there is no second retention implementation and no build, signing or publication hook.
+
+The release lead writes a trusted `schema: 1` pin document with `apps: [{app, project, releases}]`. Set `app` to `Library Studio KH` and `project` to the canonical real project directory, even when running the command from an ATLAS worktree. Each of the one or two `releases` entries supplies the exact accepted `version`, absolute `.dmg` `source`, verified `sha256`, positive `bytes` and non-empty `evidence` pointing to its installed/verified acceptance receipts. Sources may have any basename, including a feed's hash-prefixed name. Match the source's actual bytes to the accepted release receipt; never infer acceptance from the latest feed, the build folder or `package.json`. A missing previous source is a recorded dependency, not permission to replace it with an unaccepted candidate.
+
+Before invoking retention, check dependencies and active jobs, preserve evidence, and obtain the existing quiet point if retirement is needed. The helper has no dry-run and does not establish acceptance. Keep the accepted pair at **0.7.5 and 0.7.4** while published 0.7.6 lacks intended-1301 acceptance; its publication cannot displace a working rollback. After a later version is installed and verified, update the pins to that exact accepted version and its previous verified version.
+
+```bash
+npm run retain:accepted -- /absolute/coordination/library-accepted-dist-pins.json
+```
+
+Record the pin document, helper source hash, JSON result and resulting `dist/.release-dist.json` with the release evidence, then recheck both retained hashes and byte sizes. The helper copies or adopts identical bytes into `Library Studio KH-<version>.dmg`; it never moves the source. It retires only obsolete files that its ledger owns and whose recorded bytes still match. Unmanaged files remain untouched: this is never a whole-`dist` wipe, and pending installers are not managed pins. Re-running the same pair is idempotent.
+
+The mock contract check is part of the `host` lane and can run alone for this change:
+
+```bash
+python3 -I scripts/test_release_dist.py
+```
+
+Run fixtures on ATLAS using the lane's `TMPDIR`. This checks the current installed shared helper through the same command, using synthetic DMGs only. A shared helper change requires a fresh focused contract result and recorded helper hash; an unchanged Library receipt alone cannot qualify changed external tooling.
