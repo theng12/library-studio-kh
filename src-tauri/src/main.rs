@@ -10,6 +10,22 @@ use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 struct Server(Mutex<Option<Child>>);
 
+// The only external page this app opens. Kept in step with the link in the
+// Support page; anything else is denied.
+const SUPPORT_URL: &str = "https://nowpayments.io/donation/studiokh";
+
+fn open_support() {
+    #[cfg(target_os = "macos")]
+    let opened = Command::new("open").arg(SUPPORT_URL).spawn();
+    #[cfg(target_os = "linux")]
+    let opened = Command::new("xdg-open").arg(SUPPORT_URL).spawn();
+    #[cfg(target_os = "windows")]
+    let opened = Command::new("cmd").args(["/C", "start", "", SUPPORT_URL]).spawn();
+    if let Err(e) = opened {
+        eprintln!("Could not open the support page: {e}");
+    }
+}
+
 fn server_path() -> Result<PathBuf, String> {
     // Tauri installs the sidecar next to the app executable, without the target suffix.
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -153,6 +169,14 @@ fn main() {
                 .title("Library Studio KH")
                 .inner_size(1040.0, 780.0)
                 .min_inner_size(420.0, 480.0)
+                // The Support link opens the one allow-listed page in the
+                // default browser, never as an in-app window.
+                .on_new_window(|url, _| {
+                    if url.as_str() == SUPPORT_URL {
+                        open_support();
+                    }
+                    tauri::webview::NewWindowResponse::<tauri::Wry>::Deny
+                })
                 .build()?;
             Ok(())
         })
