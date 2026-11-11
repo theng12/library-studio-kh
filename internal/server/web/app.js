@@ -944,6 +944,33 @@ $("#logout").addEventListener("click", async () => {
   document.dispatchEvent(new CustomEvent("library:signedout"));
 });
 
+// Update check: read the shared KH feed, never install here. Studio Launcher KH does that.
+const updateStatus = $("#update-status"), checkUpdates = $("#check-updates"), openUpdate = $("#open-update");
+function updateLine(text, version) {
+  updateStatus.textContent = text;
+  openUpdate.hidden = !version;
+  if (version) openUpdate.setAttribute("aria-label", "Update to " + version);
+  if (version) openUpdate.title = "Update to " + version;
+}
+checkUpdates.addEventListener("click", async () => {
+  checkUpdates.disabled = true;
+  updateLine("Checking...");
+  try {
+    const r = await api("/api/update/check");
+    if (r.state === "available") updateLine("Checked just now · " + r.version + " is available", r.version);
+    else if (r.state === "up_to_date") updateLine("Checked just now · up to date");
+    else if (r.state === "not_offered") updateLine("Not offered by this Update Studio");
+    else if (r.state === "not_checked") updateLine("Not checked" + (r.reason ? ": " + r.reason : ""));
+    else updateLine("Check failed: " + (r.reason || "no answer from the update feed") + ". Try again.");
+  } catch (e) {
+    updateLine("Check failed: " + e.message.replace(/\.$/, "") + ". Try again.");
+  } finally { checkUpdates.disabled = false; }
+});
+openUpdate.addEventListener("click", async () => {
+  try { await api("/api/update/open", {}, true); }
+  catch (e) { updateLine("Check failed: " + e.message.replace(/\.$/, "") + ". Try again."); }
+});
+
 $("#form").addEventListener("change", (ev) => {
   if (ev.target.name === "appearance") applyAppearance(ev.target.value);
 });

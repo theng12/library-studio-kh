@@ -72,7 +72,7 @@ body {
 button { font: inherit; color: inherit; cursor: pointer; }
 
 /* Frame: menu on the left, content on the right */
-.shell { display: grid; grid-template-columns: 15rem 1fr; min-height: 100%; }
+.shell { display: grid; grid-template-columns: 15.5rem 1fr; min-height: 100%; }
 .side {
   display: flex; flex-direction: column; gap: 1.75rem;
   padding: 1.5rem 1rem; background: var(--side); border-right: 1px solid var(--line);
@@ -109,6 +109,17 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .support:hover { background: var(--panel); color: var(--ink); }
 .support[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.update-status { margin: 0; padding: 0 0.75rem; font-size: 11px; color: var(--muted); }
+.pillrow { display: flex; align-items: center; gap: 6px; }
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink-2);
+}
+.icon-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+.icon-btn[disabled] { opacity: 0.55; }
+.update-btn { color: var(--accent); border-color: var(--accent); }
 @media (min-width: 761px) { #more-menu { display: flex; flex-direction: column; flex: 1; gap: 0.2rem; } }
 .support-stack { display: grid; gap: var(--gap); max-width: 46rem; margin-top: 1.25rem; }
 .support-card { padding: 1.25rem; }

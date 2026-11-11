@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"librarystudio/internal/config"
 	"librarystudio/internal/library"
 	"librarystudio/internal/setup"
+	"librarystudio/internal/update"
 )
 
 //go:embed web
@@ -68,6 +70,8 @@ func (s *Server) Handler() http.Handler {
 	s.RegisterCompanionSettings(mux)
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/host-proof", s.hostProof)
+	mux.HandleFunc("GET /api/update/check", s.updateCheck)
+	mux.HandleFunc("POST /api/update/open", s.openUpdater)
 	static, _ := fs.Sub(web, "web")
 	mux.Handle("/", http.FileServerFS(static))
 	mux.HandleFunc("GET /api/state", s.state)
@@ -225,6 +229,25 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		"remote":    s.RemoteStatus(),
 		"localUrl":  s.LocalURL,
 	})
+}
+
+// updateCheck reads the shared KH feed; it never downloads or installs.
+func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		writeJSON(w, 200, update.Result{State: "failed", Reason: "this Mac's home folder could not be read"})
+		return
+	}
+	writeJSON(w, 200, update.Check(home, librarystudio.Version(), nil))
+}
+
+// openUpdater brings Studio Launcher KH forward; the install stays in that app.
+func (s *Server) openUpdater(w http.ResponseWriter, r *http.Request) {
+	if err := update.OpenLauncher(); err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]string{"opened": "Studio Launcher KH"})
 }
 
 func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {

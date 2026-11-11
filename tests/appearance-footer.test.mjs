@@ -36,3 +36,24 @@ test("a saved theme drives the palette instead of the OS query alone", () => {
   assert.match(css, /:root\[data-theme="dark"\] \{/);
   assert.match(css, /@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme\]\)/);
 });
+
+test("Check for updates is icon-only and the update button starts hidden", () => {
+  const nav = html.match(/<nav class="side"[\s\S]*?<\/nav>/)?.[0] || "";
+  const check = nav.match(/<button[^>]*id="check-updates"[^>]*>/)?.[0] || "";
+  assert.match(check, /aria-label="Check for updates"/);
+  assert.match(check, /title="Check for updates"/);
+  assert.ok(!/>Check for updates</.test(nav), "the check button shows text");
+  const update = nav.match(/<button[^>]*id="open-update"[^>]*>/)?.[0] || "";
+  assert.match(update, /\bhidden\b/);
+  assert.match(nav, /<p id="update-status"[^>]*role="status"[^>]*aria-live="polite"[^>]*>Not checked</);
+});
+
+test("the update check speaks the five contract lines and hands off to the launcher", () => {
+  assert.match(js, /"Checked just now · up to date"/);
+  assert.match(js, /" is available"/);
+  assert.match(js, /"Not offered by this Update Studio"/);
+  assert.match(js, /"Check failed: "/);
+  assert.match(js, /"Checking\.\.\."/);
+  assert.match(js, /"Update to " \+ version/);
+  assert.match(js, /api\("\/api\/update\/open", \{\}, true\)/);
+});
