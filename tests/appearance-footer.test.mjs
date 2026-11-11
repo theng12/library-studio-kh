@@ -12,6 +12,7 @@ test("the footer pill shows the app name and version and opens What's New", () =
   assert.match(pill, /data-view="whatsnew"/);
   assert.match(pill, /class="pill-name">Library Studio KH</);
   assert.match(pill, /class="pill-version" id="version"/);
+  assert.ok(!pill.includes("<svg"), "the reference pill has no glyph");
   assert.ok(!nav.includes("What's new"), "the old What's New link is still present");
   assert.ok(!nav.includes(">Version <"), "the old version text is still present");
 });

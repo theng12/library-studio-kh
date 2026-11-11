@@ -20,7 +20,9 @@ test("the sidebar footer offers Support above the version pill", () => {
 test("every sidebar entry carries a leading icon and keeps its text label", () => {
   const nav = html.match(/<nav class="side"[\s\S]*?<\/nav>/)?.[0] || "";
   const entries = nav.match(/<button[^>]*>[\s\S]*?<\/button>/g) || [];
-  const labelled = entries.filter((b) => b.includes("data-view=") || b.includes("menu-toggle"));
+  // The pill shows the app name and version on one line by the shared reference,
+  // so it is the one footer entry without a glyph.
+  const labelled = entries.filter((b) => (b.includes("data-view=") || b.includes("menu-toggle")) && !b.includes('class="pill"'));
   assert.ok(labelled.length >= 9, "sidebar entries were not found");
   for (const entry of labelled) {
     assert.match(entry, /<svg[^>]*aria-hidden="true"/, "an entry has no icon: " + entry.slice(0, 80));
