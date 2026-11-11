@@ -81,7 +81,38 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
             &PredefinedMenuItem::quit(app, None)?,
         ],
     )?;
-    app.set_menu(Menu::with_items(app, &[&app_menu])?)?;
+    // Predefined items target the focused responder, so editing works inside the
+    // web content without routing keystrokes through the app.
+    let edit_menu = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+    let window_menu = Submenu::with_id_and_items(
+        app,
+        tauri::menu::WINDOW_SUBMENU_ID,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+    app.set_menu(Menu::with_items(
+        app,
+        &[&app_menu, &edit_menu, &window_menu],
+    )?)?;
     Ok(())
 }
 
