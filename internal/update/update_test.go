@@ -149,10 +149,18 @@ func TestLiveFeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("installed bundle version: %q", bundleVersion("/Applications/Library Studio KH.app/Contents/MacOS/library-studio-server", "missing"))
-	got := Check(home, "0.0.1", nil)
-	t.Logf("live feed: %+v", got)
-	if got.State != "available" && got.State != "up_to_date" {
-		t.Fatalf("live feed check = %+v", got)
+	installed := bundleVersion("/Applications/Library Studio KH.app/Contents/MacOS/library-studio-server", "missing")
+	t.Logf("installed bundle version: %q", installed)
+	// The installed bundle is compared through the same function the server uses.
+	got := Check(home, installed, nil)
+	t.Logf("installed check: %+v", got)
+	if installed != "missing" && got.State != "up_to_date" {
+		t.Fatalf("installed app check = %+v, want up_to_date", got)
+	}
+	// An older version must still see the offer, proving the comparison direction.
+	older := Check(home, "0.0.1", nil)
+	t.Logf("older version check: %+v", older)
+	if older.State != "available" && older.State != "up_to_date" {
+		t.Fatalf("live feed check = %+v", older)
 	}
 }
