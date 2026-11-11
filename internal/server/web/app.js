@@ -554,8 +554,10 @@ menuToggle.addEventListener("click", () => {
   const open = $(".side").classList.toggle("menu-open");
   menuToggle.setAttribute("aria-expanded", String(open));
 });
+// Escape falls back to the mobile menu only when no dialog, editable or overlay took it.
 document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape" && menuToggle.getAttribute("aria-expanded") === "true") {
+  if (ev.key === "Escape" && !ev.defaultPrevented && menuToggle.getAttribute("aria-expanded") === "true"
+    && !ev.target.closest?.("dialog, [contenteditable=true], input, textarea, select")) {
     closeMenu(); menuToggle.focus();
   }
 });
@@ -982,6 +984,7 @@ $("#close-public-help").addEventListener("click", () => {
 });
 
 buildArrFields();
+window.libraryKeyboard(document);
 start();
 setInterval(() => {
   if (!$("#app-shell").hidden && $("#view-settings").hidden) {
