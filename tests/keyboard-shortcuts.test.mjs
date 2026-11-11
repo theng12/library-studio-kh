@@ -39,7 +39,7 @@ class FakeElement {
   getAttribute(name) { return this.attributes[name] ?? null; }
   matches(sel) {
     if (sel.includes(",")) return sel.split(",").some((part) => this.matches(part.trim()));
-    if (sel === "[contenteditable]") return "contenteditable" in this.attributes;
+    if (/^\[[a-z-]+\]$/.test(sel)) return sel.slice(1, -1) in this.attributes;
     const m = sel.match(/^(?:([a-z]+))?\[([a-z-]+)=(?:"([^"]*)"|([^"\]]+))\]$/);
     if (m) {
       const value = m[3] ?? m[4];
@@ -188,6 +188,35 @@ test("Ctrl+F works on Windows the same way", () => {
   assert.equal(ev.defaultPrevented, true);
   assert.equal(doc.getElementById("dl-q").focused, true);
   assert.deepEqual(calls.show, []);
+});
+
+test("Cmd+F never hijacks a search box behind a hidden filter bar", () => {
+  // Current markup: on film details #media-filters stays hidden while its
+  // #media-child-q input still exists in the document.
+  const { doc } = setup({ view: "media" });
+  const input = doc.getElementById("media-child-q");
+  const filters = new FakeElement("div", { id: "media-filters", hidden: true });
+  filters.setAttribute("hidden", "");
+  filters.children.push(input);
+  input.parentNode = filters;
+
+  const ev = press(doc, cmd("f"), new FakeElement("body"));
+  assert.equal(ev.defaultPrevented, false, "the platform keeps Cmd+F");
+  assert.equal(input.focused, undefined, "an invisible field was not focused");
+
+  // The same screen with the filter bar shown does use the shortcut.
+  filters.hidden = false;
+  delete filters.attributes.hidden;
+  const ev2 = press(doc, cmd("f"), new FakeElement("body"));
+  assert.equal(ev2.defaultPrevented, true);
+  assert.equal(input.focused, true);
+
+  // A disabled search field is not usable either.
+  input.disabled = true;
+  input.focused = false;
+  const ev3 = press(doc, cmd("f"), new FakeElement("body"));
+  assert.equal(ev3.defaultPrevented, false);
+  assert.equal(input.focused, false);
 });
 
 test("Cmd+F is left alone on a screen with no search box", () => {

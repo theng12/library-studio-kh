@@ -82,7 +82,9 @@ window.libraryKeyboard = (doc) => {
     }
     if (key === "f") {
       const input = searchFor[currentView()] && doc.querySelector(searchFor[currentView()]);
-      if (!input) return;
+      // The media search box exists even where its filter bar is hidden (film
+      // details), so an invisible or disabled field must never be hijacked.
+      if (!input || input.disabled || input.closest("[hidden]")) return;
       ev.preventDefault(); input.focus(); input.select?.(); return;
     }
     // Downloads only, and only with focus inside the list, so a hidden ancestor
