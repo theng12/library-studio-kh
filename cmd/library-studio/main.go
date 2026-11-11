@@ -83,9 +83,11 @@ func main() {
 		spec := platform.HostServiceSpec{Home: home}
 		svc := hostControlService()
 		st := svc.Status(spec)
+		exe, _ := os.Executable()
 		if st.Supported && st.Installed {
 			// A login job is wanted: start it and wait for its proof instead of
 			// silently starting another desktop server.
+			spec.Exe = exe
 			started, startErr := svc.Start(spec)
 			if startErr != nil {
 				log.Fatalf("Library Studio KH could not start its background host: %v", startErr)

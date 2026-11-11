@@ -283,6 +283,40 @@ func helperInstallPath(home string) string {
 	return filepath.Join(home, "Helper", "Library Studio KH Helper.app", "Contents", "MacOS", "Library Studio KH Helper")
 }
 
+// savedJob returns the program and port saved in an installed Library job.
+func savedJob(path string) (string, int, bool) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", 0, false
+	}
+	var doc plistNode
+	if xml.Unmarshal(b, &doc) != nil || doc.XMLName.Local != "plist" || len(doc.Nodes) != 1 {
+		return "", 0, false
+	}
+	args, err := jobProperty(doc.Nodes[0], "ProgramArguments")
+	if err != nil || args.XMLName.Local != "array" {
+		return "", 0, false
+	}
+	var values []string
+	for _, node := range args.Nodes {
+		if node.XMLName.Local != "string" || len(node.Nodes) != 0 {
+			return "", 0, false
+		}
+		values = append(values, node.Content)
+	}
+	for i := 2; i+1 < len(values); i++ {
+		if values[i] != "-port" {
+			continue
+		}
+		port, err := strconv.Atoi(values[i+1])
+		if err != nil || port < 1024 || port > 65535 {
+			return "", 0, false
+		}
+		return values[0], port, true
+	}
+	return "", 0, false
+}
+
 // helperExecutable is the path the login job runs: the installed helper when
 // the server is packaged, otherwise the given executable.
 func helperExecutable(exe, home string) string {
@@ -614,8 +648,19 @@ func (s *HostService) Start(spec HostServiceSpec) (HostServiceStatus, error) {
 	if err := checkJobHome(path, spec.Home); err != nil {
 		return blockedStatus(err.Error()), err
 	}
+	// Migrate a job saved by an older build to the named helper this app ships.
+	// The saved job's port is kept, so the running host is simply replaced.
+	if spec.Exe != "" {
+		if program, port, ok := savedJob(path); ok && program != helperExecutable(spec.Exe, spec.Home) {
+			return s.Install(HostServiceSpec{Exe: spec.Exe, Home: spec.Home, Port: port})
+		}
+	}
+	helperChanged, err := installHelper(spec.Exe, spec.Home)
+	if err != nil {
+		return blockedStatus("The background helper could not be installed."), err
+	}
 	loaded := s.isLoaded()
-	if loaded && loadedConfigMatches(path) && (s.verify == nil || s.isRunning(spec.Home)) {
+	if loaded && loadedConfigMatches(path) && !helperChanged && (s.verify == nil || s.isRunning(spec.Home)) {
 		return s.Status(spec), nil
 	}
 	if loaded {

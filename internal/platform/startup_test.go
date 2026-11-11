@@ -298,6 +298,57 @@ func TestStartReloadsTheJobDefinitionFromDisk(t *testing.T) {
 	}
 }
 
+func TestStartMigratesASavedJobToTheNamedHelper(t *testing.T) {
+	dir := t.TempDir()
+	app := filepath.Join(dir, "Library Studio KH.app")
+	server := filepath.Join(app, "Contents", "MacOS", "library-studio-server")
+	packaged := filepath.Join(app, "Contents", "Resources", "helper",
+		"Library Studio KH Helper.app", "Contents", "MacOS", "Library Studio KH Helper")
+	for _, path := range []string{server, packaged} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	home := filepath.Join(dir, "Library Studio KH")
+	r := &fakeRunner{loaded: true}
+	svc := NewHostService(r, nil)
+	svc.agentDir = filepath.Join(dir, "LaunchAgents")
+	if err := os.MkdirAll(svc.agentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := svc.plistPath()
+	// An older build saved the bare server, not the named helper.
+	installed := helperExecutable(server, home)
+	old := strings.Replace(hostPlist(HostServiceSpec{Exe: server, Home: home, Port: 17882}), installed, server, 1)
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := svc.Start(HostServiceSpec{Exe: server, Home: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.State != HostServiceLoaded || !st.Installed || !st.Loaded {
+		t.Fatalf("migrated status = %+v", st)
+	}
+	if _, err := os.Stat(installed); err != nil {
+		t.Fatalf("helper was not installed: %v", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), installed) || !strings.Contains(string(b), "17882") {
+		t.Fatalf("saved job was not migrated:\n%s", b)
+	}
+	joined := strings.Join(r.calls, ",")
+	if !strings.Contains(joined, "bootout") || !strings.Contains(joined, "bootstrap") {
+		t.Fatalf("migrated job was not reloaded: %v", r.calls)
+	}
+}
+
 func TestStopKeepsPlistAndOnlyTouchesOwnJob(t *testing.T) {
 	r := &fakeRunner{}
 	svc, spec := newTestService(t, r, nil)
