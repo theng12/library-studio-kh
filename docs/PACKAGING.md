@@ -44,7 +44,7 @@ Run the lanes covering the change and its callers with `testctl run library <lan
 
 | Lane | Covered work and invalidating inputs |
 | --- | --- |
-| `frontend` | All Node UI regressions; web assets, tests and package metadata |
+| `frontend` | All Node UI and desktop-menu regressions; web assets, tests, package metadata and native menu source |
 | `core` | Config, stock API, library/removal, platform and package installer tests; all their transitive Go inputs |
 | `setup` | Setup plus HTTP/CLI callers; all internal Go and embedded assets, root release metadata |
 | `version` | Version/What's New agreement; Go module, root Go, changelog and bundle manifests |

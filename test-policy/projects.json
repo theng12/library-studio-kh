@@ -7,7 +7,7 @@
       "lanes": {
         "frontend": {
           "command": ["node", "--test", "tests"],
-          "paths": ["tests", "internal/server/web", "package.json"],
+          "paths": ["tests", "internal/server/web", "package.json", "src-tauri/src/main.rs"],
           "timeoutMin": 5
         },
         "core": {
