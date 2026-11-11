@@ -72,6 +72,9 @@ function render(st) {
   fillWebAddresses(st);
   const s = st.snapshot, cfg = st.settings;
   $("#version").textContent = st.version;
+  // Setup is done once a download client and a library app are both saved.
+  const configured = !!cfg.qbittorrent?.url && ["sonarr", "radarr", "lidarr"].some((a) => !!cfg[a]?.url);
+  for (const el of document.querySelectorAll(".first-run")) el.hidden = configured;
 
   const parts = [];
   parts.push(s.freeBytes == null ? "Free space on this computer: not known yet." : "<strong>" + gb(s.freeBytes) + "</strong> free on this computer.");
