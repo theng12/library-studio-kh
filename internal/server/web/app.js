@@ -554,10 +554,16 @@ menuToggle.addEventListener("click", () => {
   const open = $(".side").classList.toggle("menu-open");
   menuToggle.setAttribute("aria-expanded", String(open));
 });
+// Escape falls back to the mobile menu only when no open dialog, editable or
+// IME composition has already taken it.
 document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape" && menuToggle.getAttribute("aria-expanded") === "true") {
-    closeMenu(); menuToggle.focus();
-  }
+  if (ev.key !== "Escape" || ev.isComposing || ev.keyCode === 229 || ev.defaultPrevented) return;
+  if (menuToggle.getAttribute("aria-expanded") !== "true") return;
+  const t = ev.target;
+  const editableHost = t?.closest?.("[contenteditable]");
+  if (document.querySelector("dialog[open]") || t?.closest?.("dialog, input, textarea, select")
+    || (editableHost && editableHost.getAttribute("contenteditable") !== "false")) return;
+  closeMenu(); menuToggle.focus();
 });
 document.addEventListener("click", (ev) => { if (!ev.target.closest(".side")) closeMenu(); });
 
@@ -982,6 +988,7 @@ $("#close-public-help").addEventListener("click", () => {
 });
 
 buildArrFields();
+window.libraryKeyboard(document);
 start();
 setInterval(() => {
   if (!$("#app-shell").hidden && $("#view-settings").hidden) {

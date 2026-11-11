@@ -10,6 +10,7 @@
 <script src="download-view.js" defer></script>
 <script src="library-view.js" defer></script>
 <script src="addresses.js" defer></script>
+<script src="keyboard.js" defer></script>
 <script src="app.js" defer></script>
 <script src="setup.js" defer></script>
 <script src="media.js" defer></script>
@@ -116,8 +117,8 @@
     <ul class="menu secondary-menu" aria-label="Settings and information">
       <li><button type="button" data-view="sources">Sources</button></li>
       <li><button type="button" data-view="cleanup">Cleanup</button></li>
-      <li><button type="button" data-view="settings">Settings</button></li>
-      <li><button type="button" data-view="help">Setup &amp; help</button></li>
+      <li><button type="button" data-view="settings" aria-keyshortcuts="Meta+, Control+,">Settings</button></li>
+      <li><button type="button" data-view="help" aria-keyshortcuts="Meta+? Control+?">Setup &amp; help</button></li>
     </ul>
     <button type="button" class="version" data-view="whatsnew">Version <span id="version">…</span><br><span class="link">What's new</span></button>
     </div>
@@ -144,7 +145,7 @@
       <p id="notice" class="notice" role="alert" hidden></p>
       <div class="panel">
         <div class="tools">
-          <label class="search">Search <input type="search" id="act-q" placeholder="Title"></label>
+          <label class="search">Search <input type="search" id="act-q" placeholder="Title" aria-keyshortcuts="Meta+F Control+F"></label>
           <label>Show <select id="act-kind"><option value="">Everything</option><option value="downloading">Downloading</option><option value="waiting">Waiting for import</option><option value="imported">In library</option><option value="upcoming">Coming up</option><option value="removed">Removed locally</option></select></label>
           <label>Sort <select id="act-sort"><option value="state">By state</option><option value="title">Title A–Z</option><option value="when">Date</option></select></label>
         </div>
@@ -164,7 +165,7 @@
       <p id="dl-notice" class="notice" role="alert" hidden></p>
       <div class="panel">
         <div class="tools download-filters">
-          <label class="search">Search downloads <input type="search" id="dl-q" placeholder="Title"></label>
+          <label class="search">Search downloads <input type="search" id="dl-q" placeholder="Title" aria-keyshortcuts="Meta+F Control+F"></label>
           <div class="download-filter-grid">
           <label>Status <select id="dl-state"><option value="all">All</option></select></label>
           <label>App <select id="dl-app"><option value="">All apps</option></select></label>
@@ -176,11 +177,11 @@
           <div class="actions">
             <button type="button" class="small" id="dl-pause" aria-label="Pause selected downloads" disabled>Pause</button>
             <button type="button" class="small" id="dl-resume" aria-label="Resume selected downloads" disabled>Resume</button>
-            <button type="button" class="small" id="dl-refresh">Refresh</button>
+            <button type="button" class="small" id="dl-refresh" title="Refresh · Command/Ctrl + R">Refresh</button>
           </div>
         </div>
         <p id="dl-empty" class="empty" hidden></p>
-        <div id="dl" class="download-list" hidden></div>
+        <div id="dl" class="download-list" hidden role="group" tabindex="0" aria-label="Downloads. Selects the visible downloads." aria-keyshortcuts="Meta+A Control+A"></div>
         <p class="download-help muted">Sorting changes this view only. Completed includes seeding and paused finished downloads.</p>
       </div>
     </section>
@@ -193,7 +194,7 @@
       <p id="browse-notice" class="notice" role="alert" hidden></p>
       <div class="panel">
         <div class="tools">
-          <label class="search">Search <input type="search" id="lib-q" placeholder="Title"></label>
+          <label class="search">Search <input type="search" id="lib-q" placeholder="Title" aria-keyshortcuts="Meta+F Control+F"></label>
           <label>Type <select id="lib-type"><option value="">All</option><option value="Sonarr">TV</option><option value="Radarr">Films</option><option value="Lidarr">Music</option></select></label>
           <label>Monitoring <select id="lib-monitoring"><option value="">All</option><option value="on">On</option><option value="off">Off</option><option value="unknown">Not reported</option></select></label>
           <label>Genre <select id="lib-genre"><option value="">All genres</option></select></label>
@@ -220,7 +221,7 @@
         <div id="subtitles-content"></div>
       </details>
       <div class="tools panel" id="media-filters" hidden>
-        <label class="search">Find an episode or album <input type="search" id="media-child-q"></label>
+        <label class="search">Find an episode or album <input type="search" id="media-child-q" aria-keyshortcuts="Meta+F Control+F"></label>
         <label id="media-season-label">Season <select id="media-season"><option value="">All seasons</option></select></label>
       </div>
       <div id="media-children"></div>
@@ -250,7 +251,7 @@
       <div class="panel">
         <div class="panel-head"><h2>Search</h2></div>
         <form id="find-form" class="tools" role="search">
-          <label class="search">Title <input type="search" id="find-q" required maxlength="200" placeholder="e.g. a show, film or artist"></label>
+          <label class="search">Title <input type="search" id="find-q" required maxlength="200" placeholder="e.g. a show, film or artist" aria-keyshortcuts="Meta+F Control+F"></label>
           <label>Type <select id="find-type"><option value="">All</option><option value="Sonarr">TV</option><option value="Radarr">Films</option><option value="Lidarr">Music</option></select></label>
           <button type="submit" class="primary">Find</button>
         </form>
@@ -378,6 +379,18 @@
       <div class="panel prose">
         <h2>Two ways to start</h2>
         <p>Most people never need to open a companion app. Choose the path that matches this computer.</p>
+      </div>
+
+      <div class="panel prose">
+        <h2>Keyboard</h2>
+        <p>Shortcuts use <kbd id="kbd-mod">Command</kbd> on a Mac and <kbd>Ctrl</kbd> on Windows. Typing stays normal: while a field is active, the usual cut, copy, paste, undo, redo and select-all keys belong to that field.</p>
+        <dl class="help-facts">
+          <dt>Find in this screen</dt><dd><kbd id="kbd-find">Command + F</kbd> — searches the screen you are on when it has a search box.</dd>
+          <dt>Settings</dt><dd><kbd id="kbd-settings">Command + ,</kbd></dd>
+          <dt>Help</dt><dd><kbd id="kbd-help">Command + ?</kbd> — opens this screen from anywhere that is not a form field.</dd>
+          <dt>Refresh this list</dt><dd><kbd id="kbd-refresh">Command + R</kbd> — reloads Activity, Downloads or My library. It only reads; nothing is changed.</dd>
+          <dt>Select visible downloads</dt><dd><kbd id="kbd-select-all">Command + A</kbd> — with focus inside the Downloads list, ticks every download the filters currently show and leaves hidden items and monitoring switches alone.</dd>
+        </dl>
       </div>
 
       <details class="panel help-step" id="setup-step">
