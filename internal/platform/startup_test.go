@@ -428,12 +428,13 @@ func TestHostStatusNeedsRestartWhenLoadedDefinitionDiffers(t *testing.T) {
 	}
 }
 
-func TestHostPlistRunsThePackagedHelperApp(t *testing.T) {
+func TestHostPlistRunsTheInstalledHelperApp(t *testing.T) {
 	app := filepath.Join(t.TempDir(), "Library Studio KH.app")
 	server := filepath.Join(app, "Contents", "MacOS", "library-studio-server")
-	helper := filepath.Join(app, "Contents", "Resources", "helper",
+	packaged := filepath.Join(app, "Contents", "Resources", "helper",
 		"Library Studio KH Helper.app", "Contents", "MacOS", "Library Studio KH Helper")
-	for _, path := range []string{server, helper} {
+	info := filepath.Join(filepath.Dir(filepath.Dir(packaged)), "Info.plist")
+	for _, path := range []string{server, packaged, info} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -441,17 +442,46 @@ func TestHostPlistRunsThePackagedHelperApp(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	plist := hostPlist(HostServiceSpec{Exe: server, Home: "/tmp/home", Port: 7881})
-	if !strings.Contains(plist, "<string>"+helper+"</string>") {
-		t.Fatalf("plist does not run the helper: %s", plist)
+	home := t.TempDir()
+	installed := filepath.Join(home, "Helper", "Library Studio KH Helper.app",
+		"Contents", "MacOS", "Library Studio KH Helper")
+	changed, err := installHelper(server, home)
+	if err != nil || !changed {
+		t.Fatalf("installHelper changed=%v err=%v", changed, err)
+	}
+	if got, err := os.ReadFile(installed); err != nil || string(got) != "#!/bin/sh\n" {
+		t.Fatalf("installed helper = %q err=%v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(filepath.Dir(installed)), "Info.plist")); err != nil {
+		t.Fatalf("installed bundle is incomplete: %v", err)
+	}
+	if changed, err := installHelper(server, home); err != nil || changed {
+		t.Fatalf("second installHelper changed=%v err=%v", changed, err)
+	}
+	plist := hostPlist(HostServiceSpec{Exe: server, Home: home, Port: 7881})
+	if !strings.Contains(plist, "<string>"+installed+"</string>") {
+		t.Fatalf("plist does not run the installed helper: %s", plist)
 	}
 	if strings.Contains(plist, "<string>"+server+"</string>") {
 		t.Fatalf("plist still runs the bare server: %s", plist)
 	}
-	if got := helperExecutable(server); got != helper {
-		t.Fatalf("helperExecutable = %q, want %q", got, helper)
+	if got := helperExecutable(server, home); got != installed {
+		t.Fatalf("helperExecutable = %q, want %q", got, installed)
 	}
-	if got := helperExecutable("/usr/local/bin/library-studio-server"); got != "/usr/local/bin/library-studio-server" {
+	bare := "/usr/local/bin/library-studio-server"
+	if got := helperExecutable(bare, home); got != bare {
 		t.Fatalf("helperExecutable changed a bare path: %q", got)
+	}
+	// Updating keeps the replaced copy available for rollback.
+	if err := os.WriteFile(packaged, []byte("#!/bin/sh\n# new\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := installHelper(server, home); err != nil || !changed {
+		t.Fatalf("updated installHelper changed=%v err=%v", changed, err)
+	}
+	previous := filepath.Join(home, "Helper", "Library Studio KH Helper.app.previous",
+		"Contents", "MacOS", "Library Studio KH Helper")
+	if got, err := os.ReadFile(previous); err != nil || string(got) != "#!/bin/sh\n" {
+		t.Fatalf("previous helper = %q err=%v", got, err)
 	}
 }

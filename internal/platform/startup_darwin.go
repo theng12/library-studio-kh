@@ -237,7 +237,11 @@ func validateInstallSpec(spec HostServiceSpec) error {
 			}
 		}
 	}
-	fi, err := os.Stat(helperExecutable(spec.Exe))
+	selected := helperExecutable(spec.Exe, spec.Home)
+	if helper := packagedHelper(spec.Exe); helper != "" {
+		selected = helper
+	}
+	fi, err := os.Stat(selected)
 	if err != nil {
 		return fmt.Errorf("the selected server cannot be used: %w", err)
 	}
@@ -257,21 +261,118 @@ func xmlEscape(value string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(value)
 }
 
-// helperExecutable prefers the packaged helper app inside Library Studio KH.app
-// so the login job runs with the helper's name and icon instead of the bare
-// server binary. Anything outside a packaged app keeps the given path.
-func helperExecutable(exe string) string {
+// packagedHelper returns the helper app's executable inside a packaged Library
+// Studio KH.app, or "" for development builds.
+func packagedHelper(exe string) string {
 	macos := filepath.Dir(exe)
 	contents := filepath.Dir(macos)
 	if filepath.Base(macos) != "MacOS" || filepath.Base(contents) != "Contents" ||
 		!strings.HasSuffix(filepath.Base(filepath.Dir(contents)), ".app") {
-		return exe
+		return ""
 	}
 	helper := filepath.Join(contents, "Resources", "helper", "Library Studio KH Helper.app", "Contents", "MacOS", "Library Studio KH Helper")
 	if fi, err := os.Stat(helper); err == nil && fi.Mode().IsRegular() {
 		return helper
 	}
-	return exe
+	return ""
+}
+
+// helperInstallPath is where the packaged helper is copied: outside the main
+// app bundle so macOS lists the background item as the helper, not the app.
+func helperInstallPath(home string) string {
+	return filepath.Join(home, "Helper", "Library Studio KH Helper.app", "Contents", "MacOS", "Library Studio KH Helper")
+}
+
+// helperExecutable is the path the login job runs: the installed helper when
+// the server is packaged, otherwise the given executable.
+func helperExecutable(exe, home string) string {
+	if packagedHelper(exe) == "" {
+		return exe
+	}
+	return helperInstallPath(home)
+}
+
+// installHelper copies the packaged helper into the configuration home and
+// reports whether the installed copy changed. The replaced copy is kept as
+// Helper.previous so a failed update can be rolled back.
+func installHelper(exe, home string) (bool, error) {
+	packaged := packagedHelper(exe)
+	if packaged == "" {
+		return false, nil
+	}
+	installed := helperInstallPath(home)
+	if sameFileBytes(packaged, installed) {
+		return false, nil
+	}
+	src := filepath.Dir(filepath.Dir(filepath.Dir(packaged)))
+	dst := filepath.Dir(filepath.Dir(filepath.Dir(installed)))
+	staging := dst + ".new"
+	if err := os.RemoveAll(staging); err != nil {
+		return false, err
+	}
+	if err := copyTree(src, staging); err != nil {
+		return false, err
+	}
+	previous := dst + ".previous"
+	if _, err := os.Stat(dst); err == nil {
+		if err := os.RemoveAll(previous); err != nil {
+			return false, err
+		}
+		if err := os.Rename(dst, previous); err != nil {
+			return false, err
+		}
+	}
+	if err := os.Rename(staging, dst); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func sameFileBytes(a, b string) bool {
+	one, err := os.ReadFile(a)
+	if err != nil {
+		return false
+	}
+	two, err := os.ReadFile(b)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(one, two)
+}
+
+func copyTree(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		from := filepath.Join(src, entry.Name())
+		to := filepath.Join(dst, entry.Name())
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if err := copyTree(from, to); err != nil {
+				return err
+			}
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("the helper bundle contains an unsupported file: %s", from)
+		}
+		data, err := os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(to, data, info.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func hostPlist(spec HostServiceSpec) string {
@@ -283,7 +384,7 @@ func hostPlist(spec HostServiceSpec) string {
 	<string>` + xmlEscape(HostServiceLabel) + `</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>` + xmlEscape(helperExecutable(spec.Exe)) + `</string>
+		<string>` + xmlEscape(helperExecutable(spec.Exe, spec.Home)) + `</string>
 		<string>-service</string>
 		<string>-port</string>
 		<string>` + strconv.Itoa(spec.Port) + `</string>
@@ -456,8 +557,12 @@ func (s *HostService) Install(spec HostServiceSpec) (HostServiceStatus, error) {
 			return blockedStatus(err.Error()), err
 		}
 	}
+	helperChanged, err := installHelper(spec.Exe, spec.Home)
+	if err != nil {
+		return blockedStatus("The background helper could not be installed."), err
+	}
 	plist := hostPlist(spec)
-	changed := true
+	changed := helperChanged
 	if exists {
 		old, err := os.ReadFile(path)
 		if err != nil {
