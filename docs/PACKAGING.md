@@ -34,7 +34,7 @@ Paths: settings live in the OS config folder (`~/Library/Application Support`, `
 
 ## Change-aware checks
 
-Use the existing shared runner; `test-policy/projects.json` resolves the project and ignored receipt/temp directories relative to this checkout. Keep worktrees and build/test output on ATLAS. The lane environment explicitly records the shared ATLAS Go cache and temporary directories under `KH-Worktrees/library-studio-kh/.cache/{go,tmp}`; create those directories before the first run. If the checkout moves to another approved disk, update those config settings before running so the receipt records the new environment. Confirm free disk against measured need before heavy work, run long jobs through `_orchestra/tools/run-detached.sh`, and use one heavy Library lane at a time.
+Use the existing shared runner; `test-policy/projects.json` resolves the project and ignored receipt/temp directories relative to this checkout. Keep active worktrees, build/test output and caches on the internal disk; inherit local temporary-directory and Go cache defaults. Confirm free disk against measured need before heavy work, run long jobs through `_orchestra/tools/run-detached.sh`, and use one heavy Library lane at a time.
 
 ```sh
 ~/Developer/portfolio/bin/testctl plan library --config test-policy/projects.json

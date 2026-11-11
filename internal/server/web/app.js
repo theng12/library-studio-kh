@@ -628,6 +628,7 @@ function progressBlock(t) {
 }
 function downloadCard(t) {
   const card = mediaNode("article", null, "download-item");
+  card.dataset.hash = t.hash;
   const select = mediaNode("label", null, "check-target");
   const box = document.createElement("input"); box.type = "checkbox"; box.checked = selected.has(t.hash);
   box.setAttribute("aria-label", "Select " + t.name); select.append(box);
@@ -660,11 +661,18 @@ function renderDownloads() {
   if ([...app.options].some(o => o.value === chosenApp)) app.value = chosenApp;
   const sort = $("#dl-sort");
   const items = downloadRows(all, $("#dl-q").value, status.value, sort.value, app.value);
-  const empty = $("#dl-empty"), list = $("#dl");
+  const empty = $("#dl-empty"), list = $("#dl"), focused = document.activeElement;
+  const hadFocus = list.contains(focused), focusedHash = focused.closest?.(".download-item")?.dataset.hash;
   list.hidden = items.length === 0; empty.hidden = items.length > 0;
   if (!items.length) empty.textContent = dlError || (all.length ? "No downloads match these filters." : "No downloads in qBittorrent right now. Add one in Find & add.");
   $("#dl-count").textContent = dlError && !all.length ? "Not available" : items.length + " of " + all.length + " downloads";
   list.replaceChildren(...items.map(downloadCard));
+  // Refresh replaces cards; keep keyboard focus on the same download when it remains.
+  if (hadFocus && !list.contains(document.activeElement)) {
+    const card = [...list.children].find(c => c.dataset.hash === focusedHash);
+    const target = card?.querySelector(focused.matches("input[type=checkbox]") ? "input[type=checkbox]" : "summary");
+    (target || (items.length ? list : $("#dl-q"))).focus();
+  }
   updateDlButtons();
 }
 for (const id of ["#dl-q", "#dl-state", "#dl-app"]) $(id).addEventListener("input", () => { selected.clear(); renderDownloads(); });
