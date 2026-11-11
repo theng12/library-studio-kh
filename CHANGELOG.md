@@ -4,6 +4,7 @@
 
 - Add optional setup and readiness checks for Recyclarr, Unpackerr and Whisparr. Each stays off until you turn it on.
 - Verify official companion packages before installation and keep saved connection credentials private.
+- Use standard editing commands and discoverable keyboard shortcuts for search, navigation and download selection while keeping text fields and dialogs in control of focus.
 
 ## 0.7.6 — 2026-11-09
 
