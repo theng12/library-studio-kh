@@ -16,10 +16,31 @@
   --warn-ink: #6b4200;
   --shadow: 0 1px 2px rgba(20, 24, 40, 0.06), 0 4px 14px rgba(20, 24, 40, 0.05);
   --gap: 1.5rem;
-  color-scheme: light dark;
+  color-scheme: light;
 }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #12141a;
+  --side: #171a22;
+  --panel: #1c1f28;
+  --ink: #e6e8ef;
+  --ink-2: #b2b7c6;
+  --muted: #8a90a2;
+  --line: #2c303c;
+  --accent: #8ea2ff;
+  --accent-soft: #262d4d;
+  --accent-ink: #10142a;
+  --wait: #e2b25a;
+  --connected: #69d99c;
+  --disconnected: #ff8585;
+  --warn-bg: #3a2c10;
+  --warn-ink: #f3d79c;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+/* Before the saved choice arrives, an unset theme follows this Mac. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
+    color-scheme: dark;
     --ground: #12141a;
     --side: #171a22;
     --panel: #1c1f28;
@@ -59,7 +80,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .brand { display: flex; align-items: center; gap: 0.65rem; padding: 0 0.5rem; font-weight: 650; letter-spacing: -0.01em; }
 .mark { width: 1.75rem; height: 1.75rem; color: var(--accent); flex: none; }
-@media (prefers-color-scheme: dark) { .mark { color: #3550c8; } }
+:root[data-theme="dark"] .mark { color: #3550c8; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .mark { color: #3550c8; } }
 .menu { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.2rem; }
 .menu button {
   width: 100%; text-align: left; border: 0; background: transparent; color: var(--ink-2);
@@ -68,22 +90,25 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .menu button:hover { background: var(--panel); color: var(--ink); }
 .menu button[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .menu .group-head { padding: 1.1rem 0.75rem 0.15rem; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-.version {
-  margin-top: auto; text-align: left; border: 0; background: transparent; color: var(--muted);
-  padding: 0.55rem 0.75rem; border-radius: 8px; font-size: 0.85rem; line-height: 1.4;
+.pill {
+  display: inline-flex; align-items: center; gap: 0.35rem; align-self: flex-start;
+  min-height: 26px; padding: 0 7px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--ink); text-align: left;
 }
-.version .link { color: var(--accent); }
-.version:hover, .version[aria-current="page"] { background: var(--panel); }
+.pill:hover, .pill[aria-current="page"] { border-color: var(--accent); }
+.pill-icon { width: 0.9rem; height: 0.9rem; color: var(--accent); }
+.pill-text { display: flex; flex-direction: column; line-height: 1.1; }
+.pill-name { font-size: 11px; font-weight: 600; }
+.pill-version { font-size: 10px; color: var(--muted); }
 .nav-icon { width: 1.1rem; height: 1.1rem; flex: none; }
-.menu button, .version, .support, .mobile-menu-toggle { display: flex; align-items: center; gap: 0.6rem; }
-.side-footer { display: grid; gap: 0.2rem; margin-top: auto; }
+.menu button, .support, .mobile-menu-toggle { display: flex; align-items: center; gap: 0.6rem; }
+.side-footer { display: grid; gap: 6px; margin-top: auto; padding-top: 9px; border-top: 1px solid var(--line); }
 .support {
   text-align: left; border: 0; background: transparent; color: var(--ink-2);
   padding: 0.55rem 0.75rem; border-radius: 8px;
 }
 .support:hover { background: var(--panel); color: var(--ink); }
 .support[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.version { margin-top: 0; }
 @media (min-width: 761px) { #more-menu { display: flex; flex-direction: column; flex: 1; gap: 0.2rem; } }
 .support-stack { display: grid; gap: var(--gap); max-width: 46rem; margin-top: 1.25rem; }
 .support-card { padding: 1.25rem; }
@@ -176,6 +201,7 @@ label input:not([type=checkbox]) {
 label input:focus-visible { outline-offset: 0; border-color: var(--accent); }
 label.short input { max-width: 8rem; }
 label.check { display: flex; gap: 0.6rem; align-items: center; color: var(--ink); font-size: 0.95rem; }
+.appearance { display: flex; flex-wrap: wrap; gap: 0.35rem 1.5rem; margin-bottom: 0.5rem; }
 input[type=checkbox] { accent-color: var(--accent); width: 1.05rem; height: 1.05rem; margin: 0; }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
 .hint { font-size: 0.8rem; color: var(--muted); }

@@ -13,7 +13,7 @@ function fixture() {
   const node = () => ({ hidden: true, value: "", children: [], textContent: "", replaceChildren(...items) { this.children = items; }, setAttribute(k, v) { this[k] = v; } });
   const $ = selector => { if (!elements.has(selector)) elements.set(selector, node()); return elements.get(selector); };
   $("#empty").textContent = emptyCopy;
-  const ctx = vm.createContext({ $, current: null, AUTH: { authenticated: true }, fillWebAddresses() {}, gb() {}, document: { createElement: node, querySelectorAll: () => [] }, api: async () => { throw Error("Mock host unavailable; retry the connection"); } });
+  const ctx = vm.createContext({ $, current: null, AUTH: { authenticated: true }, fillWebAddresses() {}, gb() {}, applyAppearance() {}, document: { createElement: node, querySelectorAll: () => [] }, api: async () => { throw Error("Mock host unavailable; retry the connection"); } });
   vm.runInContext(rendering + loading, ctx);
   const state = { version: "fixture", settings: { stagedCleanupOn: false }, releases: [], snapshot: { apps: [], items: [], freeBytes: null, library: "not set" } };
   return { ctx, $, state };

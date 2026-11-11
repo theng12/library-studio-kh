@@ -25,6 +25,8 @@ type QBit struct {
 }
 
 type Config struct {
+	// Appearance is "system" (default), "light", "dark" or "default".
+	Appearance    string `json:"appearance"`
 	TailscaleOn   bool   `json:"tailscaleOn"`
 	TailscalePort int    `json:"tailscalePort"`
 	CleanupOn     bool   `json:"cleanupOn"`
@@ -58,7 +60,8 @@ const StagedCleanupNotice = "The old permanent-delete cleanup is retired. Use th
 
 func Default() Config {
 	return Config{
-		CleanupOn: false, CleanupDays: 7, TailscalePort: 7882,
+		Appearance: "system",
+		CleanupOn:  false, CleanupDays: 7, TailscalePort: 7882,
 		StagedCleanupOn: false, StagedDays: 3, ManagedTrashDays: 4, NativeTrashDays: 30,
 		PressureFreeGB: 50, SeedRatio: 2, SeedMinutes: 2880,
 	}
@@ -67,6 +70,11 @@ func Default() Config {
 func (c Config) Validate() error {
 	if c.CleanupOn {
 		return errors.New(StagedCleanupNotice)
+	}
+	switch c.Appearance {
+	case "", "system", "light", "dark", "default":
+	default:
+		return errors.New("appearance must be system, light, dark or default")
 	}
 	if c.TailscaleOn && (c.TailscalePort < 1024 || c.TailscalePort > 65535) {
 		return errors.New("Tailscale port must be a whole number from 1024 to 65535")

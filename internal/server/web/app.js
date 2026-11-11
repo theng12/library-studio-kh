@@ -15,6 +15,16 @@ const AUTH_FORM_PATHS = new Set(["/api/auth/login", "/api/auth/setup", "/api/aut
 const AUTH = { available: false, authenticated: false, setupRequired: false, rememberDays: 30, sessionHours: 12, minPasswordLength: 6 };
 let current = null;
 
+// Appearance: System follows this Mac; Light/Dark/Default are explicit choices.
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+function applyAppearance(choice) {
+  const resolved = choice === "system" ? (darkQuery.matches ? "dark" : "light") : choice === "default" ? "light" : choice;
+  document.documentElement.dataset.theme = resolved;
+}
+darkQuery.addEventListener("change", () => {
+  if ((current?.settings.appearance || "system") === "system") applyAppearance("system");
+});
+
 async function api(path, body, write) {
   const headers = token ? { "X-Library-Token": token } : {};
   if (body) headers["Content-Type"] = "application/json";
@@ -72,6 +82,7 @@ function render(st) {
   fillWebAddresses(st);
   const s = st.snapshot, cfg = st.settings;
   $("#version").textContent = st.version;
+  applyAppearance(cfg.appearance || "system");
   // Setup is done once a download client and a library app are both saved.
   const configured = !!cfg.qbittorrent?.url && ["sonarr", "radarr", "lidarr"].some((a) => !!cfg[a]?.url);
   for (const el of document.querySelectorAll(".first-run")) el.hidden = configured;
@@ -521,6 +532,7 @@ function fillForm(st) {
   $("#remote-status").textContent = remote.error || (remote.on ? "Ready for Tailscale connections." : "Tailscale access is off.");
   $("#remote-link-box").hidden = !remote.url;
   $("#remote-link").value = remote.url || "";
+  for (const r of f.querySelectorAll('input[name="appearance"]')) r.checked = r.value === (c.appearance || "system");
   f.bazarrOn.checked = !!c.bazarrOn;
   f.whisparrOn.checked = !!c.whisparrOn;
   f.downloadPath.value = c.downloadPath;
@@ -932,10 +944,15 @@ $("#logout").addEventListener("click", async () => {
   document.dispatchEvent(new CustomEvent("library:signedout"));
 });
 
+$("#form").addEventListener("change", (ev) => {
+  if (ev.target.name === "appearance") applyAppearance(ev.target.value);
+});
+
 $("#form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const f = ev.target, msg = $("#form-msg"), btn = f.querySelector("button.primary");
   const body = {
+    appearance: f.querySelector('input[name="appearance"]:checked')?.value || "system",
     tailscaleOn: f.tailscaleOn.checked, tailscalePort: Number(f.tailscalePort.value),
     bazarrOn: f.bazarrOn.checked, whisparrOn: f.whisparrOn.checked,
     downloadPath: f.downloadPath.value.trim(), libraryPath: f.libraryPath.value.trim(),

@@ -24,7 +24,7 @@ test("every sidebar entry carries a leading icon and keeps its text label", () =
   assert.ok(labelled.length >= 9, "sidebar entries were not found");
   for (const entry of labelled) {
     assert.match(entry, /<svg[^>]*aria-hidden="true"/, "an entry has no icon: " + entry.slice(0, 80));
-    assert.match(entry, /<span>[^<]*/, "an entry has no visible label: " + entry.slice(0, 80));
+    assert.match(entry, /<span[^>]*>[^<]*/, "an entry has no visible label: " + entry.slice(0, 80));
   }
 });
 
