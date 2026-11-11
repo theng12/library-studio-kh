@@ -84,4 +84,4 @@ The mock contract check is part of the `host` lane and can run alone for this ch
 python3 -I scripts/test_release_dist.py
 ```
 
-Run fixtures on ATLAS using the lane's `TMPDIR`. This checks the current installed shared helper through the same command, using synthetic DMGs only. A shared helper change requires a fresh focused contract result and recorded helper hash; an unchanged Library receipt alone cannot qualify changed external tooling.
+Run active worktrees, tests and caches on the internal disk. Lanes inherit the local environment's temporary directory and Go cache defaults; any explicit `TMPDIR`, `GOTMPDIR` or `GOCACHE` override must also resolve to the internal disk. The policy's `tmpDir` is not a test-process environment override. This checks the current installed shared helper through the same command, using synthetic DMGs only. A shared helper change requires a fresh focused contract result and recorded helper hash; an unchanged Library receipt alone cannot qualify changed external tooling.

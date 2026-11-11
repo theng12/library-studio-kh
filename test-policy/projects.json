@@ -7,42 +7,40 @@
       "lanes": {
         "frontend": {
           "command": ["node", "--test", "tests"],
-          "env": {"TMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp"},
           "paths": ["tests", "internal/server/web", "package.json"],
           "timeoutMin": 5
         },
         "core": {
           "command": ["go", "test", "./internal/config", "./internal/stock", "./internal/library", "./internal/platform", "./internal/companioninstall"],
           "paths": ["go.mod", "internal/config", "internal/stock", "internal/library", "internal/platform", "internal/companioninstall"],
-          "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1", "GOCACHE": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/go", "GOTMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp", "TMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp"},
+          "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1"},
           "timeoutMin": 20
         },
         "setup": {
           "command": ["go", "test", "./internal/setup", "./internal/server", "./cmd/library-studio"],
           "paths": ["go.mod", "*.go", "CHANGELOG.md", "internal", "cmd", "package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml"],
-          "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1", "GOCACHE": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/go", "GOTMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp", "TMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp"},
+          "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1"},
           "timeoutMin": 20
         },
         "version": {
           "command": ["go", "test", "."],
           "paths": ["go.mod", "*.go", "CHANGELOG.md", "package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml"],
-          "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1", "GOCACHE": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/go", "GOTMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp", "TMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp"},
+          "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1"},
           "timeoutMin": 5
         },
         "fast": {
           "commands": [["go", "vet", "./..."], ["env", "GOOS=windows", "go", "vet", "./..."], ["env", "GOOS=linux", "go", "vet", "./..."]],
-          "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1", "GOCACHE": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/go", "GOTMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp", "TMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp"},
+          "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1"},
           "timeoutMin": 20
         },
         "host": {
           "commands": [["node", "scripts/manage-host.mjs", "--self-test"], ["python3", "-I", "scripts/test_verify_macos_signing.py"], ["python3", "-I", "scripts/test_release_dist.py"]],
           "paths": ["scripts", "package.json", "src-tauri"],
-          "env": {"TMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp"},
           "timeoutMin": 5
         },
         "package": {
           "commands": [["npm", "ci"], ["npm", "run", "build:desktop"]],
-          "env": {"CI": "true", "GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1", "GOCACHE": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/go", "GOTMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp", "TMPDIR": "/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp", "CARGO_BUILD_JOBS": "1"},
+          "env": {"CI": "true", "GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1", "CARGO_BUILD_JOBS": "1"},
           "timeoutMin": 90
         }
       },
