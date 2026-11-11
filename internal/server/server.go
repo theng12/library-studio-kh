@@ -238,7 +238,7 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, update.Result{State: "failed", Reason: "this Mac's home folder could not be read"})
 		return
 	}
-	writeJSON(w, 200, update.Check(home, librarystudio.Version(), nil))
+	writeJSON(w, 200, update.Check(home, update.InstalledVersion(librarystudio.Version()), nil))
 }
 
 // openUpdater brings Studio Launcher KH forward; the install stays in that app.

@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"io"
 	"net/http"
@@ -152,6 +153,69 @@ func newer(a, b string) bool {
 		}
 	}
 	return false
+}
+
+// InstalledVersion is the version the updater also reads: CFBundleShortVersionString
+// from the running .app. Outside a bundle (dev tree) the generated stamp is used.
+func InstalledVersion(fallback string) string {
+	exe, err := os.Executable()
+	if err != nil {
+		return fallback
+	}
+	return bundleVersion(exe, fallback)
+}
+
+func bundleVersion(exe, fallback string) string {
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	for dir := filepath.Dir(exe); ; dir = filepath.Dir(dir) {
+		if strings.HasSuffix(dir, ".app") {
+			if v := plistVersion(filepath.Join(dir, "Contents", "Info.plist")); v != "" {
+				return v
+			}
+			return fallback
+		}
+		if parent := filepath.Dir(dir); parent == dir {
+			return fallback
+		}
+	}
+}
+
+func plistVersion(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	d := xml.NewDecoder(f)
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return ""
+		}
+		se, ok := tok.(xml.StartElement)
+		if !ok || se.Name.Local != "key" {
+			continue
+		}
+		var name string
+		if d.DecodeElement(&name, &se) != nil || name != "CFBundleShortVersionString" {
+			continue
+		}
+		for {
+			tok, err = d.Token()
+			if err != nil {
+				return ""
+			}
+			if value, ok := tok.(xml.StartElement); ok {
+				var v string
+				if d.DecodeElement(&v, &value) != nil {
+					return ""
+				}
+				return strings.TrimSpace(v)
+			}
+		}
+	}
 }
 
 // OpenLauncher brings the one updater forward; it never installs anything by itself.

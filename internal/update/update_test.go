@@ -117,6 +117,28 @@ func TestCheckFailuresAreNeverUpToDate(t *testing.T) {
 	}
 }
 
+func TestInstalledVersionReadsTheBundle(t *testing.T) {
+	app := filepath.Join(t.TempDir(), "Library Studio KH.app")
+	if err := os.MkdirAll(filepath.Join(app, "Contents", "MacOS"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plist := `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleName</key><string>Library Studio KH</string>
+<key>CFBundleShortVersionString</key><string>1.2.3</string>
+<key>CFBundleVersion</key><string>9</string>
+</dict></plist>`
+	if err := os.WriteFile(filepath.Join(app, "Contents", "Info.plist"), []byte(plist), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := bundleVersion(filepath.Join(app, "Contents", "MacOS", "library-studio-server"), "0.0.1"); got != "1.2.3" {
+		t.Fatalf("bundle version = %q, want 1.2.3", got)
+	}
+	if got := bundleVersion("/usr/local/bin/library-studio-server", "0.0.1"); got != "0.0.1" {
+		t.Fatalf("outside a bundle = %q, want the fallback", got)
+	}
+}
+
 // TestLiveFeed reads this Mac's real publisher.json and feed; it is opt-in so the
 // suite stays offline.
 func TestLiveFeed(t *testing.T) {
@@ -127,6 +149,7 @@ func TestLiveFeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("installed bundle version: %q", bundleVersion("/Applications/Library Studio KH.app/Contents/MacOS/library-studio-server", "missing"))
 	got := Check(home, "0.0.1", nil)
 	t.Logf("live feed: %+v", got)
 	if got.State != "available" && got.State != "up_to_date" {
