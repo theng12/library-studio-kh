@@ -1,5 +1,10 @@
 # What's new in Library Studio KH
 
+## 0.7.7 — 2026-11-11
+
+- Add optional setup and readiness checks for Recyclarr, Unpackerr and Whisparr. Each stays off until you turn it on.
+- Verify official companion packages before installation and keep saved connection credentials private.
+
 ## 0.7.6 — 2026-11-09
 
 - Clear verified local copies for one library app even when another app's history is unavailable. Keep active downloads, unfinished seeding and other apps' files protected.
