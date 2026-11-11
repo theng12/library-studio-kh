@@ -84,7 +84,7 @@ func Decide(t stock.Torrent, imported map[string]time.Time, queued map[string]bo
 }
 
 func Gather(c config.Config, home string, now time.Time) Snapshot {
-	s := Snapshot{Items: []Item{}, Library: "not set"}
+	s := Snapshot{Items: []Item{}, Apps: []AppState{}, Library: "not set"}
 	imported, queued := map[string]time.Time{}, map[string]bool{}
 	appOf := map[string]string{}
 	for _, a := range arrs(c) {
