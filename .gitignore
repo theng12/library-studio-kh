@@ -3,6 +3,7 @@ bin/
 dist/
 target/
 src-tauri/binaries/
+src-tauri/helper/
 src-tauri/gen/
 .DS_Store
 *.log

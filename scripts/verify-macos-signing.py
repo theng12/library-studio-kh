@@ -53,6 +53,22 @@ def signed_identity(app, expected_authority):
         result['requirements'][relative] = designated_requirement(output)
         if relative != '.':
             result['hashes'][relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    helper = app / 'Contents/Resources/helper/Library Studio KH Helper.app'
+    if helper.exists():
+        run(['codesign', '--verify', '--deep', '--strict', str(helper)])
+        description = run(['codesign', '-d', '-vvv', '-r-', str(helper)])
+        output = description.stdout + description.stderr
+        if 'Authority=' + expected_authority not in output.splitlines():
+            raise ValueError('Helper app does not use the configured signing identity')
+        info = plistlib.loads((helper / 'Contents/Info.plist').read_bytes())
+        if info.get('CFBundleDisplayName') != 'Library Studio KH Helper' or not info.get('LSUIElement'):
+            raise ValueError('Helper app is missing its display name or LSUIElement')
+        result['helper'] = {
+            'requirement': designated_requirement(output),
+            'displayName': info['CFBundleDisplayName'],
+            'lsuiElement': True,
+            'hash': hashlib.sha256((helper / 'Contents/MacOS/Library Studio KH Helper').read_bytes()).hexdigest(),
+        }
     return result
 
 

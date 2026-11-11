@@ -6,6 +6,7 @@
 - Verify official companion packages before installation and keep saved connection credentials private.
 - Use standard editing commands and discoverable keyboard shortcuts for search, navigation and download selection while keeping text fields and dialogs in control of focus.
 - Open Activity safely before any companion apps are configured.
+- Run Library's background helper as a properly named app with its own icon, so it no longer appears as a bare background process.
 
 ## 0.7.6 — 2026-11-09
 

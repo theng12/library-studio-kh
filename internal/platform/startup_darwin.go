@@ -237,7 +237,7 @@ func validateInstallSpec(spec HostServiceSpec) error {
 			}
 		}
 	}
-	fi, err := os.Stat(spec.Exe)
+	fi, err := os.Stat(helperExecutable(spec.Exe))
 	if err != nil {
 		return fmt.Errorf("the selected server cannot be used: %w", err)
 	}
@@ -257,6 +257,23 @@ func xmlEscape(value string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(value)
 }
 
+// helperExecutable prefers the packaged helper app inside Library Studio KH.app
+// so the login job runs with the helper's name and icon instead of the bare
+// server binary. Anything outside a packaged app keeps the given path.
+func helperExecutable(exe string) string {
+	macos := filepath.Dir(exe)
+	contents := filepath.Dir(macos)
+	if filepath.Base(macos) != "MacOS" || filepath.Base(contents) != "Contents" ||
+		!strings.HasSuffix(filepath.Base(filepath.Dir(contents)), ".app") {
+		return exe
+	}
+	helper := filepath.Join(contents, "Resources", "helper", "Library Studio KH Helper.app", "Contents", "MacOS", "Library Studio KH Helper")
+	if fi, err := os.Stat(helper); err == nil && fi.Mode().IsRegular() {
+		return helper
+	}
+	return exe
+}
+
 func hostPlist(spec HostServiceSpec) string {
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -266,7 +283,7 @@ func hostPlist(spec HostServiceSpec) string {
 	<string>` + xmlEscape(HostServiceLabel) + `</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>` + xmlEscape(spec.Exe) + `</string>
+		<string>` + xmlEscape(helperExecutable(spec.Exe)) + `</string>
 		<string>-service</string>
 		<string>-port</string>
 		<string>` + strconv.Itoa(spec.Port) + `</string>

@@ -28,7 +28,7 @@ library-studio-server -host-control stop
 
 Use the installed sidecar's full path if it is not on PATH. `-host-home` selects the Library configuration home. Only the local install CLI accepts `-exe` as a trusted packaging override; server requests never supply an executable. Status inspects the saved installation rather than treating default flags as desired settings.
 
-The host job is `kh.librarystudio.host`. Companion jobs are `kh.librarystudio.companion.<app-id>`. Definitions and logs are private. A foreign, symlinked or ambiguous job file is blocked. Replaced Library definitions are retained recoverably. The loaded definition must match the saved definition before status reports it loaded; an unverified host is never reported running.
+The host job is `kh.librarystudio.host` and runs `Library Studio KH Helper.app` from inside the app bundle, so macOS shows a named helper with the app's icon instead of the bare server binary. Companion jobs are `kh.librarystudio.companion.<app-id>` and open the companion's own app bundle. Definitions and logs are private. A foreign, symlinked or ambiguous job file is blocked. Replaced Library definitions are retained recoverably. The loaded definition must match the saved definition before status reports it loaded; an unverified host is never reported running.
 
 If a desktop server currently holds the configuration lock, installing the host reports Restart needed. Quit and reopen Library, then check setup again. The native Restart Library menu performs the desktop restart. No second server is started while the home is locked.
 

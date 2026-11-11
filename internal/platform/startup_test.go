@@ -427,3 +427,31 @@ func TestHostStatusNeedsRestartWhenLoadedDefinitionDiffers(t *testing.T) {
 		t.Fatalf("stale loaded definition status = %+v", st)
 	}
 }
+
+func TestHostPlistRunsThePackagedHelperApp(t *testing.T) {
+	app := filepath.Join(t.TempDir(), "Library Studio KH.app")
+	server := filepath.Join(app, "Contents", "MacOS", "library-studio-server")
+	helper := filepath.Join(app, "Contents", "Resources", "helper",
+		"Library Studio KH Helper.app", "Contents", "MacOS", "Library Studio KH Helper")
+	for _, path := range []string{server, helper} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plist := hostPlist(HostServiceSpec{Exe: server, Home: "/tmp/home", Port: 7881})
+	if !strings.Contains(plist, "<string>"+helper+"</string>") {
+		t.Fatalf("plist does not run the helper: %s", plist)
+	}
+	if strings.Contains(plist, "<string>"+server+"</string>") {
+		t.Fatalf("plist still runs the bare server: %s", plist)
+	}
+	if got := helperExecutable(server); got != helper {
+		t.Fatalf("helperExecutable = %q, want %q", got, helper)
+	}
+	if got := helperExecutable("/usr/local/bin/library-studio-server"); got != "/usr/local/bin/library-studio-server" {
+		t.Fatalf("helperExecutable changed a bare path: %q", got)
+	}
+}
