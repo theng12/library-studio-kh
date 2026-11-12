@@ -583,15 +583,31 @@ menuToggle.addEventListener("click", () => {
   const open = $(".side").classList.toggle("menu-open");
   menuToggle.setAttribute("aria-expanded", String(open));
 });
-// Escape falls back to the mobile menu only when no open dialog, editable or
-// IME composition has already taken it.
+// Escape always does the job of where it is: close the open dialog, clear a
+// focused search, close the mobile menu. It never silently does nothing.
 document.addEventListener("keydown", (ev) => {
   if (ev.key !== "Escape" || ev.isComposing || ev.keyCode === 229 || ev.defaultPrevented) return;
-  if (menuToggle.getAttribute("aria-expanded") !== "true") return;
   const t = ev.target;
+  const dialog = [...document.querySelectorAll("dialog[open]")].pop();
+  if (dialog) {
+    ev.preventDefault();
+    dialog.close();
+    return;
+  }
+  const search = t?.closest?.('input[type="search"]');
+  if (search) {
+    if (search.value) {
+      ev.preventDefault();
+      search.value = "";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    return;
+  }
+  if (menuToggle.getAttribute("aria-expanded") !== "true") return;
   const editableHost = t?.closest?.("[contenteditable]");
-  if (document.querySelector("dialog[open]") || t?.closest?.("dialog, input, textarea, select")
+  if (t?.closest?.("input, textarea, select")
     || (editableHost && editableHost.getAttribute("contenteditable") !== "false")) return;
+  ev.preventDefault();
   closeMenu(); menuToggle.focus();
 });
 document.addEventListener("click", (ev) => { if (!ev.target.closest(".side")) closeMenu(); });

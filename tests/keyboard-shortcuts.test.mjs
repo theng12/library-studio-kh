@@ -554,57 +554,58 @@ test("a refresh that leaves focus inside the list does not move it", () => {
 
 /* --- Escape precedence --- */
 
-test("the mobile menu only takes Escape when no dialog, field, IME or overlay did", () => {
+test("Escape acts in its own context and never silently does nothing", () => {
   const listener = appSource.match(/document\.addEventListener\("keydown"[\s\S]*?\n\}\);/);
-  assert.ok(listener, "expected the Escape guard in app.js");
+  assert.ok(listener, "expected the Escape handler in app.js");
   let handler = null;
-  const calls = { closed: 0 };
+  const calls = { menu: 0, dialog: 0, cleared: 0 };
   const context = {
     document: {
       addEventListener: (type, fn) => { handler = fn; },
-      querySelector: (sel) => (sel === "dialog[open]" ? context.openDialog : null),
-      openDialog: null,
+      querySelectorAll: (sel) => (sel === "dialog[open]" ? context.document.openDialogs : []),
+      openDialogs: [],
     },
     menuToggle: { getAttribute: () => "true", focus() {} },
-    closeMenu: () => { calls.closed += 1; },
+    closeMenu: () => { calls.menu += 1; },
+    Event: class { constructor(type, options) { this.type = type; this.bubbles = options?.bubbles; } },
   };
   runInNewContext(listener[0], context);
   assert.equal(typeof handler, "function");
 
   const body = new FakeElement("body");
   handler(keyEvent({ key: "Escape", target: body }));
-  assert.equal(calls.closed, 1, "menu closes when nothing else acted");
+  assert.equal(calls.menu, 1, "menu closes when nothing else acted");
 
-  const dialogHost = new FakeElement("dialog");
-  handler(keyEvent({ key: "Escape", target: new FakeElement("div", { parentNode: dialogHost }) }));
-  assert.equal(calls.closed, 1, "a dialog keeps its own Escape");
+  const dialog = { close: () => { calls.dialog += 1; } };
+  context.document.openDialogs = [dialog];
+  const ev = keyEvent({ key: "Escape", target: body });
+  handler(ev);
+  assert.equal(calls.dialog, 1, "Escape closes the open dialog");
+  assert.equal(ev.defaultPrevented, true);
+  assert.equal(calls.menu, 1, "the dialog path does not also close the menu");
+  context.document.openDialogs = [];
 
-  context.openDialog = new FakeElement("dialog", { open: true });
-  handler(keyEvent({ key: "Escape", target: body }));
-  assert.equal(calls.closed, 1, "an open modal elsewhere keeps Escape");
-  context.openDialog = null;
+  const search = new FakeElement("input", { type: "search", value: "bluey" });
+  search.dispatchEvent = (event) => { if (event.type === "input") calls.cleared += 1; return true; };
+  handler(keyEvent({ key: "Escape", target: search }));
+  assert.equal(search.value, "", "Escape clears the focused search");
+  assert.equal(calls.cleared, 1, "clearing re-runs the filter");
+  assert.equal(calls.menu, 1, "clearing a search does not also close the menu");
+
+  search.value = "";
+  handler(keyEvent({ key: "Escape", target: search }));
+  assert.equal(calls.menu, 1, "an empty search keeps Escape in the field");
 
   const host = new FakeElement("div", { attributes: { contenteditable: "" }, isContentEditable: true });
   handler(keyEvent({ key: "Escape", target: host }));
-  assert.equal(calls.closed, 1, "an empty contenteditable host keeps Escape");
-  const child = new FakeElement("span", { parentNode: host, isContentEditable: true });
-  handler(keyEvent({ key: "Escape", target: child }));
-  assert.equal(calls.closed, 1, "a contenteditable descendant keeps Escape");
-
-  const plainHost = new FakeElement("div", { attributes: { contenteditable: "false" } });
-  handler(keyEvent({ key: "Escape", target: plainHost }));
-  assert.equal(calls.closed, 2, "contenteditable=false is not an editor");
-
-  handler(keyEvent({ key: "Escape", target: new FakeElement("input", { type: "search" }) }));
-  assert.equal(calls.closed, 2, "search fields keep Escape");
+  assert.equal(calls.menu, 1, "a contenteditable host keeps Escape");
 
   handler(keyEvent({ key: "Escape", target: body, isComposing: true }));
-  assert.equal(calls.closed, 2, "IME composition keeps Escape");
+  assert.equal(calls.menu, 1, "IME composition keeps Escape");
   handler(keyEvent({ key: "Escape", target: body, keyCode: 229 }));
-  assert.equal(calls.closed, 2, "the legacy IME key code keeps Escape");
-
+  assert.equal(calls.menu, 1, "the legacy IME key code keeps Escape");
   handler(keyEvent({ key: "Escape", target: body, defaultPrevented: true }));
-  assert.equal(calls.closed, 2, "a handler that already acted wins");
+  assert.equal(calls.menu, 1, "a handler that already acted wins");
 });
 
 /* --- discoverability --- */
