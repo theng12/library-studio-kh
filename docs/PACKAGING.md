@@ -70,13 +70,15 @@ Finish the normal release flow after Updater installation and intended-machine v
 
 The release lead writes a trusted `schema: 1` pin document with `apps: [{app, project, releases}]`. Set `app` to `Library Studio KH` and `project` to the canonical real project directory, even when running the command from an ATLAS worktree. Each of the one or two `releases` entries supplies the exact accepted `version`, absolute `.dmg` `source`, verified `sha256`, positive `bytes` and non-empty `evidence` pointing to its installed/verified acceptance receipts. Sources may have any basename, including a feed's hash-prefixed name. Match the source's actual bytes to the accepted release receipt; never infer acceptance from the latest feed, the build folder or `package.json`. A missing previous source is a recorded dependency, not permission to replace it with an unaccepted candidate.
 
-Before invoking retention, check dependencies and active jobs, preserve evidence, and obtain the existing quiet point if retirement is needed. The helper has no dry-run and does not establish acceptance. Keep the accepted pair at **0.7.5 and 0.7.4** while published 0.7.6 lacks intended-1301 acceptance; its publication cannot displace a working rollback. After a later version is installed and verified, update the pins to that exact accepted version and its previous verified version.
+Before invoking retention, check dependencies and active jobs, preserve evidence, and obtain the existing quiet point if retirement is needed. The helper has no dry-run and does not establish acceptance. Keep the accepted pair at the newest two verified builds (**0.7.11 and 0.7.10** as of 2026-11-12); older installers rotate to the macOS Trash automatically. After a later version is verified, pin that exact version and its previous verified version.
 
 ```bash
 npm run retain:accepted -- /absolute/coordination/library-accepted-dist-pins.json
 ```
 
 Record the pin document, helper source hash, JSON result and resulting `dist/.release-dist.json` with the release evidence, then recheck both retained hashes and byte sizes. The helper copies or adopts identical bytes into `Library Studio KH-<version>.dmg`; it never moves the source. It retires only obsolete files that its ledger owns and whose recorded bytes still match. Unmanaged files remain untouched: this is never a whole-`dist` wipe, and pending installers are not managed pins. Re-running the same pair is idempotent.
+
+Retention is automatic (owner, 2026-11-12). `npm run retain:accepted -- <pins>` runs the shared helper and then `scripts/release-retain.py`, which moves any remaining Library installer older than the newest two straight to the macOS Trash (`~/.Trash`, recoverable, never overwritten). No `_trash` staging for installers and no hand step: a version older than the latest two never needs a person. Swap the wrapper for the shared helper once Updater ships one; the behaviour stays the same.
 
 The mock contract check is part of the `host` lane and can run alone for this change:
 
