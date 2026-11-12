@@ -33,25 +33,71 @@ fn server_path() -> Result<PathBuf, String> {
     Ok(exe.with_file_name(name))
 }
 
+// A second copy or an orphaned helper holding the host ports must never turn into a
+// panic: say so plainly and exit, so macOS shows a clean quit instead of an abort.
+const HOST_PORTS: [u16; 2] = [7881, 7882];
+
+fn another_instance_running() -> bool {
+    HOST_PORTS
+        .iter()
+        .any(|port| std::net::TcpStream::connect_timeout(
+            &std::net::SocketAddr::from(([127, 0, 0, 1], *port)),
+            std::time::Duration::from_millis(200),
+        ).is_ok())
+}
+
+fn report_and_exit(reason: &str) -> ! {
+    eprintln!("Library Studio KH did not open: {reason}");
+    if let Ok(dir) = std::env::var("HOME") {
+        let path = PathBuf::from(dir).join("Library").join("Logs").join("Library Studio KH launch error.txt");
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&path, format!("Library Studio KH did not open.\n\n{reason}\n"));
+    }
+    std::process::exit(2);
+}
+
 fn start_server() -> Result<(Child, String), String> {
     let mut cmd = Command::new(server_path()?);
-    cmd.arg("-with-shell").stdin(Stdio::piped()).stdout(Stdio::piped());
+    cmd.arg("-with-shell").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console window behind the app
     }
     let mut child = cmd.spawn().map_err(|e| format!("could not start the server: {e}"))?;
-    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+    let stdout = match child.stdout.take() {
+        Some(out) => out,
+        None => {
+            let _ = child.kill();
+            return Err("the server did not report its address".into());
+        }
+    };
+    let stderr = child.stderr.take();
+    let mut lines = BufReader::new(stdout).lines();
     while let Some(Ok(line)) = lines.next() {
         if let Some(url) = line.strip_prefix("LISTENING ") {
             let url = url.to_string();
             std::thread::spawn(move || lines.for_each(drop)); // keep the pipe drained
             return Ok((child, url));
         }
+        if let Some(reason) = line.strip_prefix("BLOCKED ") {
+            let reason = reason.trim().to_string();
+            let _ = child.kill();
+            return Err(reason);
+        }
     }
     let _ = child.kill();
-    Err("the server stopped before it was ready".into())
+    let detail = stderr
+        .and_then(|mut pipe| {
+            let mut text = String::new();
+            use std::io::Read;
+            pipe.read_to_string(&mut text).ok().map(|_| text)
+        })
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty());
+    Err(detail.unwrap_or_else(|| "the server stopped before it was ready".into()))
 }
 
 // Quitting stops the background host too, so no Library Studio KH Helper keeps
@@ -73,9 +119,11 @@ fn stop_host() {
 
 fn stop_server(app: &tauri::AppHandle) {
     // This is only the desktop helper, never a background host service.
-    if let Some(mut c) = app.state::<Server>().0.lock().unwrap().take() {
-        let _ = c.kill();
-        let _ = c.wait();
+    if let Ok(mut slot) = app.state::<Server>().0.lock() {
+        if let Some(mut c) = slot.take() {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
     }
 }
 
@@ -181,9 +229,21 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             build_menu(app)?;
-            let (child, url) = start_server()?;
+            // A second bundle or an orphaned helper holding the host ports is a
+            // plain message and a clean exit, never a panic inside an Apple Event.
+            if another_instance_running() {
+                report_and_exit("Another Library Studio KH is already running on this Mac. Quit it, then open this one again.");
+            }
+            let (child, url) = match start_server() {
+                Ok(started) => started,
+                Err(reason) => report_and_exit(&reason),
+            };
             app.manage(Server(Mutex::new(Some(child))));
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.parse()?))
+            let target = match url.parse() {
+                Ok(target) => target,
+                Err(e) => report_and_exit(&format!("the server address could not be read: {e}")),
+            };
+            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(target))
                 .title("Library Studio KH")
                 .inner_size(1040.0, 780.0)
                 .min_inner_size(420.0, 480.0)
@@ -195,7 +255,10 @@ fn main() {
                     }
                     tauri::webview::NewWindowResponse::<tauri::Wry>::Deny
                 })
-                .build()?;
+                .build();
+            if let Err(e) = window {
+                report_and_exit(&format!("the Library window could not open: {e}"));
+            }
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -212,9 +275,12 @@ fn main() {
         .expect("Library Studio KH could not start")
         .run(|app, event| {
             if let RunEvent::Exit = event {
-                // Mac Cmd+Q, AppleScript quit and the menu item all land here.
-                stop_host();
-                stop_server(app);
+                // Mac Cmd+Q, AppleScript quit and the menu item all land here. No
+                // failure may unwind through the Apple Event that asked us to quit.
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    stop_host();
+                    stop_server(app);
+                }));
             }
         });
 }

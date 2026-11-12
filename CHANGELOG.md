@@ -1,5 +1,9 @@
 # What's new in Library Studio KH
 
+## 0.7.12 — 2026-11-12
+
+- If another Library Studio KH is already running on this Mac, Library now says so plainly and quits cleanly instead of failing to open.
+
 ## 0.7.11 — 2026-11-12
 
 - Appearance offers System, Light and Dark. System stays the starting choice, and an older saved "Default" is read as System.

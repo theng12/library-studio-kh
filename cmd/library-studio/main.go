@@ -109,13 +109,13 @@ func main() {
 
 	release, err := platform.LockConfigHome(home)
 	if err != nil {
-		log.Fatal(err)
+		blocked("Another Library Studio KH is already using this Mac's Library folder. Quit it, then open this one again.")
 	}
 	defer release()
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
-		log.Fatal(err)
+		blocked(listenProblem(*addr, err))
 	}
 	if h, _, _ := net.SplitHostPort(ln.Addr().String()); !net.ParseIP(h).IsLoopback() {
 		log.Fatal("Library Studio KH only listens on this computer (127.0.0.1)")
@@ -127,6 +127,20 @@ func main() {
 	// The desktop shell reads this exact line.
 	fmt.Printf("LISTENING http://%s/#%s\n", ln.Addr(), s.Token)
 	log.Fatal(serve(s, ln))
+}
+
+// blocked prints one plain line for the desktop shell to show instead of a crash,
+// then exits: a taken port or a second copy must never abort the app.
+func blocked(reason string) {
+	fmt.Printf("BLOCKED %s\n", reason)
+	os.Exit(3)
+}
+
+func listenProblem(addr string, err error) string {
+	if errors.Is(err, syscall.EADDRINUSE) {
+		return "Another Library Studio KH is already running on this Mac. Quit it, then open this one again."
+	}
+	return fmt.Sprintf("Library Studio KH could not start its server on %s: %v", addr, err)
 }
 
 // runService is the one background host. It keeps a fixed loopback port and writes
@@ -143,7 +157,7 @@ func runService(home string, port int) {
 	defer release()
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Fatalf("Background host could not listen on http://%s: %v. Another program or Library Studio KH may already be using that port; choose another with -port.", addr, err)
+		blocked(listenProblem(addr, err))
 	}
 	s, err := newServer(home, ln.Addr().String())
 	if err != nil {
