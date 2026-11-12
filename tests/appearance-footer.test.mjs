@@ -52,7 +52,9 @@ test("Appearance reads as a segmented control and checkboxes are app controls", 
   assert.match(css, /#appearance-panel \.appearance label:has\(input:focus-visible\)/);
   assert.match(css, /label\.check input\[type="checkbox"\] \{[^}]*width: 1\.25rem/);
   assert.match(css, /label\.check:has\(input:focus-visible\)/);
-  assert.match(css, /@media \(max-width: 760px\) \{[\s\S]*?#appearance-panel \.appearance label \{ flex: 1 1 auto; min-height: 44px; \}/);
+  assert.match(css, /#appearance-panel \.appearance \{[^}]*display: inline-flex[^}]*width: auto/);
+  assert.match(css, /#appearance-panel \.appearance label \{[^}]*flex: 0 0 auto[^}]*min-width: 5\.5rem/);
+  assert.match(css, /@media \(max-width: 760px\) \{[\s\S]*?#appearance-panel \.appearance label \{ min-height: 44px; \}/);
 });
 
 test("a saved theme drives the palette instead of the OS query alone", () => {

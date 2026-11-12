@@ -1,5 +1,9 @@
 # What's new in Library Studio KH
 
+## 0.7.15 — 2026-11-13
+
+- The Appearance choice is a tidy three-part control that fits its labels in light and dark, at window and phone widths.
+
 ## 0.7.14 — 2026-11-13
 
 - Applying a Recyclarr sync now asks in Library's own dialog; the old browser prompt was silently ignored in the app window.
