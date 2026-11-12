@@ -24,12 +24,14 @@ test("the pill uses the shared footer numbers", () => {
   assert.match(css, /\.side-footer \{[^}]*gap: 6px[^}]*padding-top: 9px/);
 });
 
-test("Settings offers System, Light, Dark and Default and starts on System", () => {
+test("Settings offers System, Light and Dark and starts on System", () => {
   const panel = html.match(/<fieldset class="panel" id="appearance-panel">[\s\S]*?<\/fieldset>/)?.[0] || "";
   const values = [...panel.matchAll(/name="appearance" value="([a-z]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(values, ["system", "light", "dark", "default"]);
-  assert.match(js, /r\.value === \(c\.appearance \|\| "system"\)/);
-  assert.match(js, /choice === "system" \? \(darkQuery\.matches \? "dark" : "light"\)/);
+  assert.deepEqual(values, ["system", "light", "dark"]);
+  assert.ok(!panel.includes('value="default"'), "the retired Default option is still offered");
+  assert.match(js, /r\.value === saved/);
+  assert.match(js, /c\.appearance === "default" \? "system"/);
+  assert.match(js, /saved === "default" \? "system" : saved/);
   assert.match(js, /appearance: f\.querySelector\('input\[name="appearance"\]:checked'\)\?\.value \|\| "system"/);
 });
 

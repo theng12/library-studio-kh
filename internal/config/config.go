@@ -25,7 +25,7 @@ type QBit struct {
 }
 
 type Config struct {
-	// Appearance is "system" (default), "light", "dark" or "default".
+	// Appearance is "system" (default), "light" or "dark".
 	Appearance    string `json:"appearance"`
 	TailscaleOn   bool   `json:"tailscaleOn"`
 	TailscalePort int    `json:"tailscalePort"`
@@ -72,9 +72,9 @@ func (c Config) Validate() error {
 		return errors.New(StagedCleanupNotice)
 	}
 	switch c.Appearance {
-	case "", "system", "light", "dark", "default":
+	case "", "system", "light", "dark":
 	default:
-		return errors.New("appearance must be system, light, dark or default")
+		return errors.New("appearance must be system, light or dark")
 	}
 	if c.TailscaleOn && (c.TailscalePort < 1024 || c.TailscalePort > 65535) {
 		return errors.New("Tailscale port must be a whole number from 1024 to 65535")
@@ -154,6 +154,10 @@ func Open(dir string) (*Store, error) {
 	}
 	// Retire the old permanent-delete policy without enabling a replacement on migration.
 	s.cfg.CleanupOn = false
+	// The retired "Default" appearance choice now means System.
+	if s.cfg.Appearance == "default" {
+		s.cfg.Appearance = "system"
+	}
 	return s, nil
 }
 

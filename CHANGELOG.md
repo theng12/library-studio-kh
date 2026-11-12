@@ -1,5 +1,9 @@
 # What's new in Library Studio KH
 
+## 0.7.11 — 2026-11-12
+
+- Appearance offers System, Light and Dark. System stays the starting choice, and an older saved "Default" is read as System.
+
 ## 0.7.10 — 2026-11-12
 
 - Quit Library Studio KH (⌘Q) now stops the background helper too, so nothing named Library Studio KH keeps running after you quit. Reopening starts cleanly.

@@ -15,11 +15,12 @@ const AUTH_FORM_PATHS = new Set(["/api/auth/login", "/api/auth/setup", "/api/aut
 const AUTH = { available: false, authenticated: false, setupRequired: false, rememberDays: 30, sessionHours: 12, minPasswordLength: 6 };
 let current = null;
 
-// Appearance: System follows this Mac; Light/Dark/Default are explicit choices.
+// Appearance: System follows this Mac; Light/Dark are explicit choices. An older
+// saved "default" means System.
 const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
-function applyAppearance(choice) {
-  const resolved = choice === "system" ? (darkQuery.matches ? "dark" : "light") : choice === "default" ? "light" : choice;
-  document.documentElement.dataset.theme = resolved;
+function applyAppearance(saved) {
+  const choice = !saved || saved === "default" ? "system" : saved;
+  document.documentElement.dataset.theme = choice === "system" ? (darkQuery.matches ? "dark" : "light") : choice;
 }
 darkQuery.addEventListener("change", () => {
   if ((current?.settings.appearance || "system") === "system") applyAppearance("system");
@@ -532,7 +533,8 @@ function fillForm(st) {
   $("#remote-status").textContent = remote.error || (remote.on ? "Ready for Tailscale connections." : "Tailscale access is off.");
   $("#remote-link-box").hidden = !remote.url;
   $("#remote-link").value = remote.url || "";
-  for (const r of f.querySelectorAll('input[name="appearance"]')) r.checked = r.value === (c.appearance || "system");
+  const saved = c.appearance === "default" ? "system" : (c.appearance || "system");
+  for (const r of f.querySelectorAll('input[name="appearance"]')) r.checked = r.value === saved;
   f.bazarrOn.checked = !!c.bazarrOn;
   f.whisparrOn.checked = !!c.whisparrOn;
   f.downloadPath.value = c.downloadPath;

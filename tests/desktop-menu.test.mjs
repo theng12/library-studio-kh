@@ -45,6 +45,6 @@ test("app menu keeps its own local actions and all three submenus are installed"
 test("editing commands stay with the focused responder, not the app menu handler", () => {
   const handlerStart = source.indexOf(".on_menu_event");
   const handler = source.slice(handlerStart, source.indexOf(".build(", handlerStart));
-  assert.deepEqual([...handler.matchAll(/event\.id\(\) == "([^"]+)"/g)].map(match => match[1]), ["use-local-host", "restart"]);
+  assert.deepEqual([...handler.matchAll(/event\.id\(\) == "([^"]+)"/g)].map(match => match[1]), ["use-local-host", "restart", "quit"]);
   assert.doesNotMatch(source, /\.accelerator\(|keydown|execCommand|on_keyboard/i);
 });
