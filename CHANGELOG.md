@@ -1,5 +1,10 @@
 # What's new in Library Studio KH
 
+## 0.7.13 — 2026-11-12
+
+- The background helper now runs from inside the app, so deleting Library Studio KH removes it; quitting stops the helper, its login job and its ports.
+- Uninstalling removes the app, helper and login job while keeping your settings and library.
+
 ## 0.7.12 — 2026-11-12
 
 - If another Library Studio KH is already running on this Mac, Library now says so plainly and quits cleanly instead of failing to open.
