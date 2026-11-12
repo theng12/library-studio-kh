@@ -51,9 +51,19 @@ function gb(n) {
   return n >= 1e12 ? (n / 1e12).toFixed(1) + " TB" : Math.round(n / 1e9) + " GB";
 }
 
+function torrentStateWord(state) {
+  const word = (state || "").toLowerCase();
+  if (word.startsWith("paused") || word.startsWith("stopped")) return "Paused";
+  if (word.startsWith("queued")) return "Queued";
+  if (word.startsWith("stalled")) return "Stalled";
+  if (word.startsWith("checking")) return "Checking";
+  if (word === "missingfiles") return "Missing files";
+  return "Downloading";
+}
+
 function stateOf(it, cleanupOn) {
   switch (it.kind) {
-    case "downloading": return ["Downloading", downloadProgressText(it.progress)];
+    case "downloading": return [torrentStateWord(it.state), downloadProgressText(it.progress)];
     case "waiting": return ["Waiting for import", it.app || ""];
     case "imported": return ["In library", cleanupOn ? "Local copy: check Cleanup for verified status" : "Local copy kept"];
     case "unmanaged": return ["Downloaded", "Not from Sonarr, Radarr or Lidarr, so it stays"];
@@ -99,7 +109,7 @@ function render(st) {
   $("#apps").replaceChildren(...s.apps.map((a) => {
     const li = document.createElement("li");
     li.className = a.ok ? "ok" : "bad";
-    li.textContent = a.name;
+    li.textContent = a.name + (a.ok ? " · Connected" : " · Offline");
     li.title = a.ok ? "Connected" : a.error || "Not connected";
     li.setAttribute("aria-label", a.name + ": " + li.title);
     return li;
@@ -140,7 +150,9 @@ function renderActivity() {
   if (sort === "when") items = [...items].sort((a, b) => (b.when || "").localeCompare(a.when || ""));
   const empty = $("#empty");
   empty.hidden = items.length > 0;
-  if (s.apps.length > 0) empty.textContent = s.items.length ? "Nothing matches." : "Nothing downloading, in the library or coming up yet.";
+  if (s.apps.length > 0) empty.textContent = s.items.length
+    ? "Nothing matches. Clear the search or choose Everything."
+    : "Nothing here yet. Use Find & add to add a film, show or album.";
   $("#list").hidden = items.length === 0;
   $("#list tbody").replaceChildren(...items.map((it) => {
     const [label, when] = stateOf(it, current.settings.stagedCleanupOn);

@@ -262,7 +262,7 @@ input[type=file]::file-selector-button {
   border: 1px solid var(--accent); color: var(--accent); background: transparent; border-radius: 8px;
 }
 form.panel { max-width: none; gap: 0; }
-button.inline.title { color: var(--ink); font-weight: 500; text-align: left; text-decoration-color: var(--line); }
+button.inline.title { color: var(--accent); font-weight: 600; text-align: left; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-color: currentColor; }
 button.inline.title:hover { color: var(--accent); text-decoration-color: currentColor; }
 
 /* Download details */

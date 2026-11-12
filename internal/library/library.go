@@ -17,7 +17,8 @@ import (
 
 type Item struct {
 	Title    string    `json:"title"`
-	Kind     string    `json:"kind"` // downloading | waiting | imported | unmanaged | upcoming | removed
+	Kind     string    `json:"kind"`            // downloading | waiting | imported | unmanaged | upcoming | removed
+	State    string    `json:"state,omitempty"` // qBittorrent's own state, e.g. pausedDL or queuedDL
 	App      string    `json:"app,omitempty"`
 	When     time.Time `json:"when,omitempty"` // upcoming date, planned removal, or removal done
 	Progress float64   `json:"progress"`
@@ -146,7 +147,7 @@ func Gather(c config.Config, home string, now time.Time) Snapshot {
 			speedMu.Unlock()
 			for _, t := range ts {
 				kind, at, rm := Decide(t, imported, queued, now, c.CleanupDays)
-				it := Item{Title: t.Name, Kind: kind, App: appOf[strings.ToUpper(t.Hash)], Progress: t.Progress, Stats: statsOf(t, speeds[t.Hash])}
+				it := Item{Title: t.Name, Kind: kind, State: t.State, App: appOf[strings.ToUpper(t.Hash)], Progress: t.Progress, Stats: statsOf(t, speeds[t.Hash])}
 				if kind == "imported" {
 					it.When = at
 				}
