@@ -211,6 +211,32 @@ label input:focus-visible { outline-offset: 0; border-color: var(--accent); }
 label.short input { max-width: 8rem; }
 label.check { display: flex; gap: 0.6rem; align-items: center; color: var(--ink); font-size: 0.95rem; }
 .appearance { display: flex; flex-wrap: wrap; gap: 0.35rem 1.5rem; margin-bottom: 0.5rem; }
+/* Settings → Appearance is a segmented control, not raw radio circles. */
+#appearance-panel .appearance {
+  display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 3px;
+  background: var(--ground); border: 1px solid var(--line); border-radius: 10px;
+}
+#appearance-panel .appearance label {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  min-height: 34px; padding: 0 14px; border-radius: 8px;
+  color: var(--ink-2); font-weight: 600; cursor: pointer;
+}
+#appearance-panel .appearance label:hover { background: var(--panel); color: var(--ink); }
+#appearance-panel .appearance input {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer;
+}
+#appearance-panel .appearance label:has(input:checked) {
+  background: var(--panel); color: var(--ink); box-shadow: var(--shadow);
+}
+#appearance-panel .appearance label:has(input:focus-visible) {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+/* Checkbox rows read as app controls, with a clear checked state and a focus ring. */
+label.check { min-height: 34px; padding: 0.15rem 0; }
+label.check input[type="checkbox"] {
+  accent-color: var(--accent); width: 1.25rem; height: 1.25rem; border-radius: 5px;
+}
+label.check:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
 input[type=checkbox] { accent-color: var(--accent); width: 1.05rem; height: 1.05rem; margin: 0; }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
 .hint { font-size: 0.8rem; color: var(--muted); }
@@ -286,6 +312,8 @@ dialog::backdrop { background: rgba(14, 18, 32, 0.45); }
   .side .brand { margin: 0; padding: 0; font-size: 0.95rem; }
   .mobile-menu-toggle { display: flex; align-items: center; gap: 0.4rem; min-height: 44px; }
   .menu .group-head { display: none; }
+  #appearance-panel .appearance { display: flex; width: 100%; }
+  #appearance-panel .appearance label { flex: 1 1 auto; min-height: 44px; }
   .primary-menu { position: fixed; z-index: 20; bottom: 0; left: 0; right: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.2rem; padding: 0.5rem max(0.5rem, env(safe-area-inset-right)) calc(0.5rem + env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left)); border-top: 1px solid var(--line); background: var(--side); }
   .primary-menu button { flex-direction: column; gap: 0.15rem; text-align: center; min-height: 48px; padding: 0.45rem 0.15rem; font-size: 0.8rem; }
   #more-menu { display: none; position: absolute; top: 100%; left: 0; right: 0; padding: 0.5rem 1rem 1rem; background: var(--side); border-bottom: 1px solid var(--line); max-height: calc(100dvh - 9rem); overflow-y: auto; }

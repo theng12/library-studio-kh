@@ -35,6 +35,15 @@ test("Settings offers System, Light and Dark and starts on System", () => {
   assert.match(js, /appearance: f\.querySelector\('input\[name="appearance"\]:checked'\)\?\.value \|\| "system"/);
 });
 
+test("Appearance reads as a segmented control and checkboxes are app controls", () => {
+  assert.match(css, /#appearance-panel \.appearance label:has\(input:checked\)/);
+  assert.match(css, /#appearance-panel \.appearance input \{[^}]*opacity: 0/);
+  assert.match(css, /#appearance-panel \.appearance label:has\(input:focus-visible\)/);
+  assert.match(css, /label\.check input\[type="checkbox"\] \{[^}]*width: 1\.25rem/);
+  assert.match(css, /label\.check:has\(input:focus-visible\)/);
+  assert.match(css, /@media \(max-width: 760px\) \{[\s\S]*?#appearance-panel \.appearance label \{ flex: 1 1 auto; min-height: 44px; \}/);
+});
+
 test("a saved theme drives the palette instead of the OS query alone", () => {
   assert.match(css, /:root\[data-theme="dark"\] \{/);
   assert.match(css, /@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme\]\)/);
