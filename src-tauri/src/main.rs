@@ -10,6 +10,44 @@ use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 struct Server(Mutex<Option<Child>>);
 
+// The URL the main window shows, kept so a closed window can be rebuilt.
+struct WindowUrl(Mutex<Option<String>>);
+
+fn open_main_window(app: &tauri::AppHandle, url: &str) -> Result<tauri::WebviewWindow, String> {
+    let target = url.parse().map_err(|e| format!("the server address could not be read: {e}"))?;
+    WebviewWindowBuilder::new(app, "main", WebviewUrl::External(target))
+        .title("Library Studio KH")
+        .inner_size(1040.0, 780.0)
+        .min_inner_size(420.0, 480.0)
+        // The Support link opens the one allow-listed page in the
+        // default browser, never as an in-app window.
+        .on_new_window(|url, _| {
+            if url.as_str() == SUPPORT_URL {
+                open_support();
+            }
+            tauri::webview::NewWindowResponse::<tauri::Wry>::Deny
+        })
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+// A window click must never do nothing: show the window, or rebuild it if it was
+// closed, from the application menu or the Dock.
+fn show_main(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+        return;
+    }
+    let url = app.state::<WindowUrl>().0.lock().ok().and_then(|saved| saved.clone());
+    if let Some(url) = url {
+        if let Err(e) = open_main_window(app, &url) {
+            eprintln!("The Library window could not open: {e}");
+        }
+    }
+}
+
 // The only external page this app opens. Kept in step with the link in the
 // Support page; anything else is denied.
 const SUPPORT_URL: &str = "https://nowpayments.io/donation/studiokh";
@@ -131,6 +169,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
     let use_local = MenuItem::with_id(app, "use-local-host", "Use this Mac as host", true, None::<&str>)?;
     let restart = MenuItem::with_id(app, "restart", "Restart Library", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Library Studio KH", true, Some("CmdOrCtrl+Q"))?;
+    let show = MenuItem::with_id(app, "show-window", "Show Library Studio KH", true, Some("CmdOrCtrl+0"))?;
     #[cfg(target_os = "macos")]
     let app_menu = Submenu::with_items(
         app,
@@ -138,6 +177,8 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         true,
         &[
             &PredefinedMenuItem::about(app, None, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &show,
             &PredefinedMenuItem::separator(app)?,
             &use_local,
             &restart,
@@ -157,6 +198,8 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         "Library Studio KH",
         true,
         &[
+            &show,
+            &PredefinedMenuItem::separator(app)?,
             &use_local,
             &restart,
             &PredefinedMenuItem::separator(app)?,
@@ -185,6 +228,8 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         "Window",
         true,
         &[
+            &show,
+            &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::minimize(app, None)?,
             &PredefinedMenuItem::maximize(app, None)?,
             &PredefinedMenuItem::separator(app)?,
@@ -239,24 +284,8 @@ fn main() {
                 Err(reason) => report_and_exit(&reason),
             };
             app.manage(Server(Mutex::new(Some(child))));
-            let target = match url.parse() {
-                Ok(target) => target,
-                Err(e) => report_and_exit(&format!("the server address could not be read: {e}")),
-            };
-            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(target))
-                .title("Library Studio KH")
-                .inner_size(1040.0, 780.0)
-                .min_inner_size(420.0, 480.0)
-                // The Support link opens the one allow-listed page in the
-                // default browser, never as an in-app window.
-                .on_new_window(|url, _| {
-                    if url.as_str() == SUPPORT_URL {
-                        open_support();
-                    }
-                    tauri::webview::NewWindowResponse::<tauri::Wry>::Deny
-                })
-                .build();
-            if let Err(e) = window {
+            app.manage(WindowUrl(Mutex::new(Some(url.clone()))));
+            if let Err(e) = open_main_window(app.handle(), &url) {
                 report_and_exit(&format!("the Library window could not open: {e}"));
             }
             Ok(())
@@ -267,6 +296,8 @@ fn main() {
             } else if event.id() == "restart" {
                 stop_server(app);
                 app.restart();
+            } else if event.id() == "show-window" {
+                show_main(app);
             } else if event.id() == "quit" {
                 app.exit(0);
             }
@@ -274,6 +305,13 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("Library Studio KH could not start")
         .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let RunEvent::Reopen { has_visible_windows, .. } = &event {
+                // Clicking the Dock icon with no window open brings the window back.
+                if !has_visible_windows {
+                    show_main(app);
+                }
+            }
             if let RunEvent::Exit = event {
                 // Mac Cmd+Q, AppleScript quit and the menu item all land here. No
                 // failure may unwind through the Apple Event that asked us to quit.

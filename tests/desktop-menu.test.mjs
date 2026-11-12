@@ -30,7 +30,7 @@ test("Edit menu keeps the standard responder-based editing items", () => {
 test("Window menu uses the Tauri window submenu id and conventional window commands", () => {
   const window = callBlock("Submenu::with_id_and_items(\n        app,\n        tauri::menu::WINDOW_SUBMENU_ID");
   assert.match(window, /"Window"/);
-  assert.deepEqual(predefinedItems(window), ["minimize", "maximize", "separator", "close_window"]);
+  assert.deepEqual(predefinedItems(window), ["separator", "minimize", "maximize", "separator", "close_window"]);
 });
 
 test("app menu keeps its own local actions and all three submenus are installed", () => {
@@ -45,6 +45,6 @@ test("app menu keeps its own local actions and all three submenus are installed"
 test("editing commands stay with the focused responder, not the app menu handler", () => {
   const handlerStart = source.indexOf(".on_menu_event");
   const handler = source.slice(handlerStart, source.indexOf(".build(", handlerStart));
-  assert.deepEqual([...handler.matchAll(/event\.id\(\) == "([^"]+)"/g)].map(match => match[1]), ["use-local-host", "restart", "quit"]);
+  assert.deepEqual([...handler.matchAll(/event\.id\(\) == "([^"]+)"/g)].map(match => match[1]), ["use-local-host", "restart", "show-window", "quit"]);
   assert.doesNotMatch(source, /\.accelerator\(|keydown|execCommand|on_keyboard/i);
 });

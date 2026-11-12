@@ -15,6 +15,16 @@ test("a taken port or a second copy never panics the app", () => {
   assert.match(rust, /catch_unwind/);
 });
 
+test("the window is reachable from the menu and the Dock after it closes", () => {
+  assert.match(rust, /"show-window", "Show Library Studio KH"/);
+  assert.match(rust, /fn show_main\(app: &tauri::AppHandle\)/);
+  assert.match(rust, /if let Some\(window\) = app\.get_webview_window\("main"\)/);
+  assert.match(rust, /open_main_window\(app, &url\)/, "a closed window is rebuilt on demand");
+  assert.match(rust, /event\.id\(\) == "show-window"/);
+  assert.match(rust, /RunEvent::Reopen/);
+  assert.match(rust, /open_main_window\(app\.handle\(\), &url\)/, "launch opens the main window");
+});
+
 test("the server explains a busy port in plain words", () => {
   assert.match(go, /BLOCKED %s/);
   assert.match(go, /Another Library Studio KH is already running on this Mac\./);
