@@ -20,3 +20,26 @@ test("the server explains a busy port in plain words", () => {
   assert.match(go, /Another Library Studio KH is already running on this Mac\./);
   assert.match(go, /errors\.Is\(err, syscall\.EADDRINUSE\)/);
 });
+
+const platform = readFileSync(new URL("../internal/platform/startup_darwin.go", import.meta.url), "utf8");
+const control = readFileSync(new URL("../cmd/library-studio/host_control.go", import.meta.url), "utf8");
+const uninstall = readFileSync(new URL("../scripts/uninstall.sh", import.meta.url), "utf8");
+
+test("the background runner lives inside the app bundle", () => {
+  assert.match(platform, /func packagedHelper/);
+  assert.match(platform, /if packaged := packagedHelper\(exe\); packaged != "" \{/);
+  assert.ok(!platform.includes("helperInstallPath"), "the helper is still copied outside the bundle");
+  assert.ok(!platform.includes("func installHelper"), "the helper is still copied outside the bundle");
+  assert.match(platform, /retireHelperCopy\(spec\.Home\)/);
+});
+
+test("uninstalling removes the app, its helper and the login job but keeps settings", () => {
+  assert.match(platform, /func \(s \*HostService\) Uninstall\(home string\)/);
+  assert.match(platform, /moveToTrash\(path, "kh\.librarystudio\.host\.plist/);
+  assert.match(control, /case "uninstall":/);
+  assert.match(control, /use install, start, stop, uninstall or status/);
+  assert.match(uninstall, /-host-control uninstall/);
+  assert.match(uninstall, /\.Trash/);
+  assert.match(uninstall, /Library Studio KH\.app/);
+  assert.ok(!uninstall.includes("rm -rf"), "uninstall deletes instead of retiring");
+});

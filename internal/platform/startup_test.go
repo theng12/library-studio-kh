@@ -479,7 +479,7 @@ func TestHostStatusNeedsRestartWhenLoadedDefinitionDiffers(t *testing.T) {
 	}
 }
 
-func TestHostPlistRunsTheInstalledHelperApp(t *testing.T) {
+func TestHostPlistRunsTheHelperInsideTheAppBundle(t *testing.T) {
 	app := filepath.Join(t.TempDir(), "Library Studio KH.app")
 	server := filepath.Join(app, "Contents", "MacOS", "library-studio-server")
 	packaged := filepath.Join(app, "Contents", "Resources", "helper",
@@ -494,45 +494,71 @@ func TestHostPlistRunsTheInstalledHelperApp(t *testing.T) {
 		}
 	}
 	home := t.TempDir()
-	installed := filepath.Join(home, "Helper", "Library Studio KH Helper.app",
-		"Contents", "MacOS", "Library Studio KH Helper")
-	changed, err := installHelper(server, home)
-	if err != nil || !changed {
-		t.Fatalf("installHelper changed=%v err=%v", changed, err)
-	}
-	if got, err := os.ReadFile(installed); err != nil || string(got) != "#!/bin/sh\n" {
-		t.Fatalf("installed helper = %q err=%v", got, err)
-	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(filepath.Dir(installed)), "Info.plist")); err != nil {
-		t.Fatalf("installed bundle is incomplete: %v", err)
-	}
-	if changed, err := installHelper(server, home); err != nil || changed {
-		t.Fatalf("second installHelper changed=%v err=%v", changed, err)
+	if got := helperExecutable(server, home); got != packaged {
+		t.Fatalf("helperExecutable = %q, want the bundled helper %q", got, packaged)
 	}
 	plist := hostPlist(HostServiceSpec{Exe: server, Home: home, Port: 7881})
-	if !strings.Contains(plist, "<string>"+installed+"</string>") {
-		t.Fatalf("plist does not run the installed helper: %s", plist)
+	if !strings.Contains(plist, "<string>"+packaged+"</string>") {
+		t.Fatalf("plist does not run the bundled helper: %s", plist)
 	}
 	if strings.Contains(plist, "<string>"+server+"</string>") {
 		t.Fatalf("plist still runs the bare server: %s", plist)
 	}
-	if got := helperExecutable(server, home); got != installed {
-		t.Fatalf("helperExecutable = %q, want %q", got, installed)
+	if _, err := os.Stat(filepath.Join(home, "Helper")); !os.IsNotExist(err) {
+		t.Fatalf("a loose helper copy was written into the config home: %v", err)
+	}
+	trash := t.TempDir()
+	previousTrash := trashDir
+	trashDir = func() string { return trash }
+	defer func() { trashDir = previousTrash }()
+	old := filepath.Join(home, "Helper", "Library Studio KH Helper.app")
+	if err := os.MkdirAll(old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	retireHelperCopy(home)
+	if _, err := os.Stat(filepath.Join(home, "Helper")); !os.IsNotExist(err) {
+		t.Fatalf("the old loose helper copy stayed in the config home: %v", err)
+	}
+	if entries, err := os.ReadDir(trash); err != nil || len(entries) != 1 {
+		t.Fatalf("old copy was not retired to the Trash: %v %v", entries, err)
 	}
 	bare := "/usr/local/bin/library-studio-server"
 	if got := helperExecutable(bare, home); got != bare {
 		t.Fatalf("helperExecutable changed a bare path: %q", got)
 	}
-	// Updating keeps the replaced copy available for rollback.
-	if err := os.WriteFile(packaged, []byte("#!/bin/sh\n# new\n"), 0o755); err != nil {
+}
+
+func TestUninstallRemovesTheJobAndPlist(t *testing.T) {
+	r := &fakeRunner{}
+	svc, spec := newTestService(t, r, nil)
+	trash := t.TempDir()
+	previousTrash := trashDir
+	trashDir = func() string { return trash }
+	defer func() { trashDir = previousTrash }()
+	if _, err := svc.Install(spec); err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := installHelper(server, home); err != nil || !changed {
-		t.Fatalf("updated installHelper changed=%v err=%v", changed, err)
+	path, _ := svc.plistPath()
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("install did not write the login job")
 	}
-	previous := filepath.Join(home, "Helper", "Library Studio KH Helper.app.previous",
-		"Contents", "MacOS", "Library Studio KH Helper")
-	if got, err := os.ReadFile(previous); err != nil || string(got) != "#!/bin/sh\n" {
-		t.Fatalf("previous helper = %q err=%v", got, err)
+	st, err := svc.Uninstall(spec.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.State != HostServiceNotInstalled || st.Installed {
+		t.Fatalf("uninstall status = %+v", st)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("the login job file stayed after uninstall: %v", err)
+	}
+	if r.loaded {
+		t.Fatal("the job is still loaded after uninstall")
+	}
+	if entries, err := os.ReadDir(trash); err != nil || len(entries) == 0 {
+		t.Fatalf("the removed job was not retired to the Trash: %v %v", entries, err)
+	}
+	if _, err := os.Stat(spec.Home); err != nil {
+		t.Fatalf("uninstall removed the user's Library folder: %v", err)
 	}
 }

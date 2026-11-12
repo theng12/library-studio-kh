@@ -277,10 +277,34 @@ func packagedHelper(exe string) string {
 	return ""
 }
 
-// helperInstallPath is where the packaged helper is copied: outside the main
-// app bundle so macOS lists the background item as the helper, not the app.
-func helperInstallPath(home string) string {
-	return filepath.Join(home, "Helper", "Library Studio KH Helper.app", "Contents", "MacOS", "Library Studio KH Helper")
+// retireHelperCopy moves an older build's loose helper copy out of the config
+// home. Background runners live inside the app bundle, so no copy may be left
+// behind: it goes to the macOS Trash and can be restored.
+func retireHelperCopy(home string) {
+	moveToTrash(filepath.Join(home, "Helper"), "Library Studio KH Helper (old copy)")
+}
+
+// trashDir is where retired copies go; tests point it at a temp folder.
+var trashDir = func() string { return filepath.Join(os.Getenv("HOME"), ".Trash") }
+
+// moveToTrash puts a file or bundle in the macOS Trash, never overwriting an
+// earlier item of the same name.
+func moveToTrash(path, name string) {
+	if _, err := os.Lstat(path); err != nil {
+		return
+	}
+	trash := trashDir()
+	if err := os.MkdirAll(trash, 0o700); err != nil {
+		return
+	}
+	target := filepath.Join(trash, name)
+	for i := 2; ; i++ {
+		if _, err := os.Lstat(target); os.IsNotExist(err) {
+			break
+		}
+		target = filepath.Join(trash, fmt.Sprintf("%s %d", name, i))
+	}
+	_ = os.Rename(path, target)
 }
 
 // savedJob returns the program and port saved in an installed Library job.
@@ -317,96 +341,14 @@ func savedJob(path string) (string, int, bool) {
 	return "", 0, false
 }
 
-// helperExecutable is the path the login job runs: the installed helper when
-// the server is packaged, otherwise the given executable.
+// helperExecutable is the path the login job runs: the helper inside this app
+// bundle when packaged, otherwise the given executable. Nothing is copied out:
+// deleting the app deletes the runner, and no loose copy can be orphaned.
 func helperExecutable(exe, home string) string {
-	if packagedHelper(exe) == "" {
-		return exe
+	if packaged := packagedHelper(exe); packaged != "" {
+		return packaged
 	}
-	return helperInstallPath(home)
-}
-
-// installHelper copies the packaged helper into the configuration home and
-// reports whether the installed copy changed. The replaced copy is kept as
-// Helper.previous so a failed update can be rolled back.
-func installHelper(exe, home string) (bool, error) {
-	packaged := packagedHelper(exe)
-	if packaged == "" {
-		return false, nil
-	}
-	installed := helperInstallPath(home)
-	if sameFileBytes(packaged, installed) {
-		return false, nil
-	}
-	src := filepath.Dir(filepath.Dir(filepath.Dir(packaged)))
-	dst := filepath.Dir(filepath.Dir(filepath.Dir(installed)))
-	staging := dst + ".new"
-	if err := os.RemoveAll(staging); err != nil {
-		return false, err
-	}
-	if err := copyTree(src, staging); err != nil {
-		return false, err
-	}
-	previous := dst + ".previous"
-	if _, err := os.Stat(dst); err == nil {
-		if err := os.RemoveAll(previous); err != nil {
-			return false, err
-		}
-		if err := os.Rename(dst, previous); err != nil {
-			return false, err
-		}
-	}
-	if err := os.Rename(staging, dst); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-func sameFileBytes(a, b string) bool {
-	one, err := os.ReadFile(a)
-	if err != nil {
-		return false
-	}
-	two, err := os.ReadFile(b)
-	if err != nil {
-		return false
-	}
-	return bytes.Equal(one, two)
-}
-
-func copyTree(src, dst string) error {
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(dst, 0o755); err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		from := filepath.Join(src, entry.Name())
-		to := filepath.Join(dst, entry.Name())
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			if err := copyTree(from, to); err != nil {
-				return err
-			}
-			continue
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("the helper bundle contains an unsupported file: %s", from)
-		}
-		data, err := os.ReadFile(from)
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(to, data, info.Mode().Perm()); err != nil {
-			return err
-		}
-	}
-	return nil
+	return exe
 }
 
 func hostPlist(spec HostServiceSpec) string {
@@ -591,12 +533,11 @@ func (s *HostService) Install(spec HostServiceSpec) (HostServiceStatus, error) {
 			return blockedStatus(err.Error()), err
 		}
 	}
-	helperChanged, err := installHelper(spec.Exe, spec.Home)
-	if err != nil {
-		return blockedStatus("The background helper could not be installed."), err
-	}
+	// Older builds copied the helper into the config home; that copy is retired
+	// now that the job runs the helper inside this app bundle.
+	retireHelperCopy(spec.Home)
 	plist := hostPlist(spec)
-	changed := helperChanged
+	changed := false
 	if exists {
 		old, err := os.ReadFile(path)
 		if err != nil {
@@ -655,12 +596,9 @@ func (s *HostService) Start(spec HostServiceSpec) (HostServiceStatus, error) {
 			return s.Install(HostServiceSpec{Exe: spec.Exe, Home: spec.Home, Port: port})
 		}
 	}
-	helperChanged, err := installHelper(spec.Exe, spec.Home)
-	if err != nil {
-		return blockedStatus("The background helper could not be installed."), err
-	}
+	retireHelperCopy(spec.Home)
 	loaded := s.isLoaded()
-	if loaded && loadedConfigMatches(path) && !helperChanged && (s.verify == nil || s.isRunning(spec.Home)) {
+	if loaded && loadedConfigMatches(path) && (s.verify == nil || s.isRunning(spec.Home)) {
 		return s.Status(spec), nil
 	}
 	if loaded {
@@ -715,5 +653,25 @@ func (s *HostService) Stop() (HostServiceStatus, error) {
 		Label:     HostServiceLabel,
 		Installed: true,
 		Detail:    "The background host was stopped. Its login job is kept.",
+	}, nil
+}
+
+// Uninstall stops the host, removes its login job and retires any loose helper
+// copy. Library's settings and library stay where they are.
+func (s *HostService) Uninstall(home string) (HostServiceStatus, error) {
+	path, err := s.plistPath()
+	if err != nil {
+		return blockedStatus("The background host folder could not be found."), err
+	}
+	if _, stopErr := s.Stop(); stopErr != nil {
+		return blockedStatus("The background host could not be stopped; its login job was kept."), stopErr
+	}
+	moveToTrash(path, "kh.librarystudio.host.plist (Library Studio KH uninstalled)")
+	retireHelperCopy(home)
+	return HostServiceStatus{
+		Supported: true,
+		State:     HostServiceNotInstalled,
+		Label:     HostServiceLabel,
+		Detail:    "The background host, its login job and any old helper copy were removed. Your Library settings are kept.",
 	}, nil
 }

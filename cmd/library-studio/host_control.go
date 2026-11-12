@@ -45,13 +45,15 @@ func runHostControl(command string, svc *platform.HostService, spec platform.Hos
 		} else {
 			st, err = svc.Stop()
 		}
+	case "uninstall":
+		st, err = svc.Uninstall(spec.Home)
 	case "status":
 		st = svc.Status(platform.HostServiceSpec{Home: spec.Home})
 	default:
 		return hostControlOutput{
 			Supported: true,
 			State:     platform.HostServiceBlocked,
-			Error:     fmt.Sprintf("unknown host-control command %q; use install, start, stop or status", command),
+			Error:     fmt.Sprintf("unknown host-control command %q; use install, start, stop, uninstall or status", command),
 		}, 1
 	}
 	out := hostControlOutput{
