@@ -167,7 +167,8 @@ func (s *Store) Get() Config {
 	return s.cfg
 }
 
-// Save writes atomically. shortcut: keys sit in a 0600 file like the *arr apps' own config; move to the OS keychain if the owner wants that.
+// Save writes atomically to settings.json (0600). Secrets live only in this
+// app-data file; Library never uses the system credential store.
 func (s *Store) Save(c Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
