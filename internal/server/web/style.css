@@ -92,12 +92,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .menu .group-head { padding: 1.1rem 0.75rem 0.15rem; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .pill {
   display: inline-flex; align-items: center; gap: 4px; align-self: flex-start;
-  min-height: 26px; padding: 0 7px; border-radius: 999px; white-space: nowrap;
-  background: var(--panel); border: 1px solid var(--line); color: var(--ink); text-align: left;
+  min-height: 26px; max-width: 100%; padding: 0 7px; border-radius: 999px; white-space: nowrap;
+  overflow: hidden; background: var(--panel); border: 1px solid var(--line); color: var(--ink); text-align: left;
 }
 .pill:hover, .pill[aria-current="page"] { border-color: var(--accent); }
-.pill-name { font-size: 11px; font-weight: 600; }
-.pill-version { font-size: 10px; color: var(--muted); }
+.pill-name { font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.pill-version { flex: none; font-size: 10px; color: var(--muted); }
 .nav-icon { width: 1.1rem; height: 1.1rem; flex: none; }
 .menu button, .support, .mobile-menu-toggle { display: flex; align-items: center; gap: 0.6rem; }
 .side-footer { display: grid; gap: 6px; margin-top: auto; padding-top: 9px; border-top: 1px solid var(--line); }
@@ -107,8 +107,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .support:hover { background: var(--panel); color: var(--ink); }
 .support[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.update-status { margin: 0; padding: 0 0.75rem; font-size: 11px; color: var(--muted); }
-.pillrow { display: flex; align-items: center; gap: 6px; }
+.update-status { margin: 0; padding: 0 0.75rem; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pillrow { display: flex; align-items: center; gap: 6px; padding: 0 0.75rem; }
 .icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; padding: 0; border-radius: 7px;

@@ -20,8 +20,19 @@ test("the footer pill shows the app name and version and opens What's New", () =
 test("the pill uses the shared footer numbers", () => {
   assert.match(css, /\.pill \{[^}]*min-height: 26px[^}]*padding: 0 7px[^}]*border-radius: 999px/);
   assert.match(css, /\.pill-name \{ font-size: 11px/);
-  assert.match(css, /\.pill-version \{ font-size: 10px/);
+  assert.match(css, /\.pill-version \{[^}]*font-size: 10px/);
   assert.match(css, /\.side-footer \{[^}]*gap: 6px[^}]*padding-top: 9px/);
+});
+
+test("the footer rows share one inset and never wrap", () => {
+  assert.match(css, /\.pill \{[^}]*white-space: nowrap[^}]*overflow: hidden/);
+  assert.match(css, /\.pill-name \{[^}]*text-overflow: ellipsis/);
+  assert.match(css, /\.update-status \{[^}]*white-space: nowrap[^}]*text-overflow: ellipsis/);
+  assert.match(css, /\.pillrow \{[^}]*padding: 0 0\.75rem/);
+  assert.match(css, /\.update-status \{[^}]*padding: 0 0\.75rem/);
+  const nav = html.match(/<nav class="side"[\s\S]*?<\/nav>/)?.[0] || "";
+  const support = nav.indexOf('class="support"'), pillrow = nav.indexOf('class="pillrow"'), status = nav.indexOf('id="update-status"');
+  assert.ok(support > 0 && pillrow > support && status > pillrow, "footer order changed");
 });
 
 test("Settings offers System, Light and Dark and starts on System", () => {
