@@ -149,7 +149,11 @@ func TestLiveFeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	installed := bundleVersion("/Applications/Library Studio KH.app/Contents/MacOS/library-studio-server", "missing")
+	app := os.Getenv("LIBRARY_APP")
+	if app == "" {
+		app = "/Applications/Library Studio KH.app"
+	}
+	installed := bundleVersion(filepath.Join(app, "Contents", "MacOS", "library-studio-server"), "missing")
 	t.Logf("installed bundle version: %q", installed)
 	// The installed bundle is compared through the same function the server uses.
 	got := Check(home, installed, nil)

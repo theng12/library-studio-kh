@@ -1,8 +1,12 @@
 # What's new in Library Studio KH
 
-## 0.7.8 — 2026-11-11
+## 0.7.9 — 2026-11-12
 
 - Run Library's background helper as a properly named app with its own icon, so it no longer appears as a bare background process.
+- Support this app from the sidebar footer. Library is free with every feature unlocked; a one-time donation is optional.
+- Find things faster with a tidier sidebar: Activity first, then Library and System groups, and the setup entry disappears once Library is set up.
+- See the Library name and version in the sidebar, with What's New behind it and one plain update line beside it. When a new version exists, the update button opens Studio Launcher KH — you confirm the update there, and Library never installs anything by itself.
+- Choose System, Light, Dark or Default appearance in Settings.
 
 ## 0.7.7 — 2026-11-11
 
