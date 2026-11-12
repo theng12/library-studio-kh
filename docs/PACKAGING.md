@@ -80,6 +80,8 @@ Record the pin document, helper source hash, JSON result and resulting `dist/.re
 
 Retention is automatic (owner, 2026-11-12). `npm run retain:accepted -- <pins>` runs the shared helper and then `scripts/release-retain.py`, which moves any remaining Library installer older than the newest three into this project's `_trash/<date> library dist rotation/` (recoverable, never overwritten). No hand step: a version older than the latest three never needs a person.
 
+Three is a depth, not a quota (owner, 2026-11-12): the three come from new releases only. When fewer verified versions exist, keep what exists and never restore an older installer to fill a slot. Current depth is three — 0.7.11, 0.7.10 and 0.7.9.
+
 Guards: a version named by the live or previous feed release (`feed/release.json`, `feed/previous-release.json`), the dist ledger, `feed/artifact-retention.json`, the updater's state or rollback records, a queued publish job, or a `base/versions` runtime is never moved. Every move is logged in the receipt with its version, SHA-256, byte size and destination; skipped versions are logged with the reason. Swap the wrapper for the shared helper once Updater ships one; the behaviour stays the same.
 
 The mock contract check is part of the `host` lane and can run alone for this change:
