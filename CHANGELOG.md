@@ -1,5 +1,13 @@
 # What's new in Library Studio KH
 
+## 0.7.14 — 2026-11-13
+
+- Applying a Recyclarr sync now asks in Library's own dialog; the old browser prompt was silently ignored in the app window.
+- Escape closes the open dialog, clears a focused search and closes the menu, including in the desktop window.
+- Reopen the Library window from the menu or the Dock after closing it.
+- Activity says Paused, Queued, Stalled or Missing files instead of calling every row Downloading, app chips say Connected or Offline in words, and empty lists say what to do next.
+- The footer rows line up on one inset and the version pill truncates instead of wrapping.
+
 ## 0.7.13 — 2026-11-12
 
 - The background helper now runs from inside the app, so deleting Library Studio KH removes it; quitting stops the helper, its login job and its ports.

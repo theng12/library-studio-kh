@@ -55,7 +55,7 @@ test("cancelled Apply never sends a request; Preview and confirmed Apply are dis
   let prompts = 0;
   const c = context({
     setupJob: { id: "plan" }, setupBusy: false, setupGeneration: 0,
-    window: { confirm: () => { prompts++; return approved; } },
+    setupConfirm: async () => { prompts++; return approved; },
     setupApi: async (path, body) => { calls.push({ path, body }); return { id: "plan" }; },
     setupSay() {}, setupRememberMusicProfiles() {}, renderSetupJob() {}, scheduleSetupPoll() {},
   });

@@ -517,10 +517,32 @@ function renderSetupJob() {
   setupJobBox.append(box);
 }
 
+// Packaged webviews silently ignore the browser confirm API, so confirmations are ours.
+function setupConfirm(title, detail) {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    const head = setupNode("div", null, "d-head");
+    head.append(setupNode("h2", title));
+    const body = setupNode("div", null, "prose");
+    body.append(setupNode("p", detail));
+    const actions = setupNode("div", null, "actions");
+    let answer = false;
+    const keep = setupButton("Keep settings", "small", () => { answer = false; dialog.close(); });
+    const go = setupButton("Apply sync", "primary", () => { answer = true; dialog.close(); });
+    actions.append(keep, go);
+    body.append(actions);
+    dialog.append(head, body);
+    dialog.addEventListener("close", () => { dialog.remove(); resolve(answer); }, { once: true });
+    document.body.append(dialog);
+    dialog.showModal();
+    go.focus();
+  });
+}
+
 async function setupRun(action, app) {
   if (setupBusy || !setupJob) return;
   // Apply changes the native app through Recyclarr, so it always asks first.
-  if (action === "apply" && !window.confirm("Apply this Recyclarr sync now? It updates profiles in the connected Sonarr or Radarr app.")) return;
+  if (action === "apply" && !(await setupConfirm("Apply this Recyclarr sync now?", "It updates profiles in the connected Sonarr or Radarr app. Saving nothing else changes."))) return;
   let request;
   try { request = setupJobRequest(setupJob, action, app); }
   catch (e) { setupSay(e.message); return; }
