@@ -78,7 +78,9 @@ npm run retain:accepted -- /absolute/coordination/library-accepted-dist-pins.jso
 
 Record the pin document, helper source hash, JSON result and resulting `dist/.release-dist.json` with the release evidence, then recheck both retained hashes and byte sizes. The helper copies or adopts identical bytes into `Library Studio KH-<version>.dmg`; it never moves the source. It retires only obsolete files that its ledger owns and whose recorded bytes still match. Unmanaged files remain untouched: this is never a whole-`dist` wipe, and pending installers are not managed pins. Re-running the same pair is idempotent.
 
-Retention is automatic (owner, 2026-11-12). `npm run retain:accepted -- <pins>` runs the shared helper and then `scripts/release-retain.py`, which moves any remaining Library installer older than the newest two straight to the macOS Trash (`~/.Trash`, recoverable, never overwritten). No `_trash` staging for installers and no hand step: a version older than the latest two never needs a person. Swap the wrapper for the shared helper once Updater ships one; the behaviour stays the same.
+Retention is automatic (owner, 2026-11-12). `npm run retain:accepted -- <pins>` runs the shared helper and then `scripts/release-retain.py`, which moves any remaining Library installer older than the newest two into this project's `_trash/<date> library dist rotation/` (recoverable, never overwritten). No hand step: a version older than the latest two never needs a person.
+
+Guards: a version named by the live or previous feed release (`feed/release.json`, `feed/previous-release.json`), the dist ledger, `feed/artifact-retention.json`, the updater's state or rollback records, a queued publish job, or a `base/versions` runtime is never moved. Every move is logged in the receipt with its version, SHA-256, byte size and destination; skipped versions are logged with the reason. Swap the wrapper for the shared helper once Updater ships one; the behaviour stays the same.
 
 The mock contract check is part of the `host` lane and can run alone for this change:
 
