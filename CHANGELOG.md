@@ -1,5 +1,9 @@
 # What's new in Library Studio KH
 
+## 0.7.10 — 2026-11-12
+
+- Quit Library Studio KH (⌘Q) now stops the background helper too, so nothing named Library Studio KH keeps running after you quit. Reopening starts cleanly.
+
 ## 0.7.9 — 2026-11-12
 
 - Run Library's background helper as a properly named app with its own icon, so it no longer appears as a bare background process.

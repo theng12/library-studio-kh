@@ -54,6 +54,23 @@ fn start_server() -> Result<(Child, String), String> {
     Err("the server stopped before it was ready".into())
 }
 
+// Quitting stops the background host too, so no Library Studio KH Helper keeps
+// running behind an app that is gone. Closing the window keeps macOS's app alive.
+fn stop_host() {
+    let Ok(exe) = server_path() else { return };
+    match Command::new(exe)
+        .args(["-host-control", "stop"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+    {
+        Ok(status) if status.success() => {}
+        Ok(status) => eprintln!("The background host did not stop cleanly (exit {status})."),
+        Err(e) => eprintln!("Could not stop the background host: {e}"),
+    }
+}
+
 fn stop_server(app: &tauri::AppHandle) {
     // This is only the desktop helper, never a background host service.
     if let Some(mut c) = app.state::<Server>().0.lock().unwrap().take() {
@@ -65,6 +82,7 @@ fn stop_server(app: &tauri::AppHandle) {
 fn build_menu(app: &tauri::App) -> tauri::Result<()> {
     let use_local = MenuItem::with_id(app, "use-local-host", "Use this Mac as host", true, None::<&str>)?;
     let restart = MenuItem::with_id(app, "restart", "Restart Library", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Library Studio KH", true, Some("CmdOrCtrl+Q"))?;
     #[cfg(target_os = "macos")]
     let app_menu = Submenu::with_items(
         app,
@@ -82,7 +100,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
             &PredefinedMenuItem::hide_others(app, None)?,
             &PredefinedMenuItem::show_all(app, None)?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::quit(app, None)?,
+            &quit,
         ],
     )?;
     #[cfg(not(target_os = "macos"))]
@@ -94,7 +112,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
             &use_local,
             &restart,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::quit(app, None)?,
+            &quit,
         ],
     )?;
     // Predefined items target the focused responder, so editing works inside the
@@ -186,12 +204,16 @@ fn main() {
             } else if event.id() == "restart" {
                 stop_server(app);
                 app.restart();
+            } else if event.id() == "quit" {
+                app.exit(0);
             }
         })
         .build(tauri::generate_context!())
         .expect("Library Studio KH could not start")
         .run(|app, event| {
             if let RunEvent::Exit = event {
+                // Mac Cmd+Q, AppleScript quit and the menu item all land here.
+                stop_host();
                 stop_server(app);
             }
         });
