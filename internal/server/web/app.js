@@ -1455,12 +1455,12 @@ $("#close-public-help").addEventListener("click", () => {
 // Settings cards: open on desktop; on a phone one card at a time keeps the page
 // within the window instead of one long scroll.
 function settingsCardsForPhone() {
-  const narrow = window.matchMedia("(max-width: 700px)").matches;
+  const narrow = window.matchMedia("(max-width: 900px)").matches;
   for (const panel of document.querySelectorAll("#settings-tabs .tabpanel")) {
     [...panel.querySelectorAll(":scope > .settings-card")].forEach((card, i) => { card.open = !narrow || i === 0; });
   }
 }
-window.matchMedia?.("(max-width: 700px)").addEventListener?.("change", settingsCardsForPhone);
+window.matchMedia?.("(max-width: 900px)").addEventListener?.("change", settingsCardsForPhone);
 
 if (window.librarySettingsView) {
   window.librarySettingsApi = window.librarySettingsView.mountSettingsTabs($("#settings-tabs"));

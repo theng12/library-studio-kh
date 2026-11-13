@@ -102,12 +102,12 @@ test("each tab is a set of self-contained cards, not one long column", () => {
   const { api } = mount();
   const panels = byClass(api.root, "tabpanel");
   const titles = panels.map((p) => byTag(p, "h2").map((h) => h.textContent));
-  assert.deepEqual(titles[0], ["Appearance", "Folders", "Companion apps", "Help"]);
+  assert.deepEqual(titles[0], ["Appearance", "Folders", "Companion apps", "Dead downloads", "Help"]);
   assert.deepEqual(titles[1], ["Sessions & security"]);
   assert.deepEqual(titles[2], ["Phone & Tailscale access"]);
   assert.deepEqual(titles[3], ["Updates"]);
   for (const panel of panels) assert.ok(byClass(panel, "card").length === byTag(panel, "h2").length);
-  assert.ok(byClass(panels[0], "card").length === 4);
+  assert.ok(byClass(panels[0], "card").length === 5);
 });
 
 test("appearance offers exactly System, Light and Dark, starting on System", () => {
