@@ -164,7 +164,7 @@ function activityLabel(it) {
         outcome: "verified",
         label: done + " · verified",
         detail: (it.verified === "hash" ? "SHA-256 hash match" : "Size and readback match")
-          + (it.targetPath ? " · " + it.targetPath : " · location not recorded"),
+          + (it.targetPath ? " · " + libraryGridBreakPath(it.targetPath) : " · location not recorded"),
         at: it.verifiedAt || it.statusAt || it.when || null,
       };
     }
@@ -181,10 +181,10 @@ function activityLabel(it) {
     return { outcome: "removed", label: "Cleared from qBittorrent · files were already missing", detail: "", at: it.when || null };
   }
   if (status === "cleanup-restored") {
-    return { outcome: "removed", label: "Restored from Library’s _trash", detail: it.sourcePath ? "Back at " + it.sourcePath : "", at: it.when || null };
+    return { outcome: "removed", label: "Restored from Library’s _trash", detail: it.sourcePath ? "Back at " + libraryGridBreakPath(it.sourcePath) : "", at: it.when || null };
   }
   if (status === "cleanup-moved") {
-    return { outcome: "removed", label: "Moved into Library’s _trash", detail: it.sourcePath ? "Returns to " + it.sourcePath : "", at: it.when || null };
+    return { outcome: "removed", label: "Moved into Library’s _trash", detail: it.sourcePath ? "Returns to " + libraryGridBreakPath(it.sourcePath) : "", at: it.when || null };
   }
   if (status === "cleanup-pass") {
     return { outcome: "removed", label: "Cleanup pass", detail: it.sourcePath || "", at: it.when || null };
@@ -447,11 +447,11 @@ function renderLibraryPage() {
   $("#browse-lede").textContent = (lib.items.length
     ? lib.items.length + (lib.items.length === 1 ? " item" : " items") + " across Sonarr, Radarr and Lidarr. Status and proof come from import records."
     : "Everything Sonarr, Radarr and Lidarr look after.")
-    + (unverified ? " " + unverified + (unverified === 1 ? " imported copy has" : " imported copies have") + " no verification proof yet — open one and choose Verify with Cleanup." : "");
+    + (lib.metadata ? " " + lib.metadata : "")
+    + (unverified ? " " + unverified + (unverified === 1 ? " imported copy has" : " imported copies have") + " no verification proof yet — open one to see whether a local copy is tracked." : "");
   const notice = $("#browse-notice");
-  const noticeText = [...lib.problems, lib.metadata].filter(Boolean).join(" ");
-  notice.hidden = !noticeText;
-  notice.textContent = noticeText;
+  notice.hidden = !lib.problems.length;
+  notice.textContent = lib.problems.join(" ");
   const selected = lib.items.find((item) => libraryGridKey(item) === lib.selected) || null;
   const shownSelected = libraryGridFilter(lib.items, lib.filters).find((item) => libraryGridKey(item) === lib.selected) || null;
   host.replaceChildren(libraryGridPage({
@@ -764,8 +764,10 @@ document.addEventListener("click", (ev) => { if (!ev.target.closest(".side")) cl
 // Save feedback belongs to the save that produced it, never to another tab
 // (including keyboard tab changes, which settings-view reports as an event).
 document.addEventListener("settings:tab", () => {
-  const msg = $("#settings-save-msg");
-  if (msg) msg.textContent = "";
+  for (const id of ["#settings-save-msg", "#form-msg"]) {
+    const msg = $(id);
+    if (msg) msg.textContent = "";
+  }
   settingsCardsForPhone();
 });
 
@@ -859,7 +861,7 @@ function setDownloadNotice(text, tone) {
 
 function renderDownloadNotice() {
   const notice = $("#dl-notice");
-  const text = [dl.problems, dl.metadata, dl.lastNotice].filter(Boolean).join(" ");
+  const text = [dl.problems, dl.lastNotice].filter(Boolean).join(" ");
   notice.hidden = !text;
   notice.textContent = text;
   if (dl.lastTone && !dl.problems) notice.dataset.tone = dl.lastTone;
@@ -894,9 +896,13 @@ function renderDownloadsPage() {
   // Say so only when the table really needs sideways scrolling, after layout settles.
   const baseStatus = dl.problems
     ? "Some sources did not answer."
-    : "Status and proof come from import records";
+    : "Status and proof come from import records" + (dl.metadata ? " · " + dl.metadata : "");
   $("#dl-page-status").textContent = baseStatus;
   const scrollBox = host.querySelector(".table-scroll");
+  if (scrollBox) {
+    if (scrollBox.scrollWidth > scrollBox.clientWidth + 1) scrollBox.dataset.scrollable = "1";
+    else delete scrollBox.dataset.scrollable;
+  }
   requestAnimationFrame(() => {
     // Only the tablet widths, where the table is genuinely wider than its frame.
     // A hint left over from another width is removed, never left standing.

@@ -349,6 +349,13 @@ function downloadsPanelRender(root, model, handlers) {
     const button = dlpButton(action.label);
     button.dataset.action = action.key;
     button.disabled = action.disabled;
+    if (action.disabled) {
+      // A disabled control says why, visibly and to assistive tech.
+      const reason = model.bulk.count === 0 ? "Select a download first" : "Not available for the selected downloads";
+      button.title = reason;
+      button.setAttribute("aria-label", action.label + " — " + reason);
+      button.setAttribute("aria-disabled", "true");
+    }
     button.addEventListener("click", () => on("bulk", action.key));
     bulk.append(button);
   }

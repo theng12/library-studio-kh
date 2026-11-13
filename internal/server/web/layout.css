@@ -168,8 +168,9 @@
   /* Opened Library apps: three across, so every address field fits its value. */
   #arr-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-@media (min-width: 701px) and (max-width: 1099px) {
-  #arr-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 900px) {
+  /* Full-width rows inside the disclosure: an address never clips its value. */
+  #arr-fields { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 900px) and (min-width: 701px) {
   .tabpanel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -183,6 +184,8 @@
   .page-status { flex-basis: 100%; }
   .page-actions { margin-left: 0; }
   .tabs { width: 100%; flex-wrap: wrap; overflow-x: visible; }
+  .page-actions { align-items: stretch; }
+  .page-actions button { min-height: 44px; }
   .timeline-item { grid-template-columns: 1.1rem minmax(0, 1fr); }
   .timeline-dot { grid-column: 1; grid-row: 1 / span 3; }
   .timeline-time, .timeline-main, .timeline-app { grid-column: 2; }

@@ -53,6 +53,11 @@ function libraryVolumeLabel(volume) {
   return v;
 }
 
+// Paths wrap after their separators instead of breaking a folder name in half.
+function libraryGridBreakPath(text) {
+  return String(text || "").replaceAll("/", "/\u200b");
+}
+
 // Middle truncation keeps both the volume and the file name readable; the full
 // path stays on the row's title and aria-label and in the detail pane.
 function libraryGridShortPath(text, max = 52) {
@@ -136,7 +141,8 @@ function libraryGridLocation(item) {
   const where = libraryVolumeLabel(volume);
   const path = String(item.targetPath || "").trim();
   const disk = where ? where + (volume === "/" ? " (/)" : "") : "";
-  return { volume, where, path, text: [disk, path].filter(Boolean).join(" · ") || "No storage location recorded yet" };
+  const text = [disk, path].filter(Boolean).join(" · ") || "No storage location recorded yet";
+  return { volume, where, path, text, display: libraryGridBreakPath(text) };
 }
 
 function libraryGridVerification(item) {
@@ -185,6 +191,7 @@ function libraryGridDetail(item, posterURL) {
     location: libraryGridLocation(item),
     verification: libraryGridVerification(item),
     downloadHash: String(item.downloadHash || ""),
+    localCopy: item.localCopy === true,
     source: String(item.sourcePath || "").trim(),
     history: libraryGridHistory(item),
   };
@@ -397,7 +404,7 @@ function libraryGridDetailPanel(detail, handlers = {}) {
   if (detail.rating) fact("Rating", detail.rating);
   if (!detail.year && !detail.runtime && !detail.genres.length && !detail.rating) fact("Metadata", "Not reported by the source");
   if (detail.app) fact("Added through", detail.app);
-  fact("Location", detail.location.text, detail.location.path ? null : "is-problem");
+  fact("Location", detail.location.display || detail.location.text, detail.location.path ? null : "is-problem");
   fact("Verified", detail.verification.verified
     ? detail.verification.method + (detail.verification.at ? " · " + detail.verification.at : " · time not recorded")
     : detail.verification.method, detail.verification.verified ? null : "is-problem");
@@ -405,22 +412,29 @@ function libraryGridDetailPanel(detail, handlers = {}) {
   if (detail.source) fact("Source", detail.source);
   aside.append(facts);
   if (!detail.verification.verified) {
-    // The next step is a real verification of this copy, shown right here.
+    // The next step is a real verification of this copy — but only when a local
+    // copy is tracked. Otherwise the control is disabled and says why.
     const check = libraryGridNode("button", "Verify this copy", "libgrid-state-action");
     check.type = "button";
     const result = libraryGridNode("p", "", "libgrid-verify-msg");
     result.setAttribute("role", "status");
-    check.addEventListener("click", async () => {
+    if (!detail.localCopy) {
       check.disabled = true;
-      result.textContent = "Checking the saved proof…";
-      try {
-        result.textContent = await handlers.onVerify?.(detail) || "The check finished without a result.";
-      } catch (e) {
-        result.textContent = e.message || "The check could not run.";
-      } finally {
-        check.disabled = false;
-      }
-    });
+      check.title = "No local copy is tracked — verify when a local copy is found.";
+      result.textContent = "No local copy is tracked — verify when a local copy is found.";
+    } else {
+      check.addEventListener("click", async () => {
+        check.disabled = true;
+        result.textContent = "Checking the saved proof…";
+        try {
+          result.textContent = await handlers.onVerify?.(detail) || "The check finished without a result.";
+        } catch (e) {
+          result.textContent = e.message || "The check could not run.";
+        } finally {
+          check.disabled = false;
+        }
+      });
+    }
     aside.append(check, result);
   }
 

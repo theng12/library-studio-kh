@@ -39,6 +39,7 @@ type Item struct {
 	Verified       string    `json:"verified,omitempty"` // hash | size | none
 	ProofHash      string    `json:"proofHash,omitempty"`      // first saved SHA-256, so the owner can compare it
 	DownloadHash   string    `json:"downloadHash,omitempty"`   // the tracked download this proof belongs to
+	LocalCopy      bool      `json:"localCopy,omitempty"`      // a saved cleanup record tracks a local copy to verify
 	VerifiedAt     time.Time `json:"verifiedAt,omitempty"`
 	PosterPath     string    `json:"posterPath,omitempty"`
 	Overview       string    `json:"overview,omitempty"`

@@ -10,6 +10,7 @@ function labelHelpers() {
   const grid = readFileSync(new URL("../internal/server/web/library-grid.js", import.meta.url), "utf8");
   const source = [
     grid.match(/function libraryVolumeLabel\(volume\) \{[\s\S]*?\n\}/)[0],
+    grid.match(/function libraryGridBreakPath\(text\) \{[\s\S]*?\n\}/)[0],
     app.match(/function torrentStateWord\(state\) \{[\s\S]*?\n\}/)[0],
     app.match(/function activityLabel\(it\) \{[\s\S]*?\n\}/)[0],
   ].join("\n");
@@ -39,7 +40,7 @@ test("a verified copy names its proof and location; an unproven one says so", ()
   assert.equal(verified.outcome, "verified");
   assert.match(verified.label, /Copied · verified/);
   assert.match(verified.detail, /SHA-256 hash match/);
-  assert.match(verified.detail, /\/Volumes\/NAS\/Films\/X/);
+  assert.match(verified.detail.replaceAll("\u200b", ""), /\/Volumes\/NAS\/Films\/X/);
   assert.match(label({ status: "copied", verified: "hash", targetVolume: "/Volumes/NAS" }).label, /Copied to NAS · verified/);
   assert.match(label({ status: "copied", verified: "hash", targetVolume: "/" }).label, /Copied to Startup disk · verified/);
   const size = label({ status: "moved", verified: "size" });

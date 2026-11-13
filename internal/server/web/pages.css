@@ -387,12 +387,23 @@
 
 /* Cleanup: the Actions column stays on screen while the table scrolls, and the
    status facts never push the card wider than its column. */
-@media (min-width: 761px) {
+@media (min-width: 901px) {
   #cleanup-status .table-wrap th:last-child,
   #cleanup-status .table-wrap td.cleanup-actions { position: sticky; right: 0; z-index: 1; background: var(--panel); }
   #cleanup-status .table-wrap tbody tr:hover td.cleanup-actions { background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel)); }
   #cleanup-status .badge { white-space: nowrap; }
   #cleanup-status .page-table td:nth-child(3) { white-space: nowrap; }
+}
+@media (max-width: 900px) {
+  /* One card per row: the copy, its facts and its actions stack inside the card,
+     so nothing sits outside the visible area or hides behind a sticky column. */
+  #cleanup-status .list thead { display: none; }
+  #cleanup-status .list tr { display: block; padding: 0.75rem 0.9rem; border-bottom: 1px solid var(--line); }
+  #cleanup-status .list tr:last-child { border-bottom: 0; }
+  #cleanup-status .list td { display: grid; grid-template-columns: 7rem minmax(0, 1fr); align-items: center; gap: 0.35rem 0.75rem; padding: 0.25rem 0; border: 0; white-space: normal; overflow-wrap: anywhere; }
+  #cleanup-status .list td::before { content: attr(data-label); color: var(--muted); font-size: var(--text-xs); }
+  #cleanup-status .list td.cleanup-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; padding-top: 0.6rem; }
+  #cleanup-status .list td.cleanup-actions::before { content: none; }
 }
 #cleanup-status .facts { grid-template-columns: max-content minmax(0, 1fr); }
 #cleanup-status .facts dd { min-width: 0; }
@@ -413,7 +424,8 @@
 .settings-card > summary.card-head { cursor: pointer; }
 .settings-card > summary::-webkit-details-marker { display: none; }
 .settings-card > summary { list-style: none; }
-@media (max-width: 700px) {
+@media (max-width: 900px) {
+  /* Every width where a card can be collapsed shows the disclosure marker. */
   .settings-card > summary.card-head::after { content: "▸"; margin-left: auto; color: var(--muted); }
   .settings-card[open] > summary.card-head::after { content: "▾"; }
 }
@@ -453,3 +465,6 @@ dialog.confirm .actions { display: flex; justify-content: flex-end; gap: 0.5rem;
 dialog.dlp-dialog::backdrop, dialog.confirm::backdrop { background: rgba(15, 18, 26, 0.42); }
 dialog.dlp-dialog .dlp-detail { border: 0; border-radius: 0; box-shadow: none; }
 dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
+
+/* A sideways-scrolling table says so with a fading edge as well as the hint. */
+.table-scroll[data-scrollable="1"] { box-shadow: inset -12px 0 12px -12px rgba(0, 0, 0, 0.3); }

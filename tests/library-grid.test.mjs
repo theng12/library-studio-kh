@@ -278,8 +278,9 @@ test("the Filters panel shows a draft that differs from the applied filters", ()
 test("an unproven copy can be verified in place and shows the result", async () => {
   const g = load();
   const calls = [];
+  const withCopy = items.map((item) => item.title === "Dune" ? { ...item, localCopy: true } : item);
   const page = g.libraryGridPage({
-    items, filters: {}, selected: "Sonarr:5",
+    items: withCopy, filters: {}, selected: "Sonarr:5",
     handlers: { onVerify: async (detail) => { calls.push(detail.title); return "Verified Dune: every saved hash matches the file on disk."; } },
   });
   const panel = byClass(page, "libgrid-detail")[0];
@@ -291,6 +292,11 @@ test("an unproven copy can be verified in place and shows the result", async () 
   assert.match(text(panel), /every saved hash matches/);
   assert.equal(g.libraryVolumeLabel("/"), "Startup disk");
   assert.match(g.libraryGridShortPath("NAS · /Volumes/NAS/Music/Demo Artist/First Album/Some Long Name", 40), /…/);
+  // Without a tracked local copy the control is disabled and says why.
+  const untracked = g.libraryGridPage({ items, filters: {}, selected: "Sonarr:5", handlers: { onVerify: async () => "should not run" } });
+  const panel2 = byClass(untracked, "libgrid-detail")[0];
+  assert.equal(byClass(panel2, "libgrid-state-action")[0].disabled, true);
+  assert.match(text(panel2), /No local copy is tracked — verify when a local copy is found\./);
 });
 
 test("a phone detail offers Back, and rows keep the full path on the title", () => {
