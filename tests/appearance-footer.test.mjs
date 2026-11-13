@@ -69,7 +69,7 @@ test("Check for updates is icon-only and the update button starts hidden", () =>
   assert.ok(!/>Check for updates</.test(nav), "the check button shows text");
   const update = nav.match(/<button[^>]*id="open-update"[^>]*>/)?.[0] || "";
   assert.match(update, /\bhidden\b/);
-  assert.match(nav, /<p id="update-status"[^>]*role="status"[^>]*aria-live="polite"[^>]*>Not checked</);
+  assert.match(nav, /<p id="update-status"[^>]*role="status"[^>]*aria-live="polite"[^>]*>Updates: not checked yet</);
 });
 
 test("the update check speaks the five contract lines and hands off to the launcher", () => {

@@ -133,7 +133,7 @@ function libraryGridVerification(item) {
   const method = item.verified === "hash" ? "SHA-256 hash match"
     : item.verified === "size" ? "Size and readback match"
     : "Not verified — no proof recorded yet";
-  return { verified: libraryGridVerified(item), method, at: libraryGridTime(item.verifiedAt) };
+  return { verified: libraryGridVerified(item), method, hash: String(item.proofHash || ""), at: libraryGridTime(item.verifiedAt) };
 }
 
 function libraryGridHistory(item) {
@@ -183,7 +183,8 @@ function libraryGridFilter(items, filters = {}) {
   const query = String(filters.query || "").trim().toLocaleLowerCase();
   return (items || []).filter((item) =>
     (!query || String(item.title || "").toLocaleLowerCase().includes(query)) &&
-    (!filters.status || libraryGridStatus(item).key === filters.status) &&
+    // The full status text: "verified" and "not verified" are different filters.
+    (!filters.status || libraryGridStatus(item).label === filters.status) &&
     (!filters.app || item.app === filters.app) &&
     (!filters.genre || libraryGridGenres(item).some((g) => g.toLocaleLowerCase() === String(filters.genre).toLocaleLowerCase())) &&
     (!filters.year || String(item.year || "") === String(filters.year)));
@@ -211,7 +212,7 @@ function libraryGridFilterOptions(items) {
   const statuses = new Map(), apps = new Set(), genres = new Map(), years = new Set();
   for (const item of items || []) {
     const status = libraryGridStatus(item);
-    statuses.set(status.key, status.label);
+    statuses.set(status.label, status.label); // every distinct status, exactly as shown
     if (item.app) apps.add(item.app);
     for (const genre of libraryGridGenres(item)) genres.set(genre.toLocaleLowerCase(), genre);
     const year = Number(item.year);
@@ -312,7 +313,9 @@ function libraryGridRow(item, options = {}) {
   main.append(libraryGridNode("span", item.title || "Untitled", "libgrid-card-title"));
   main.append(libraryGridNode("span", libraryGridMeta(item), "libgrid-meta"));
   row.append(main);
-  row.append(libraryGridNode("span", libraryGridLocation(item).text, "libgrid-row-location"));
+  const location = libraryGridNode("span", libraryGridLocation(item).text, "libgrid-row-location");
+  location.title = location.textContent; // one line here; the full path on hover
+  row.append(location);
   row.append(libraryGridStatusChip(libraryGridStatus(item)));
   row.addEventListener("click", () => options.handlers?.onSelect?.(key));
   return row;
@@ -379,8 +382,16 @@ function libraryGridDetailPanel(detail, handlers = {}) {
   fact("Verified", detail.verification.verified
     ? detail.verification.method + (detail.verification.at ? " · " + detail.verification.at : " · time not recorded")
     : detail.verification.method, detail.verification.verified ? null : "is-problem");
+  if (detail.verification.hash) fact("Proof hash", detail.verification.hash);
   if (detail.source) fact("Source", detail.source);
   aside.append(facts);
+  if (!detail.verification.verified) {
+    // The next step for an unproven copy is Cleanup's own verification.
+    const check = libraryGridNode("button", "Verify with Cleanup", "libgrid-state-action");
+    check.type = "button";
+    check.addEventListener("click", () => handlers.onCleanup?.());
+    aside.append(check);
+  }
 
   const history = libraryGridNode("div", null, "libgrid-history-block");
   history.append(libraryGridNode("h3", "History", "libgrid-history-title"));
@@ -396,7 +407,7 @@ function libraryGridDetailPanel(detail, handlers = {}) {
       list.append(li);
     }
     history.append(list);
-  } else history.append(libraryGridNode("p", "No history recorded yet.", "is-muted"));
+  } else history.append(libraryGridNode("p", "No earlier events are recorded. Current state: " + detail.status.label + ".", "is-muted"));
   aside.append(history);
   return aside;
 }

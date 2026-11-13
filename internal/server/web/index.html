@@ -135,7 +135,7 @@
         <button type="button" class="icon-btn" id="check-updates" title="Check for updates" aria-label="Check for updates"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.2 8a5.2 5.2 0 1 1-1.6-3.8"/><path d="M13.4 2.4v2.9h-2.9"/></svg></button>
         <button type="button" class="icon-btn update-btn" id="open-update" title="Update" aria-label="Update" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.6v6.2M5.2 6.2 8 9l2.8-2.8M2.8 11.4v1.6h10.4v-1.6"/></svg></button>
       </div>
-      <p id="update-status" class="update-status" role="status" aria-live="polite">Not checked</p>
+      <p id="update-status" class="update-status" role="status" aria-live="polite" title="Use Check for updates to look for a new version.">Updates: not checked yet</p>
     </div>
   </nav>
 
@@ -172,7 +172,7 @@
                   <option value="verified">Verified copies</option>
                   <option value="downloading">Downloading</option>
                   <option value="importing">Importing</option>
-                  <option value="removed">Removed locally</option>
+                  <option value="removed">Local copy changes</option>
                   <option value="upcoming">Coming up</option>
                   <option value="problems">Needs attention</option>
                 </select></label>
@@ -196,7 +196,7 @@
           <p id="dl-notice" class="notice" role="alert" hidden></p>
           <div class="downloads-layout">
             <div id="dl" class="download-list" role="group" tabindex="0" aria-label="Downloads. Selects the visible downloads." aria-keyshortcuts="Meta+A Control+A"></div>
-            <div id="downloads-detail"></div>
+            <dialog id="downloads-detail" class="dlp-dialog" aria-label="Download details"></dialog>
           </div>
           <p class="muted">Finished downloads move to My library once their import is verified. Remove takes a download out of qBittorrent and never deletes its files.</p>
         </div>
@@ -310,7 +310,7 @@
       </header>
       <div class="page-body">
       <section class="card">
-        <div class="card-head"><h2>Cleanup status</h2><p>Preview verifies files and shows the next proposed action without changing them. Nothing is deleted for good without its full staged wait.</p></div>
+        <div class="card-head"><h2>Cleanup status</h2><p>Preview verifies files and shows the next proposed action without changing them.</p></div>
         <div class="card-body">
           <p id="cleanup-msg" role="status"></p>
           <div id="cleanup-status"></div>

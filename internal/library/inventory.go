@@ -50,6 +50,9 @@ func cleanupVerified(rec *cleanupRecord) string {
 // from, so every page names the same moment for the same copy.
 func applyRecord(it *Item, rec *cleanupRecord) {
 	it.Verified = cleanupVerified(rec)
+	if len(rec.Files) > 0 {
+		it.ProofHash = rec.Files[0].SHA256
+	}
 	it.VerifiedAt = rec.ImportedAt
 	if it.VerifiedAt.IsZero() {
 		it.VerifiedAt = rec.VerifiedAt

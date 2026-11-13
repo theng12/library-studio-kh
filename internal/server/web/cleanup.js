@@ -8,6 +8,7 @@ const CLEANUP_PHASES = { staging: "Download folder", managed_trash: "Library’s
 let cleanupBusy = false;
 let cleanupState = null;
 let cleanupSerial = 0;
+let cleanupFocus = null; // where focus goes after a row action re-renders the table
 
 function cleanupPolicy(form) {
   const patch = { stagedCleanupOn: form.elements.stagedCleanupOn.checked, pressureBypassRetention: !!form.elements.pressureBypassRetention?.checked, managedTrashPath: form.elements.managedTrashPath.value.trim() };
@@ -57,7 +58,11 @@ function cleanupCanRun(status) {
 function cleanupButtons() {
   for (const id of ["#cleanup-save", "#cleanup-preview", "#cleanup-refresh"]) $(id).disabled = cleanupBusy;
   $("#cleanup-run").disabled = cleanupBusy || !cleanupCanRun(cleanupState);
-  for (const button of document.querySelectorAll("[data-cleanup-restore], [data-cleanup-remove-now]")) button.disabled = cleanupBusy;
+  for (const button of document.querySelectorAll("[data-cleanup-restore]")) button.disabled = cleanupBusy;
+  // A row with a saved blocker keeps its Remove now disabled even when idle.
+  for (const button of document.querySelectorAll("[data-cleanup-remove-now]")) {
+    button.disabled = cleanupBusy || button.dataset.blocked === "1";
+  }
 }
 
 function cleanupDaysLeft(due) {
@@ -77,7 +82,8 @@ function cleanupProof(item) {
     ["Stage", CLEANUP_PHASES[item.phase] || item.phase || "Not reported"],
     ["Verified import", item.verifiedImport ? stamp(item.verifiedImport) : "Not reported"],
     ["Verification", item.verified === "hash" ? "SHA-256 hash match" : item.verified === "size" ? "Size and readback match" : "Method not recorded"],
-    ["Library file", item.importPath || "Not reported"],
+    ["Proof hash", (item.verifiedHashes || []).join(", ") || "Not recorded"],
+    ["Library file", (item.importVolume ? libraryVolumeLabel(item.importVolume) + " · " : "") + (item.importPath || "Not reported")],
     ["Verified files", Number.isInteger(item.files) ? String(item.files) : "Not reported"],
     ["Original local path", item.sourcePath || "Not reported"],
     ["Managed copy", item.managedPath || "—"],
@@ -112,7 +118,8 @@ function cleanupRender(status) {
   body.append(mediaNode("p", "Nothing is deleted for good from the download folder or Library’s _trash. Every permanent removal happens only from the system Trash, after its wait, with the library copy checked again first.", "muted"));
 
   const wrap = mediaNode("div", null, "table-wrap");
-  const table = mediaNode("table", null, "page-table");
+  // "list" gives the table the same stacked-card treatment the other mobile tables use.
+  const table = mediaNode("table", null, "page-table list");
   const head = document.createElement("thead"), headRow = document.createElement("tr");
   for (const name of ["Download", "Stage", "Size", "Next due", "Proposed action", "Actions"]) {
     const th = mediaNode("th", name); th.scope = "col"; headRow.append(th);
@@ -147,6 +154,12 @@ function cleanupRender(status) {
       const removeNow = mediaNode("button", "Remove now", "small");
       removeNow.type = "button";
       removeNow.dataset.cleanupRemoveNow = item.hash;
+      // A saved blocker (e.g. seeding not finished) means this cannot run yet.
+      if ((item.blocked || []).length > 0) {
+        removeNow.dataset.blocked = "1";
+        removeNow.disabled = true;
+        removeNow.title = item.blocked.join(" ");
+      }
       removeNow.setAttribute("aria-label", "Move the local copy of " + (item.name || "this download") + " to Library’s _trash now");
       removeNow.addEventListener("click", () => cleanupAction("remove-now", { hash: item.hash }));
       actions.append(removeNow);
@@ -178,7 +191,7 @@ async function loadCleanup() {
     if (serial !== cleanupSerial) return;
     cleanupFill(state.settings);
     cleanupRender(status);
-    $("#cleanup-msg").textContent = "Showing the saved policy. Preview checks current files and the next proposed action without changing anything.";
+    $("#cleanup-msg").textContent = "Showing the saved policy. Preview runs a dry run.";
   } catch (e) {
     cleanupState = null;
     $("#cleanup-msg").textContent = e.message;
@@ -191,12 +204,29 @@ async function cleanupAction(action, request = {}) {
   $("#cleanup-msg").textContent = action === "preview" ? "Verifying imports and local copies. Preview changes nothing…" : action === "restore" ? "Restoring the local copy…" : "Checking and applying eligible cleanup…";
   try {
     const result = await api("/api/cleanup/" + action, request);
+    cleanupFocus = { hash: request.hash || "", action };
     cleanupRender(result.status);
     const messages = [...(result.actions || []), ...(result.problems || [])];
     $("#cleanup-msg").textContent = messages.join(" ") || (action === "preview" ? "Preview complete. No changes made." : "Check complete. No changes were needed.");
     if (action !== "preview") await load(); // Activity and other pages move on too
-  } catch (e) { $("#cleanup-msg").textContent = e.message; }
-  finally { cleanupBusy = false; cleanupButtons(); }
+  } catch (e) {
+    $("#cleanup-msg").textContent = e.message;
+    // Re-read the saved state so the refusal's blocker is visible on the row.
+    try { cleanupRender(await api("/api/cleanup/status")); } catch {}
+    $("#cleanup-msg").textContent = e.message;
+  }
+  finally {
+    cleanupBusy = false;
+    cleanupButtons();
+    if (cleanupFocus) {
+      const f = cleanupFocus;
+      cleanupFocus = null;
+      const sel = f.action === "restore" ? '[data-cleanup-restore="' + CSS.escape(f.hash) + '"]'
+        : '[data-cleanup-remove-now="' + CSS.escape(f.hash) + '"]';
+      const target = document.querySelector(sel);
+      (target && !target.disabled ? target : $("#cleanup-refresh"))?.focus();
+    }
+  }
 }
 
 $("#cleanup-refresh").addEventListener("click", loadCleanup);

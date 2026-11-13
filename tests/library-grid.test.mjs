@@ -101,7 +101,7 @@ test("filters narrow the same list and never reorder or change the source", () =
   const before = items.map((x) => x.title);
   assert.deepEqual(titles(g.libraryGridFilter(items, {})), ["Andor", "Arrival", "Blade Runner 2049", "Coco", "Dune"]);
   assert.deepEqual(titles(g.libraryGridFilter(items, { query: "dune" })), ["Dune"]);
-  assert.deepEqual(titles(g.libraryGridFilter(items, { status: "missing" })), ["Coco"]);
+  assert.deepEqual(titles(g.libraryGridFilter(items, { status: "Missing" })), ["Coco"]);
   assert.deepEqual(titles(g.libraryGridFilter(items, { app: "Sonarr" })), ["Andor", "Dune"]);
   assert.deepEqual(titles(g.libraryGridFilter(items, { genre: "sci-fi" })), ["Arrival", "Blade Runner 2049"]);
   assert.deepEqual(titles(g.libraryGridFilter(items, { year: "2017" })), ["Blade Runner 2049", "Coco"]);
@@ -128,7 +128,7 @@ test("result count and active filters read truthfully", () => {
 test("filter options come only from the items on screen", () => {
   const g = load();
   const options = g.libraryGridFilterOptions(items);
-  assert.deepEqual(Array.from(options.statuses, (x) => x.value), ["copied", "downloading", "importing", "missing", "moved"]);
+  assert.deepEqual(Array.from(options.statuses, (x) => x.value), ["Copied to NAS-1 (verified)", "Downloading", "Importing", "Missing", "Moved to NAS-1 (verified)"]);
   assert.deepEqual(Array.from(options.apps, (x) => x.value), ["Radarr", "Sonarr"]);
   assert.deepEqual(Array.from(options.genres, (x) => x.value), ["Drama", "Mystery", "Sci-Fi", "Thriller"]);
   assert.deepEqual(Array.from(options.years, (x) => x.value), ["2022", "2021", "2017", "2016"]);
@@ -255,9 +255,9 @@ test("search, view, selection and the Filters panel call their handlers", () => 
   const selects = byTag(page, "select");
   assert.equal(selects.length, 4);
   const statusSelect = selects[0];
-  statusSelect.value = "missing";
+  statusSelect.value = "Missing";
   statusSelect.fire("change");
-  assert.deepEqual(calls.shift(), ["change", { status: "missing" }]);
+  assert.deepEqual(calls.shift(), ["change", { status: "Missing" }]);
   byClass(page, "libgrid-apply")[0].fire("click");
   assert.deepEqual(calls.shift(), ["apply"]);
   byClass(page, "libgrid-reset")[0].fire("click");
@@ -266,11 +266,11 @@ test("search, view, selection and the Filters panel call their handlers", () => 
 
 test("the Filters panel shows a draft that differs from the applied filters", () => {
   const g = load();
-  const page = g.libraryGridPage({ items, filters: {}, draft: { status: "missing" }, filtersOpen: true, handlers: {} });
+  const page = g.libraryGridPage({ items, filters: {}, draft: { status: "Missing" }, filtersOpen: true, handlers: {} });
   assert.equal(byClass(page, "libgrid-count").map(text)[0], "5 items", "count follows applied filters");
-  assert.equal(byTag(page, "select")[0].value, "missing");
+  assert.equal(byTag(page, "select")[0].value, "Missing");
   assert.equal(byClass(page, "libgrid-filters-toggle")[0].textContent, "Filters", "no applied filters yet");
-  const applied = g.libraryGridPage({ items, filters: { status: "missing" }, filtersOpen: false, handlers: {} });
+  const applied = g.libraryGridPage({ items, filters: { status: "Missing" }, filtersOpen: false, handlers: {} });
   assert.equal(byClass(applied, "libgrid-filters-toggle")[0].textContent, "Filters · 1");
   assert.equal(byClass(applied, "libgrid-count").map(text)[0], "1 of 5 items");
 });

@@ -39,7 +39,7 @@ test("posted posters go through the safe route and never a raw path", () => {
 
 test("Cleanup keeps actions visible and shows import proof", () => {
   assert.match(cleanup, /"table-wrap"/);
-  assert.match(cleanup, /"page-table"/);
+  assert.match(cleanup, /"page-table list"/);
   assert.match(cleanup, /"Actions"/);
   assert.match(cleanup, /cleanupProof\(item\)/);
   assert.match(cleanup, /dataset\.cleanupRestore/);

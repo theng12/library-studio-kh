@@ -115,7 +115,7 @@ function render(st) {
   // Cleanup's own line: its policy and the truth about the library, never a
   // second free-space figure (the status table below carries that one).
   const lede = [cfg.stagedCleanupOn
-    ? "Staged cleanup is <strong>on</strong> for verified imports; Preview checks current files without changing them."
+    ? "Staged cleanup is <strong>on</strong> for verified imports."
     : "Local copies are <strong>kept</strong>. Staged cleanup is off."];
   if (s.library === "missing") lede.push("<span class=off>The NAS library folder can't be found.</span>");
   if (st.metadata) lede.push("<span class=off>" + st.metadata + "</span>");
@@ -179,6 +179,15 @@ function activityLabel(it) {
   }
   if (status === "download-cleared") {
     return { outcome: "removed", label: "Cleared from qBittorrent · files were already missing", detail: "", at: it.when || null };
+  }
+  if (status === "cleanup-restored") {
+    return { outcome: "removed", label: "Restored from Library’s _trash", detail: it.sourcePath ? "Back at " + it.sourcePath : "", at: it.when || null };
+  }
+  if (status === "cleanup-moved") {
+    return { outcome: "removed", label: "Moved into Library’s _trash", detail: it.sourcePath ? "Returns to " + it.sourcePath : "", at: it.when || null };
+  }
+  if (status === "cleanup-pass") {
+    return { outcome: "removed", label: "Cleanup pass", detail: it.sourcePath || "", at: it.when || null };
   }
   if (status === "downloading" || status === "queued" || status === "stalled") {
     const word = torrentStateWord(it.state);
@@ -460,6 +469,7 @@ function renderLibraryPage() {
       onSelect: (key) => { lib.selected = key; renderLibraryPage(); },
       onRetry: () => loadLibrary(),
       onFindAndAdd: () => show("find"),
+      onCleanup: () => show("cleanup"),
     },
   }));
   const openDetails = $("#lib-open-details");
@@ -830,20 +840,30 @@ function renderDownloadsPage() {
     emptyAction: () => { dl.filter = "all"; dl.query = ""; renderDownloadsPage(); },
   };
   downloadsPanelRender(host, model, handlers);
-  // Say so when the table needs sideways scrolling, so hidden columns are not a trap.
-  const scrollBox = host.querySelector(".table-scroll");
-  const scrolls = scrollBox ? scrollBox.scrollWidth > scrollBox.clientWidth + 1 : false;
-  $("#dl-page-status").textContent = (dl.problems
+  // Say so only when the table really needs sideways scrolling, after layout settles.
+  const baseStatus = dl.problems
     ? "Some sources did not answer."
-    : model.countText + " · status and proof come from import records") + (scrolls ? " · Scroll sideways for more columns." : "");
+    : model.countText + " · status and proof come from import records";
+  $("#dl-page-status").textContent = baseStatus;
+  const scrollBox = host.querySelector(".table-scroll");
+  requestAnimationFrame(() => {
+    // Only where the table is genuinely wider than its frame (phones/tablets);
+    // at desktop width the full table fits and a scroll hint would be false.
+    const scrolls = window.innerWidth < 1000 && scrollBox && scrollBox.scrollWidth > scrollBox.clientWidth + 1;
+    if (scrolls && $("#dl-page-status").textContent === baseStatus) {
+      $("#dl-page-status").textContent = baseStatus + " · Scroll sideways for more columns.";
+    }
+  });
   const notice = $("#dl-notice");
   const noticeText = [dl.problems, dl.metadata].filter(Boolean).join(" ");
   notice.hidden = !noticeText;
   notice.textContent = noticeText;
   const openRow = model.rows.find((row) => row.key === dl.openKey);
-  detail.hidden = !openRow;
-  if (openRow) downloadsDetailRender(detail, downloadsDetail(openRow.item, []));
-  else detail.replaceChildren();
+  // The proof opens as a modal: the table keeps its columns and the page never reflows.
+  if (openRow) {
+    downloadsDetailRender(detail, downloadsDetail(openRow.item, []), () => detail.close());
+    if (!detail.open) detail.showModal();
+  } else if (detail.open) detail.close();
   if (searchFocus !== null) {
     const search = $("#dl-q");
     search?.focus();
@@ -855,19 +875,68 @@ function renderDownloadsPage() {
   } else if (wasFilter) {
     host.querySelector("select")?.focus();
   } else if (dl.focusAfter) {
-    // After Remove/Clear the row is gone; focus the search instead of dropping to the page.
-    host.querySelector('tr[data-key="' + CSS.escape(dl.focusAfter) + '"] .dlp-open')?.focus();
-    if (document.activeElement === document.body) $("#dl-q")?.focus();
+    // After Remove/Clear the row is gone; focus the next row, else the search.
+    const gone = dl.focusAfter;
     dl.focusAfter = null;
+    host.querySelector('tr[data-key="' + CSS.escape(gone) + '"] .dlp-open')?.focus();
+    if (!host.contains(document.activeElement)) (host.querySelector(".dlp-open") || $("#dl-q"))?.focus();
   }
+}
+
+// Closing the proof dialog puts focus back on the row that opened it.
+$("#downloads-detail").addEventListener("close", () => {
+  if (!dl.openKey) return;
+  const key = dl.openKey;
+  dl.openKey = null;
+  renderDownloadsPage();
+  const back = document.querySelector('#dl tr[data-key="' + CSS.escape(key) + '"] .dlp-open');
+  (back || $("#dl-q"))?.focus();
+});
+
+// Remove and Clear change qBittorrent's list, so they ask in Library's own
+// dialog first (a native confirm is a silent no-op inside the app window).
+// Files are never deleted; Keep it leaves everything as it was.
+function confirmDownloadAction(action, hashes) {
+  const names = hashes.map((h) => dl.items.find((i) => i.hash === h)?.name).filter(Boolean);
+  const count = names.length || hashes.length;
+  const verb = action === "clear" ? "Clear" : "Remove";
+  const who = count === 1 ? (names[0] || "this download") : count + " downloads";
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "confirm";
+    const heading = document.createElement("h2");
+    heading.textContent = verb + " " + who + " from qBittorrent?";
+    const text = document.createElement("p");
+    text.textContent = action === "clear"
+      ? "Its files are already missing. This only removes the entry from qBittorrent’s list."
+      : "Its files stay on disk. This only removes the entry from qBittorrent’s list.";
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button"; cancel.className = "small"; cancel.textContent = "Keep it";
+    const go = document.createElement("button");
+    go.type = "button"; go.className = "small primary"; go.textContent = verb;
+    actions.append(cancel, go);
+    dialog.append(heading, text, actions);
+    document.body.append(dialog);
+    let answer = false;
+    cancel.addEventListener("click", () => dialog.close());
+    go.addEventListener("click", () => { answer = true; dialog.close(); });
+    dialog.addEventListener("close", () => { dialog.remove(); resolve(answer); });
+    dialog.showModal();
+  });
 }
 
 async function downloadAction(hashes, action) {
   if (!hashes.length || downloadsLoading) return;
+  if ((action === "remove" || action === "clear") && !(await confirmDownloadAction(action, hashes))) return;
+  const names = hashes.map((h) => dl.items.find((i) => i.hash === h)?.name).filter(Boolean);
+  const who = names.length === 1 ? names[0] : (names.length || hashes.length) + " downloads";
   const words = {
-    pause: "Paused", resume: "Resumed",
-    remove: "Removed from qBittorrent. Its files were kept on disk.",
-    clear: "Cleared from qBittorrent. Its files were already missing.",
+    pause: "Paused " + who + ".",
+    resume: "Resumed " + who + ".",
+    remove: "Removed " + who + " from qBittorrent. Its files were kept on disk.",
+    clear: "Cleared " + who + " from qBittorrent. Its files were already missing.",
   };
   try {
     const r = await api("/api/downloads/action", { hashes, action });
@@ -877,7 +946,7 @@ async function downloadAction(hashes, action) {
     dl.focusAfter = hashes[0];
     await loadDownloads();
     await load(); // Activity and every other page move on with the action
-    setDownloadNotice(errs.length ? errs.join(" ") : (hashes.length === 1 ? words[action] : words[action] + " (" + hashes.length + ")"), errs.length ? "warn" : "ok");
+    setDownloadNotice(errs.length ? errs.join(" ") : words[action], errs.length ? "warn" : "ok");
   } catch (e) {
     await loadDownloads();
     setDownloadNotice(e.message, "warn");
@@ -959,7 +1028,7 @@ async function loadSessions() {
       const info = document.createElement("div");
       const device = document.createElement("span");
       device.className = "session-device";
-      device.textContent = s.device || "Browser on an unrecorded system";
+      device.textContent = (s.device || "Browser on an unrecorded system") + (s.peer ? " · " + s.peer : "");
       const when = document.createElement("span");
       when.textContent = (s.lastSeen ? "last seen " + stamp(s.lastSeen) : "not used yet")
         + " · signed in " + stamp(s.created) + " · ends " + stamp(s.expires);

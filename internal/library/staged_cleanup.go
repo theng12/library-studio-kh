@@ -88,8 +88,10 @@ type CleanupItem struct {
 	App            string     `json:"app"`
 	Phase          string     `json:"phase"`
 	VerifiedImport time.Time  `json:"verifiedImport"`
-	Verified       string     `json:"verified,omitempty"` // hash | size: how the saved proof was made
+	Verified       string     `json:"verified,omitempty"`       // hash | size: how the saved proof was made
+	VerifiedHashes []string   `json:"verifiedHashes,omitempty"` // full saved SHA-256 values, so the owner can compare
 	ImportPath     string     `json:"importPath,omitempty"`
+	ImportVolume   string     `json:"importVolume,omitempty"`
 	NextDue        *time.Time `json:"nextDue,omitempty"`
 	Proposed       string     `json:"proposed"`
 	Blocked        []string   `json:"blocked,omitempty"`
@@ -997,8 +999,14 @@ func (e *StagedCleanup) render(st *CleanupStatus, recs []*cleanupRecord, c confi
 		it := CleanupItem{
 			Hash: rec.Hash, Name: rec.Name, App: rec.App, Phase: rec.State,
 			VerifiedImport: rec.ImportedAt, Verified: cleanupVerified(rec), RestorePath: rec.MoveRoot,
+			ImportVolume: volumeName(rec.ImportedPath),
 			Files: len(rec.Files), Bytes: rec.Bytes,
 			ImportPath: rec.ImportedPath, SourcePath: rec.SavePath, ManagedPath: rec.ManagedPath,
+		}
+		for _, f := range rec.Files {
+			if f.SHA256 != "" {
+				it.VerifiedHashes = append(it.VerifiedHashes, f.SHA256)
+			}
 		}
 		if rec.LastBlocked != "" {
 			it.Blocked = append(it.Blocked, rec.LastBlocked)
@@ -1051,6 +1059,47 @@ func (e *StagedCleanup) render(st *CleanupStatus, recs []*cleanupRecord, c confi
 			it.Proposed = "Low space: skip retention waits and permanently remove, oldest verified import first, after fresh NAS verification."
 		}
 		items = append(items, it)
+	}
+	// Live blockers for copies the owner can act on now: what would refuse a
+	// Remove now or a pass. Read-only; an unreadable source adds no blocker.
+	if torrents, err := e.Source.Torrents(); err == nil {
+		byHash := map[string]stock.CleanupTorrent{}
+		for _, t := range torrents {
+			byHash[strings.ToUpper(t.Hash)] = t
+		}
+		queued, _, qerr := e.Source.Queued()
+		for i := range items {
+			if items[i].Phase != phaseStaging {
+				continue
+			}
+			h := strings.ToUpper(items[i].Hash)
+			reason := ""
+			if app, ok := queued[h]; ok && qerr == nil {
+				reason = "still handled by " + app + ", so it stays protected."
+			} else if t, listed := byHash[h]; listed {
+				state := strings.ToLower(t.State)
+				switch {
+				case t.Progress < 1 || strings.Contains(state, "check") || state == "moving":
+					reason = "qBittorrent is downloading, checking or moving this torrent; it stays protected."
+				case torrentStateError(t.State):
+					reason = "qBittorrent reports an error for this torrent; it is left protected."
+				case !seedRuleMet(c, t):
+					reason = fmt.Sprintf("still seeding (ratio %.2f of %g, %d of %d minutes).", t.Ratio, c.SeedRatio, t.SeedingTime/60, c.SeedMinutes)
+				}
+			}
+			if reason == "" {
+				continue
+			}
+			duplicate := false
+			for _, b := range items[i].Blocked {
+				if b == reason {
+					duplicate = true
+				}
+			}
+			if !duplicate {
+				items[i].Blocked = append(items[i].Blocked, reason)
+			}
+		}
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].VerifiedImport.Before(items[j].VerifiedImport) })
 	st.Items = items

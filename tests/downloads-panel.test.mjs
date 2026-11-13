@@ -59,7 +59,7 @@ test("columns are the brief's columns in order and every row models each one", (
 
 test("a row whose source is gone says so and offers Clear instead of a fake 0%", () => {
   const row = downloadsModel(items).rows.find((r) => r.hash === H.old);
-  assert.equal(row.status.label, "Files missing — no source");
+  assert.equal(row.status.label, "Files missing");
   assert.equal(row.status.label, DOWNLOADS_MISSING_LABEL);
   assert.equal(row.status.missing, true);
   assert.deepEqual(plain(row.actions), [{ key: "clear", label: "Clear" }]);
@@ -143,8 +143,8 @@ test("progress, speed, ETA and size never invent values", () => {
 
   const zero = byName("Queued Show").progress;
   assert.equal(zero.label, "0%");
-  assert.equal(zero.speedText, "Speed not reported");
-  assert.equal(zero.etaText, "ETA not reported");
+  assert.equal(zero.speedText, "—", "a queued row has no live speed to report");
+  assert.equal(zero.etaText, "—");
 
   const paused = byName("Severance S02E01");
   assert.equal(paused.sizeText, "1.0 GB of 10 GB");
@@ -158,12 +158,12 @@ test("progress, speed, ETA and size never invent values", () => {
 
 test("detail pane carries proof, target, verification and history", () => {
   const detail = downloadsDetail(imported, [{ at: "2026-11-12T09:59:00Z", text: "Import started" }]);
-  assert.deepEqual(Array.from(detail.sections, (s) => s.key), ["proof", "target", "verification", "history"]);
+  assert.deepEqual(Array.from(detail.sections, (s) => s.key), ["proof", "history"]);
+  const facts = Object.fromEntries(plain(detail.facts));
+  assert.match(facts["Target"], /\/Volumes\/NAS\/Movies\/Imported Film \(2020\)/);
+  assert.match(facts["Verified"], /SHA-256 hash/);
+  assert.match(facts["Verified"], /2026/);
   const section = (key) => detail.sections.find((s) => s.key === key);
-  assert.deepEqual(plain(section("target").facts), [["Volume", "Not recorded"], ["Path", "/Volumes/NAS/Movies/Imported Film (2020)"]]);
-  assert.deepEqual(Array.from(section("verification").facts, (f) => f[0]), ["Method", "Verified at"]);
-  assert.equal(section("verification").facts[0][1], "SHA-256 hash");
-  assert.match(section("verification").facts[1][1], /2026/);
   assert.equal(section("history").events.length, 1);
   assert.equal(section("history").events[0].text, "Import started");
   assert.match(section("history").events[0].when, /2026/);
@@ -171,11 +171,13 @@ test("detail pane carries proof, target, verification and history", () => {
   assert.equal(detail.facts.find((f) => f[0] === "Source")[1], "Not verified");
 
   const missing = downloadsDetail(oldShow);
-  assert.equal(missing.sections.find((s) => s.key === "verification").facts[0][1], "Not verified yet");
-  assert.equal(missing.sections.find((s) => s.key === "verification").facts[1][1], "Not yet");
+  const missingFacts = Object.fromEntries(plain(missing.facts));
+  assert.equal(missingFacts["Verified"], "Not verified yet");
+  assert.match(missingFacts["Why"], /can’t find/);
+  assert.match(missingFacts["Next step"], /already gone/);
   assert.equal(missing.sections.find((s) => s.key === "history").empty, "No history reported yet.");
   assert.equal(missing.sections.find((s) => s.key === "proof").facts[0][1], DOWNLOADS_MISSING_LABEL);
-  assert.equal(downloadsDetail(dune).sections.find((s) => s.key === "target").facts[1][1], dune.targetPath);
+  assert.equal(Object.fromEntries(plain(downloadsDetail(dune).facts))["Target"].endsWith(dune.targetPath), true);
 });
 
 /* Minimal fake DOM: enough nodes for the render functions, no window, no browser. */
@@ -237,7 +239,8 @@ test("render builds the columns' header and the missing row's Clear action", () 
   const selectedRoot = fakeRoot();
   downloadsPanelRender(selectedRoot, downloadsModel(items, { selected: new Set([H.dune]) }), {});
   const enabled = findAll(findOne(selectedRoot, hasClass("dlp-bulk")), (n) => n.tag === "button");
-  assert.equal(enabled.every((b) => b.disabled === false), true);
+  // A downloading row can be paused and removed, but not resumed.
+  assert.deepEqual(enabled.map((b) => b.disabled), [false, true, false]);
 });
 
 test("render shows the empty state with its next-step action", () => {

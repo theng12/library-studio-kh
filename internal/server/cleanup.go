@@ -44,6 +44,9 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 			return
 		}
 		log.Printf("cleanup: run %d removed, %d action(s), %d problem(s)", res.Purged, len(res.Actions), len(res.Problems))
+		if len(res.Actions) > 0 {
+			library.RecordEvent(s.Home, library.Item{ID: "cleanup-pass", Kind: "cleanup-pass", Title: "Cleanup pass", SourcePath: strings.Join(res.Actions, " "), When: s.Now()})
+		}
 		writeJSON(w, 200, res)
 	})
 	mux.HandleFunc("POST /api/cleanup/remove-now", func(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +64,7 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 			return
 		}
 		log.Printf("cleanup: remove-now %s moved its local copy to Library's _trash", req.Hash)
+		s.recordCleanupEvent(res, req.Hash, "cleanup-moved")
 		writeJSON(w, 200, res)
 	})
 	mux.HandleFunc("POST /api/cleanup/restore", func(w http.ResponseWriter, r *http.Request) {
@@ -78,8 +82,22 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 			return
 		}
 		log.Printf("cleanup: restore %s %s", req.Hash, strings.Join(res.Actions, " "))
+		s.recordCleanupEvent(res, req.Hash, "cleanup-restored")
 		writeJSON(w, 200, res)
 	})
+}
+
+// recordCleanupEvent writes one owner-visible Activity event for a cleanup
+// action, naming the copy and its path so the timeline can prove what moved.
+func (s *Server) recordCleanupEvent(res library.CleanupResult, hash, kind string) {
+	it := library.Item{ID: strings.ToUpper(hash), Kind: kind, Title: "Download " + hash, When: s.Now()}
+	for _, item := range res.Status.Items {
+		if strings.EqualFold(item.Hash, hash) {
+			it.Title, it.SourcePath = item.Name, item.RestorePath
+			break
+		}
+	}
+	library.RecordEvent(s.Home, it)
 }
 
 // runStagedCleanup is the hourly job. A switched-off policy does nothing at all.

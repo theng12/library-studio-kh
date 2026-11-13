@@ -267,10 +267,12 @@ func writeFile(path string, b []byte) error {
 }
 
 func tinyJPEG() ([]byte, error) {
-	img := image.NewRGBA(image.Rect(0, 0, 2, 3))
-	for x := 0; x < 2; x++ {
-		for y := 0; y < 3; y++ {
-			img.Set(x, y, color.RGBA{90, 110, 140, 255})
+	// A real 2:3 poster at 300x450, so layout, aspect and file size are the
+	// same shape a real provider image would have.
+	img := image.NewRGBA(image.Rect(0, 0, 300, 450))
+	for x := 0; x < 300; x++ {
+		for y := 0; y < 450; y++ {
+			img.Set(x, y, color.RGBA{uint8(60 + y/6), uint8(70 + x/9), uint8(105 + y/12), 255})
 		}
 	}
 	var b bytes.Buffer

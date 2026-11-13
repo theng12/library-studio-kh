@@ -117,7 +117,7 @@
 .libgrid-row.is-selected { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
 .libgrid-row-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.6rem; min-width: 0; }
 .libgrid-row .libgrid-card-title { display: block; -webkit-line-clamp: unset; line-clamp: none; overflow: visible; }
-.libgrid-row-location { justify-self: end; min-width: 0; text-align: right; color: var(--muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.libgrid-row-location { justify-self: end; min-width: 0; max-width: 100%; text-align: right; color: var(--muted); font-size: var(--text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .libgrid-row .libgrid-status { white-space: nowrap; }
 
 /* List header: the same columns as every row, with sort controls. */
@@ -359,7 +359,7 @@
 .downloads-panel .dlp-title { max-width: 15rem; }
 .downloads-panel .dlp-title .dlp-open { text-align: left; white-space: normal; }
 .downloads-panel .dlp-size { white-space: nowrap; }
-.downloads-panel .dlp-status { max-width: 9rem; }
+.downloads-panel .dlp-status { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; }
 .downloads-panel .dlp-status .badge { white-space: nowrap; }
 .downloads-panel .dlp-source,
 .downloads-panel .dlp-target { max-width: 6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -369,16 +369,26 @@
 
 /* Cleanup: the Actions column stays on screen while the table scrolls, and the
    status facts never push the card wider than its column. */
-#cleanup-status .table-wrap th:last-child,
-#cleanup-status .table-wrap td.cleanup-actions { position: sticky; right: 0; z-index: 1; background: var(--panel); }
-#cleanup-status .table-wrap tbody tr:hover td.cleanup-actions { background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel)); }
+@media (min-width: 761px) {
+  #cleanup-status .table-wrap th:last-child,
+  #cleanup-status .table-wrap td.cleanup-actions { position: sticky; right: 0; z-index: 1; background: var(--panel); }
+  #cleanup-status .table-wrap tbody tr:hover td.cleanup-actions { background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel)); }
+  #cleanup-status .badge { white-space: nowrap; }
+  #cleanup-status .page-table td:nth-child(3) { white-space: nowrap; }
+}
 #cleanup-status .facts { grid-template-columns: max-content minmax(0, 1fr); }
 #cleanup-status .facts dd { min-width: 0; }
+@media (max-width: 760px) {
+  /* One column on phones: a long label can never squeeze or widen the card. */
+  #cleanup-status .facts { grid-template-columns: minmax(0, 1fr); }
+}
 .cleanup-companions { padding: 0 0.9rem; }
 .cleanup-companions > summary {
-  cursor: pointer; min-height: 44px; display: flex; align-items: center;
+  cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 0.4rem;
   font-size: 0.95rem; font-weight: 600;
 }
+.cleanup-companions > summary::before { content: "▸"; font-size: 0.8em; }
+.cleanup-companions[open] > summary::before { content: "▾"; }
 .cleanup-companions[open] { padding-bottom: 0.9rem; }
 
 /* The companion-app card spans the General tab so its six apps sit 3-4 across. */
@@ -392,12 +402,27 @@
    view; a side column squeezed nine columns into a scroll strip. */
 .downloads-layout:has(> .dlp-detail:not([hidden])) { grid-template-columns: minmax(0, 1fr); }
 
-/* Progress stays inside its column: bar on one line, then % / speed / ETA. */
+/* Progress: the bar on its own line, then % · speed · ETA. The cell keeps a
+   real minimum width so nothing is clipped, and wraps to a second line if it must. */
 .downloads-panel .dlp-progress {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto);
-  align-items: center; gap: 0.15rem 0.4rem; max-width: 11rem; min-width: 0;
+  display: block; max-width: none; min-width: 9.5rem;
 }
-.downloads-panel .dlp-progress progress { grid-column: 1 / -1; width: 100%; }
+.downloads-panel .dlp-progress progress { display: block; width: 100%; margin-bottom: 0.15rem; }
 .downloads-panel .dlp-progress .dlp-pct,
 .downloads-panel .dlp-progress .dlp-speed,
-.downloads-panel .dlp-progress .dlp-eta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.downloads-panel .dlp-progress .dlp-eta { white-space: nowrap; }
+.downloads-panel .dlp-progress .dlp-pct + span { margin-left: 0.35rem; }
+
+/* The Downloads proof and the in-app confirm are modal dialogs. */
+dialog.dlp-dialog, dialog.confirm {
+  width: min(46rem, 92vw); max-height: 82vh; padding: 0; overflow: auto;
+  border: 1px solid var(--line); border-radius: var(--radius-card);
+  background: var(--panel); color: var(--ink); box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+}
+dialog.confirm { width: min(26rem, 92vw); padding: 1.1rem 1.2rem; }
+dialog.confirm h2 { margin: 0 0 0.5rem; font-size: 1.05rem; }
+dialog.confirm p { margin: 0 0 1rem; color: var(--ink-2); font-size: var(--text-sm); }
+dialog.confirm .actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin: 0; }
+dialog.dlp-dialog::backdrop, dialog.confirm::backdrop { background: rgba(15, 18, 26, 0.42); }
+dialog.dlp-dialog .dlp-detail { border: 0; border-radius: 0; box-shadow: none; }
+dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }

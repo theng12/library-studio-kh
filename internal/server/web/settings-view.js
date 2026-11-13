@@ -52,7 +52,7 @@ const SETTINGS_CARDS = {
       title: "Help",
       fields: [
         { kind: "note", text: "Setup steps, phone access and troubleshooting live on one page." },
-        { kind: "button", label: "Open setup & help", view: "help" },
+        { kind: "button", label: "Open setup & help", view: "help", class: "small" },
       ],
     },
   ],

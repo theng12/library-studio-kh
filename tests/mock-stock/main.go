@@ -21,6 +21,7 @@ func main() {
 	downloads := flag.String("downloads", "/Users/me/Downloads", "download folder the UI fixture torrents report")
 	nas := flag.String("library", "/Volumes/NAS/Media", "library folder the UI fixture import points into")
 	uiOnly := flag.Bool("ui-fixtures", false, "serve only the c1-c5 headless UI fixture torrents (seed shapes from tests/mock-stock/fixture_ui.go)")
+	emptyLibrary := flag.Bool("empty-library", false, "list no shows, films or artists, for a first-run empty state")
 	flag.Parse()
 	now := time.Now()
 	ago := func(d int) string { return now.Add(-time.Duration(d) * 24 * time.Hour).Format(time.RFC3339) }
@@ -239,6 +240,9 @@ func main() {
 			// Searches return the made-up results only when the term contains "look".
 			if strings.HasSuffix(p, "lookup") && !strings.Contains(strings.ToLower(r.URL.Query().Get("term")), "look") {
 				v = []any{}
+			}
+			if *emptyLibrary && (p == "/api/v3/series" || p == "/api/v3/movie" || p == "/api/v1/artist") {
+				v = []any{} // a first-run library: nothing added yet
 			}
 			json.NewEncoder(w).Encode(v)
 			return

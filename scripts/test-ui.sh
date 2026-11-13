@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 # Headless UI test server: real dashboard on 127.0.0.1, mock stock apps, isolated
 # data under $TMPDIR. Never opens a window or touches the owner's live data.
-#   scripts/test-ui.sh [--offline] [--port N]
+#   scripts/test-ui.sh [--offline] [--empty] [--port N]
+# --empty serves a true first-run library: no shows, films, artists or fixtures.
 # Prints TEST_URL, TEST_LOGIN and TEST_HOME, then blocks until Ctrl-C/SIGTERM.
 set -eu
 
 offline=0
+empty=0
 port=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --offline) offline=1 ;;
+    --empty) empty=1 ;;
     --port) port="${2:?--port needs a number}"; shift ;;
-    *) echo "usage: $0 [--offline] [--port N]" >&2; exit 2 ;;
+    *) echo "usage: $0 [--offline] [--empty] [--port N]" >&2; exit 2 ;;
   esac
   shift
 done
@@ -49,7 +52,9 @@ wait_line() {
 echo "Building into $work/bin ..." >&2
 (cd "$repo" && go build -o "$work/bin/mock-stock" ./tests/mock-stock && go build -o "$work/bin/library-studio" ./cmd/library-studio)
 
-"$work/bin/mock-stock" -addr 127.0.0.1:0 -downloads "$work/downloads" -library "$work/library" -ui-fixtures >"$work/logs/mock-stock.log" 2>&1 &
+mock_args=(-addr 127.0.0.1:0 -downloads "$work/downloads" -library "$work/library")
+[ "$empty" = 1 ] && mock_args+=(-empty-library) || mock_args+=(-ui-fixtures)
+"$work/bin/mock-stock" "${mock_args[@]}" >"$work/logs/mock-stock.log" 2>&1 &
 pids="$pids $!"
 stock="$(wait_line "$work/logs/mock-stock.log" MOCK_STOCK= $!)"
 
@@ -82,7 +87,11 @@ fi
 
 export KH_TEST_HOME="$work/home" KH_TEST_STOCK="$stock" KH_TEST_DOWNLOADS="$work/downloads" \
   KH_TEST_LIBRARY="$work/library" KH_TEST_METADATA="$metadata" KH_TEST_PORT="$port"
-"$work/bin/library-studio" --seed-fixtures --test-mode >"$work/logs/library-studio.log" 2>&1 &
+if [ "$empty" = 1 ]; then
+  "$work/bin/library-studio" --test-mode >"$work/logs/library-studio.log" 2>&1 &
+else
+  "$work/bin/library-studio" --seed-fixtures --test-mode >"$work/logs/library-studio.log" 2>&1 &
+fi
 app=$!
 pids="$pids $app"
 url="$(wait_line "$work/logs/library-studio.log" TEST_URL= $app)"

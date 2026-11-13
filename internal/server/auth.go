@@ -30,6 +30,7 @@ type browserSession struct {
 	Created  time.Time `json:"created"`
 	Expires  time.Time `json:"expires"`
 	Device   string    `json:"device,omitempty"`   // browser and system, from the sign-in request
+	Peer     string    `json:"peer,omitempty"`     // "this Mac" or the connecting address, so equal browsers differ
 	LastSeen time.Time `json:"lastSeen,omitempty"` // last authenticated request, kept coarse
 }
 type accessData struct {
@@ -202,6 +203,19 @@ func describeDevice(ua string) string {
 		system = "Linux"
 	}
 	return browser + " on " + system
+}
+
+// describePeer tells two look-alike browsers apart: this Mac, or the address
+// the remote session came from.
+func describePeer(r *http.Request) string {
+	h, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil || h == "" {
+		return ""
+	}
+	if ip := net.ParseIP(h); ip != nil && ip.IsLoopback() {
+		return "this Mac"
+	}
+	return h
 }
 
 func sessionID(r *http.Request) string {
@@ -383,7 +397,7 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 409, map[string]string{"error": "There are 32 signed-in sessions. Revoke one from the host before adding another."})
 		return
 	}
-	s.access.data.Sessions[id] = browserSession{Created: now, Expires: now.Add(lifetime), Device: describeDevice(r.UserAgent()), LastSeen: now}
+	s.access.data.Sessions[id] = browserSession{Created: now, Expires: now.Add(lifetime), Device: describeDevice(r.UserAgent()), Peer: describePeer(r), LastSeen: now}
 	if err = s.saveAccessLocked(); err != nil {
 		delete(s.access.data.Sessions, id)
 		writeJSON(w, 500, map[string]string{"error": "Sign-in could not be saved. Check host storage."})
@@ -424,7 +438,7 @@ func (s *Server) authSessions(w http.ResponseWriter, r *http.Request) {
 	current := sessionID(r)
 	for id, v := range s.access.data.Sessions {
 		if s.Now().Before(v.Expires) {
-			items = append(items, map[string]any{"id": id, "created": v.Created, "expires": v.Expires, "device": v.Device, "lastSeen": v.LastSeen, "current": id == current})
+			items = append(items, map[string]any{"id": id, "created": v.Created, "expires": v.Expires, "device": v.Device, "peer": v.Peer, "lastSeen": v.LastSeen, "current": id == current})
 		}
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i]["created"].(time.Time).After(items[j]["created"].(time.Time)) })

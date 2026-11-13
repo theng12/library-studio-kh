@@ -15,7 +15,7 @@
 // .dlp-bulk, .dlp-poster, .dlp-progress, .dlp-missing, .dlp-empty, .dlp-detail;
 // chips are the existing .badge plus .dlp-tone-{ok,info,muted,warn,bad}.
 
-const DOWNLOADS_MISSING_LABEL = "Files missing — no source";
+const DOWNLOADS_MISSING_LABEL = "Files missing";
 
 const DOWNLOADS_COLUMNS = [
   { key: "poster", label: "" },
@@ -77,6 +77,8 @@ function downloadsStatus(item) {
     return make("problems", DOWNLOADS_MISSING_LABEL, "bad", { missing: true });
   }
   if (status === "importing" || item.kind === "waiting") return make("importing", "Importing", "info");
+  // The same words Activity uses for a local copy with no import proof.
+  if (status === "on-disk") return make("problems", "No import proof", "warn", { canPause: true });
   if (/^(copied|moved)$/.test(status)) return make("problems", "Imported — proof missing", "warn");
   if (state === "error") return make("problems", "Error", "bad", { canResume: true });
   if (/^(paused|stopped)/.test(state)) return make("paused", DOWNLOADS_STATE_LABELS[state] || "Paused", "muted", { canResume: true });
@@ -151,13 +153,16 @@ function downloadsProgress(item, status) {
   status = status || downloadsStatus(item);
   if (status.missing) return { known: false, value: null, label: "—", speedText: "—", etaText: "—" };
   const known = Number.isFinite(item.progress) && item.progress >= 0 && item.progress <= 1;
+  const state = String(item.state || "");
+  // Speed and time left are live download facts; a paused or seeding row has neither.
+  const active = /^(downloading|forcedDL|metaDL|forcedMetaDL|stalledDL|checkingDL|allocating|moving)$/.test(state);
   const speed = item.speed != null ? item.speed : item.dlspeed;
   return {
     known: known,
     value: known ? item.progress : null,
     label: known ? Math.floor(item.progress * 100) + "%" : "Progress not reported",
-    speedText: Number.isFinite(speed) && speed >= 0 ? dlpRate(speed) : "Speed not reported",
-    etaText: Number.isFinite(item.eta) && item.eta >= 0 && item.eta < 8640000 ? dlpDuration(item.eta) + " left" : "ETA not reported",
+    speedText: active && known && item.progress < 1 && Number.isFinite(speed) && speed >= 0 ? dlpRate(speed) : "—",
+    etaText: active && known && item.progress < 1 && Number.isFinite(item.eta) && item.eta >= 0 && item.eta < 8640000 ? dlpDuration(item.eta) + " left" : "—",
   };
 }
 
@@ -174,7 +179,7 @@ function downloadsRow(item) {
     sizeText: downloadsSizeText(item),
     progress: downloadsProgress(item, status),
     source: downloadsSourceText(item),
-    target: String(item.targetPath || "Not known yet — not imported"),
+    target: String(item.targetPath || "Not known yet"),
     actions: downloadsRowActions(status),
   };
 }
@@ -213,11 +218,18 @@ function downloadsEmpty(all, rows, filter, query) {
 // current rows do not count and never enable a button.
 function downloadsBulk(rows, selected) {
   const keys = new Set((rows || []).map((row) => row.key));
-  const count = [...(selected || [])].filter((key) => keys.has(key)).length;
+  const picked = (rows || []).filter((row) => (selected || new Set()).has(row.key) && keys.has(row.key));
+  const count = picked.length;
+  // A bulk action is only offered when it applies to at least one selected row.
+  const applies = {
+    pause: picked.some((row) => row.status.canPause),
+    resume: picked.some((row) => row.status.canResume),
+    remove: count > 0,
+  };
   return {
     count: count,
     statusText: count === 0 ? "No downloads selected" : count === 1 ? "1 download selected" : count + " downloads selected",
-    actions: DOWNLOADS_BULK_ACTIONS.map((action) => ({ key: action.key, label: action.label, disabled: count === 0 })),
+    actions: DOWNLOADS_BULK_ACTIONS.map((action) => ({ key: action.key, label: action.label, disabled: !applies[action.key] })),
   };
 }
 
@@ -255,28 +267,24 @@ function downloadsDetail(item, history) {
     poster: String(item.posterPath || ""),
     status: status,
     // Proof and location lead: the first read answers where it is and whether
-    // it is proven, not just how big it is.
+    // it is proven, not just how big it is. Each fact appears once.
     facts: [
-      ["Target", item.targetPath ? (libraryVolumeLabel(item.targetVolume) ? libraryVolumeLabel(item.targetVolume) + " · " : "") + item.targetPath : "Not known yet — not imported"],
+      ["Target", item.targetPath ? (libraryVolumeLabel(item.targetVolume) ? libraryVolumeLabel(item.targetVolume) + " · " : "") + item.targetPath : "Not known yet — nothing imported"],
       ["Verified", method ? method + " · " + downloadsWhen(item.verifiedAt) : "Not verified yet"],
       ["Size", downloadsSizeText(item)],
       ["Source", downloadsSourceText(item)],
       ["Save folder", item.save_path || item.savePath || "Not reported"],
       ["Category", item.category || "None"],
+      ...(status.missing ? [
+        ["Why", "qBittorrent can’t find this download’s source files."],
+        ["Next step", "Clear removes only its qBittorrent entry; its files are already gone."],
+      ] : []),
     ],
     sections: [
       { key: "proof", title: "Proof", facts: [
         ["Status", status.label],
         ["Status recorded", downloadsWhen(item.statusAt)],
         ["Source file", item.sourcePath || "Not reported"],
-      ] },
-      { key: "target", title: "Target", facts: [
-        ["Volume", libraryVolumeLabel(item.targetVolume) || "Not recorded"],
-        ["Path", item.targetPath || "Not known yet — nothing imported"],
-      ] },
-      { key: "verification", title: "Verification", facts: [
-        ["Method", method || "Not verified yet"],
-        ["Verified at", method ? downloadsWhen(item.verifiedAt) : "Not yet"],
       ] },
       { key: "history", title: "History", events: events, empty: "No history reported yet." },
     ],
@@ -463,7 +471,8 @@ function downloadsRowNode(row, model, on) {
   for (const action of row.actions) {
     const button = dlpButton(action.label);
     button.dataset.action = action.key;
-    if (action.key === "remove" || action.key === "clear") button.title = "Removes it from qBittorrent. Its files are kept.";
+    if (action.key === "remove") button.title = "Removes it from qBittorrent. Its files are kept.";
+    if (action.key === "clear") button.title = "Its files are already missing; this only clears the qBittorrent entry.";
     if (action.key === "reveal") button.title = "Shows its folder in Finder.";
     button.setAttribute("aria-label", action.label + " " + row.title);
     button.addEventListener("click", () => on("action", row, action.key));
@@ -474,7 +483,7 @@ function downloadsRowNode(row, model, on) {
   return tr;
 }
 
-function downloadsDetailRender(container, detail) {
+function downloadsDetailRender(container, detail, onClose) {
   container.replaceChildren();
   container.classList.add("dlp-detail");
 
@@ -487,6 +496,11 @@ function downloadsDetailRender(container, detail) {
   }
   const heading = dlpEl("h2", detail.title);
   head.append(heading, dlpEl("span", detail.status.label, "badge dlp-tone-" + detail.status.tone));
+  if (typeof onClose === "function") {
+    const close = dlpButton("Close");
+    close.addEventListener("click", () => onClose());
+    head.append(close);
+  }
   container.append(head);
 
   const facts = document.createElement("dl");
