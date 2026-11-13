@@ -1,5 +1,5 @@
 #view-media > .head > button { margin-bottom: 0.9rem; }
-.media-overview { padding: 1.1rem 1.25rem 0; margin: 0; max-width: 75ch; color: var(--ink-2); overflow-wrap: anywhere; }
+.media-overview { padding: 1.1rem 1.25rem 0; margin: 0; max-width: none; color: var(--ink-2); overflow-wrap: anywhere; }
 .media-technical { border-top: 1px solid var(--line); }
 .media-technical > summary { padding: 0.75rem 1.25rem; cursor: pointer; min-height: 44px; color: var(--ink-2); }
 .subtitle-row { padding: 1rem 1.25rem; border-top: 1px solid var(--line); }

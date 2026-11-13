@@ -442,6 +442,7 @@ function renderLibraryPage() {
   notice.hidden = !noticeText;
   notice.textContent = noticeText;
   const selected = lib.items.find((item) => libraryGridKey(item) === lib.selected) || null;
+  const shownSelected = libraryGridFilter(lib.items, lib.filters).find((item) => libraryGridKey(item) === lib.selected) || null;
   host.replaceChildren(libraryGridPage({
     items: lib.items,
     filters: lib.filters,
@@ -473,9 +474,11 @@ function renderLibraryPage() {
     },
   }));
   const openDetails = $("#lib-open-details");
-  openDetails.hidden = !selected;
-  openDetails.onclick = selected
-    ? () => openMediaDetails({ app: selected.app, id: Number(selected.mediaId || selected.id), title: selected.title })
+  // Only when the detail panel is actually on screen; a filtered-out or closed
+  // selection must not open a title the owner can no longer see.
+  openDetails.hidden = !shownSelected;
+  openDetails.onclick = shownSelected
+    ? () => openMediaDetails({ app: shownSelected.app, id: Number(shownSelected.mediaId || shownSelected.id), title: shownSelected.title })
     : null;
   if (searchFocus !== null) {
     const search = $("#lib-q");
@@ -694,6 +697,7 @@ document.addEventListener("keydown", (ev) => {
     dialog.close();
     return;
   }
+
   const search = t?.closest?.('input[type="search"]');
   if (search) {
     if (search.value) {
@@ -728,6 +732,13 @@ document.addEventListener("keydown", (ev) => {
   closeMenu(); menuToggle.focus();
 });
 document.addEventListener("click", (ev) => { if (!ev.target.closest(".side")) closeMenu(); });
+
+// Save feedback belongs to the save that produced it, never to another tab.
+document.addEventListener("click", (ev) => {
+  if (!ev.target.closest?.(".tab")) return;
+  const msg = $("#settings-save-msg");
+  if (msg) msg.textContent = "";
+});
 
 // Cmd/Ctrl+F focuses the current screen's search, on every browser and system.
 document.addEventListener("keydown", (ev) => {
@@ -852,6 +863,10 @@ function renderDownloadsPage() {
     const scrolls = window.innerWidth < 1000 && scrollBox && scrollBox.scrollWidth > scrollBox.clientWidth + 1;
     if (scrolls && $("#dl-page-status").textContent === baseStatus) {
       $("#dl-page-status").textContent = baseStatus + " · Scroll sideways for more columns.";
+      // Re-check once the web fonts and table have settled; never leave a false hint.
+      setTimeout(() => {
+        if (!scrollBox || scrollBox.scrollWidth <= scrollBox.clientWidth + 1) $("#dl-page-status").textContent = baseStatus;
+      }, 500);
     }
   });
   const notice = $("#dl-notice");
@@ -943,6 +958,8 @@ async function downloadAction(hashes, action) {
     const errs = (r.errors || r.problems || []).filter(Boolean);
     dl.selected.clear();
     dl.openKey = null;
+    const proof = $("#downloads-detail");
+    if (proof && proof.open) proof.close(); // a removed row's proof must not stay on screen
     dl.focusAfter = hashes[0];
     await loadDownloads();
     await load(); // Activity and every other page move on with the action
@@ -1214,9 +1231,16 @@ $("#form").addEventListener("submit", async (ev) => {
     qbittorrent: { url: f["qbittorrent.url"].value.trim(), username: f["qbittorrent.username"].value.trim(), password: f["qbittorrent.password"].value },
   };
   for (const a of ARRS) body[a] = { url: f[a + ".url"].value.trim(), apiKey: f[a + ".apiKey"].value.trim() };
-  // The header line sits next to Save, so feedback is visible without scrolling.
-  const status = $("#settings-status");
-  const say = (text) => { msg.textContent = text; if (status) status.textContent = text; };
+  // Feedback sits beside Save (the header line above it stays instructional),
+  // and clears itself so it never follows the owner onto another tab.
+  const beside = $("#settings-save-msg");
+  let clearTimer = null;
+  const say = (text) => {
+    msg.textContent = text;
+    if (beside) beside.textContent = text;
+    if (clearTimer) clearTimeout(clearTimer);
+    if (text && text !== "Saving…") clearTimer = setTimeout(() => { if (beside) beside.textContent = ""; }, 8000);
+  };
   btn.disabled = true; msg.hidden = false; say("Saving…");
   try {
     const r = await api("/api/settings", body);

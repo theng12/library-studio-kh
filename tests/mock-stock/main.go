@@ -173,6 +173,10 @@ func main() {
 			return
 		}
 		if p == "/api/v2/torrents/info" {
+			if *emptyLibrary {
+				json.NewEncoder(w).Encode([]any{}) // a first run has no downloads either
+				return
+			}
 			// The one active download changes speed on every read, so the app's sampler has something to record.
 			speed := rand.Int63n(30e6)
 			if rand.Intn(5) == 0 {
@@ -255,6 +259,10 @@ func main() {
 			json.NewEncoder(w).Encode([]map[string]any{{"id": 1, "implementation": "QBittorrent", "removeCompletedDownloads": true}})
 			return
 		case strings.HasSuffix(p, "/calendar"):
+			if *emptyLibrary {
+				json.NewEncoder(w).Encode([]any{})
+				return
+			}
 			if strings.Contains(p, "v1") {
 				json.NewEncoder(w).Encode([]any{})
 			} else {

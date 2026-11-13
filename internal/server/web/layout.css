@@ -161,6 +161,13 @@
 @media (min-width: 1100px) {
   /* Two cards per row keeps each field wide enough to read a full folder path. */
   .tabpanel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* A tab with one card uses the whole width instead of leaving half the window empty. */
+  .tabpanel > .card:only-child { grid-column: 1 / -1; }
+  /* Opened Library apps: three across, so every address field fits its value. */
+  #arr-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 701px) and (max-width: 1099px) {
+  #arr-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) and (min-width: 701px) {
   .tabpanel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -197,5 +204,7 @@
     position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
   }
   .side-footer { align-items: center; }
-  .pillrow { justify-content: center; }
+  .pillrow { flex-direction: column; justify-content: center; gap: 6px; }
+  .side .pill { max-width: 100%; padding: 0 4px; }
+  .side .update-status { display: none; }
 }

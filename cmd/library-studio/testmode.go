@@ -340,6 +340,7 @@ func runTestMode(seed, serveUI bool) {
 		log.Fatal(err)
 	}
 	s.Meta.HTTP = testMetadataClient(e.Metadata)
+	go s.Meta.Watch()
 	srv := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {

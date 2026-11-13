@@ -276,6 +276,30 @@ func (c *Client) setProvider(ok bool, err error) {
 	}
 }
 
+// Health asks the provider one tiny, uncached question so the app can say
+// honestly whether it is reachable. It never writes the cache.
+func (c *Client) Health(ctx context.Context) {
+	if !c.enabled() {
+		return
+	}
+	var out map[string]any
+	_ = c.getJSON(ctx, c.itunes()+"/search?term=library&media=movie&limit=1", &out)
+}
+
+// Watch keeps the provider state current for the whole app, including pages
+// that never fetch metadata themselves. Run it in the background.
+func (c *Client) Watch() {
+	if !c.enabled() {
+		return
+	}
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		c.Health(ctx)
+		cancel()
+		time.Sleep(10 * time.Minute)
+	}
+}
+
 // Offline reports whether the last provider call failed at the transport level.
 func (c *Client) Offline() (bool, string) {
 	if c == nil {
