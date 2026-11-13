@@ -7,7 +7,7 @@
 //   node scripts/ui-probe.mjs eval "document.title" [--viewport 375x812]
 //   node scripts/ui-probe.mjs wait "document.querySelectorAll('.libgrid-card').length" 10000
 //   node scripts/ui-probe.mjs measure [--viewport 1440x900]   # asserts layout, prints JSON
-//   node scripts/ui-probe.mjs click "#selector" [--viewport 768x1024]   (trusted pointer)
+//   node scripts/ui-probe.mjs click "#selector" [--after "JS"] [--viewport 768x1024]   (trusted pointer)
 //   node scripts/ui-probe.mjs shot /tmp/x.png [--viewport 768x1024]
 //   node scripts/ui-probe.mjs stop
 //
@@ -222,6 +222,8 @@ async function main() {
     const selector = args[0];
     if (!selector) throw new Error("click needs a CSS selector");
     const ws = await connectWith(vp);
+    await send(ws, "Runtime.evaluate", { expression: `document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({ block: "center", inline: "center" })` });
+    await sleep(250);
     const spot = await (async () => {
       const r = await send(ws, "Runtime.evaluate", { expression: `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`, returnByValue: true });
       return r.result.value;
@@ -231,8 +233,17 @@ async function main() {
     await send(ws, "Input.dispatchMouseEvent", { type: "mouseMoved", x: spot.x, y: spot.y });
     await send(ws, "Input.dispatchMouseEvent", { type: "mousePressed", x: spot.x, y: spot.y, button: "left", clickCount: 1 });
     await send(ws, "Input.dispatchMouseEvent", { type: "mouseReleased", x: spot.x, y: spot.y, button: "left", clickCount: 1 });
+    // Read the settled state before the session (and its viewport) goes away;
+    // clearing the emulation resizes the page and would reset the UI.
+    const after = args.includes("--after") ? args[args.indexOf("--after") + 1] : "";
+    await sleep(600);
+    if (after) {
+      const out = await send(ws, "Runtime.evaluate", { expression: after, returnByValue: true, awaitPromise: true });
+      if (out.exceptionDetails) { ws.close(); throw new Error(out.exceptionDetails.exception?.description || "after error"); }
+      console.log(JSON.stringify(out.result.value, null, 1));
+    }
     ws.close();
-    console.log("clicked " + selector);
+    if (!after) console.log("clicked " + selector);
     return;
   }
   if (cmd === "shot") {
