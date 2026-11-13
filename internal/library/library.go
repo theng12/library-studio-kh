@@ -17,12 +17,46 @@ import (
 
 type Item struct {
 	Title    string    `json:"title"`
-	Kind     string    `json:"kind"`            // downloading | waiting | imported | unmanaged | upcoming | removed
-	State    string    `json:"state,omitempty"` // qBittorrent's own state, e.g. pausedDL or queuedDL
+	Kind     string    `json:"kind"`             // downloading | waiting | imported | unmanaged | upcoming | removed
+	State    string    `json:"state,omitempty"`  // qBittorrent's own state, e.g. pausedDL or queuedDL
+	Status   string    `json:"status,omitempty"` // queued | downloading | importing | copied | moved | missing | on-disk | upcoming
 	App      string    `json:"app,omitempty"`
 	When     time.Time `json:"when,omitempty"` // upcoming date, planned removal, or removal done
 	Progress float64   `json:"progress"`
+	Size     int64     `json:"size,omitempty"`
+	ETA      int64     `json:"eta,omitempty"`
+	Speed    int64     `json:"speed,omitempty"`
+	SavePath string    `json:"savePath,omitempty"`
+	Category string    `json:"category,omitempty"`
 	Stats    *Stats    `json:"stats,omitempty"` // downloads in qBittorrent only
+}
+
+// itemStatus is the owner-facing state behind the kind; it never claims a copy is
+// safely in the library without the import proof that produced "imported".
+func itemStatus(kind, state string) string {
+	switch kind {
+	case "downloading":
+		switch {
+		case state == "queuedDL" || state == "queuedUP":
+			return "queued"
+		case state == "stalledDL":
+			return "stalled"
+		case state == "missingFiles":
+			return "missing"
+		}
+		return "downloading"
+	case "waiting":
+		return "importing"
+	case "imported":
+		return "copied"
+	case "removed":
+		return "moved"
+	case "unmanaged":
+		return "on-disk"
+	case "upcoming":
+		return "upcoming"
+	}
+	return kind
 }
 
 type AppState struct {
@@ -147,7 +181,7 @@ func Gather(c config.Config, home string, now time.Time) Snapshot {
 			speedMu.Unlock()
 			for _, t := range ts {
 				kind, at, rm := Decide(t, imported, queued, now, c.CleanupDays)
-				it := Item{Title: t.Name, Kind: kind, State: t.State, App: appOf[strings.ToUpper(t.Hash)], Progress: t.Progress, Stats: statsOf(t, speeds[t.Hash])}
+				it := Item{Title: t.Name, Kind: kind, State: t.State, Status: itemStatus(kind, t.State), App: appOf[strings.ToUpper(t.Hash)], Progress: t.Progress, Size: t.Size, ETA: t.ETA, Speed: t.DlSpeed, SavePath: t.SavePath, Category: t.Category, Stats: statsOf(t, speeds[t.Hash])}
 				if kind == "imported" {
 					it.When = at
 				}
