@@ -322,6 +322,12 @@
   .downloads-panel .dlp-progress { max-width: 9rem; }
 }
 @media (max-width: 760px) {
+  /* Stacked rows have the full card width; the dense desktop column caps would clip them. */
+  .downloads-panel .downloads-table td.dlp-title,
+  .downloads-panel .downloads-table td.dlp-status,
+  .downloads-panel .downloads-table td.dlp-source,
+  .downloads-panel .downloads-table td.dlp-target,
+  .downloads-panel .downloads-table td.dlp-progress { max-width: none; }
   .dlp-filter select { width: 100%; }
   .dlp-tools .search { font-size: 16px; min-height: 44px; }
   .dlp-bulk { grid-column: 1 / -1; margin-left: 0; }
@@ -377,7 +383,6 @@
 
 /* The companion-app card spans the General tab so its six apps sit 3-4 across. */
 #settings-tabs .tabpanel > .card:has(#arr-fields) { grid-column: 1 / -1; order: 9; }
-#arr-fields fieldset:has(.check) { grid-column: span 2; }
 
 /* Companion card: the qBittorrent fields sit three across, then the app grid. */
 .card-body:has(> #arr-fields) { grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }

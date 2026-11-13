@@ -261,7 +261,7 @@ function downloadsDetail(item, history) {
       ["Verified", method ? method + " · " + downloadsWhen(item.verifiedAt) : "Not verified yet"],
       ["Size", downloadsSizeText(item)],
       ["Source", downloadsSourceText(item)],
-      ["Save folder", item.savePath || "Not reported"],
+      ["Save folder", item.save_path || item.savePath || "Not reported"],
       ["Category", item.category || "None"],
     ],
     sections: [

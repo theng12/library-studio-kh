@@ -57,6 +57,7 @@ test("states that are not proof are never shown as verified", () => {
   assert.match(label({ status: "on-disk" }).label, /no import proof/);
   assert.equal(label({ status: "missing" }).outcome, "problems");
   assert.equal(label({ status: "importing" }).label, "Importing");
+  assert.equal(label({ status: "importing", state: "moving", progress: 1 }).label, "Importing", "a moving torrent reads like the other pages, never a separate word");
   assert.equal(label({ status: "upcoming", when: "2026-12-01T00:00:00Z" }).outcome, "upcoming");
   assert.equal(label({ status: "removed" }).outcome, "removed");
 });

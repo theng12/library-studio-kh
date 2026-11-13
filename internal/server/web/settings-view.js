@@ -41,7 +41,10 @@ const SETTINGS_CARDS = {
         { kind: "text", name: "qbittorrent.url", label: "qBittorrent address", placeholder: "http://127.0.0.1:8080", inputmode: "url" },
         { kind: "text", name: "qbittorrent.username", label: "qBittorrent username", autocomplete: "off" },
         { kind: "password", name: "qbittorrent.password", label: "qBittorrent password", secret: "qbi" + "ttorrent" },
-        { kind: "slot", id: "arr-fields" },
+        {
+          kind: "details", summary: "Library apps · Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, Whisparr",
+          fields: [{ kind: "slot", id: "arr-fields" }],
+        },
       ],
     },
     {
@@ -164,6 +167,16 @@ function settingsBuildField(doc, field, savedSlots) {
       }));
     }
     return [node];
+  }
+  if (field.kind === "details") {
+    // Configured-once credentials sit behind one clear disclosure, so the tab
+    // stays one screen while every field is still there.
+    const box = settingsEl(doc, "details", { class: "settings-details", id: field.id });
+    box.append(settingsEl(doc, "summary", { text: field.summary }));
+    const body = settingsEl(doc, "div", { class: "settings-details-body" });
+    for (const sub of field.fields) for (const node of settingsBuildField(doc, sub, savedSlots)) body.append(node);
+    box.append(body);
+    return [box];
   }
   if (field.kind === "button") {
     return [settingsEl(doc, "button", {

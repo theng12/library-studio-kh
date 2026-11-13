@@ -144,7 +144,15 @@ const TYPE = { Sonarr: "TV", Radarr: "Film", Lidarr: "Music" };
 function activityLabel(it) {
   const status = it.status || it.kind || "";
   if (/^(moving|checking)/i.test(it.state || "")) {
-    return { outcome: "importing", label: torrentStateWord(it.state), detail: downloadProgressText(it.progress), at: it.statusAt || null };
+    // qBittorrent is relocating a finished download into place: the same
+    // Importing state the other pages show, with the operation as the detail.
+    const word = torrentStateWord(it.state);
+    return {
+      outcome: "importing",
+      label: "Importing",
+      detail: (word === "Moving" ? "Moving the finished download into place" : "Checking the finished download") + (it.progress >= 0 && it.progress <= 1 ? " · " + downloadProgressText(it.progress) : ""),
+      at: it.statusAt || null,
+    };
   }
   if (status === "copied" || status === "moved") {
     const where = libraryVolumeLabel(it.targetVolume);
