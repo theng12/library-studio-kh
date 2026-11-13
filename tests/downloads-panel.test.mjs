@@ -62,12 +62,15 @@ test("a row whose source is gone says so and offers Clear instead of a fake 0%",
   assert.equal(row.status.label, "Files missing");
   assert.equal(row.status.label, DOWNLOADS_MISSING_LABEL);
   assert.equal(row.status.missing, true);
-  assert.deepEqual(plain(row.actions), [{ key: "clear", label: "Clear" }]);
+  assert.equal(row.actions.primary.key, "clear");
+  assert.equal(row.actions.secondary.length, 0);
   assert.equal(row.progress.label, "—");
   assert.notEqual(row.progress.label, "0%");
   assert.equal(downloadsStatus({ state: "error" }).key, "problems");
   assert.equal(downloadsStatus({ progress: 1 }).key, "completed");
-  assert.deepEqual(Array.from(downloadsRowActions(downloadsStatus(severance)), (a) => a.key), ["resume", "remove", "reveal"]);
+  const severanceActions = downloadsRowActions(downloadsStatus(severance));
+  assert.equal(severanceActions.primary.key, "resume");
+  assert.deepEqual(Array.from(severanceActions.secondary, (a) => a.key), ["remove", "reveal"]);
 });
 
 test("imported and verified rows are excluded by the documented helper, never shown as done", () => {
@@ -241,6 +244,21 @@ test("render builds the columns' header and the missing row's Clear action", () 
   const enabled = findAll(findOne(selectedRoot, hasClass("dlp-bulk")), (n) => n.tag === "button");
   // A downloading row can be paused and removed, but not resumed.
   assert.deepEqual(enabled.map((b) => b.disabled), [false, true, false]);
+});
+
+test("each row shows one primary action and puts the rest in an overflow menu", () => {
+  context.document = fakeDocument();
+  const root = fakeRoot();
+  downloadsPanelRender(root, downloadsModel(items), {});
+  const rows = findAll(root, (n) => n.tag === "tr" && n.className.includes("dlp-row"));
+  const activeRow = rows.find((r) => r.dataset.key === H.dune);
+  const menu = findOne(activeRow, (n) => n.tag === "details" && n.className.includes("row-menu"));
+  assert.ok(menu, "the remaining actions sit in an overflow menu");
+  const menuButtons = findAll(menu, (n) => n.tag === "button");
+  assert.deepEqual(menuButtons.map((b) => b.dataset.action), ["remove", "reveal"]);
+  const actionButtons = findAll(activeRow, (n) => n.tag === "button" && n.dataset.action);
+  assert.equal(actionButtons.length - menuButtons.length, 1, "one action button in the row itself");
+  assert.equal(actionButtons[0].dataset.action, "pause");
 });
 
 test("render shows the empty state with its next-step action", () => {

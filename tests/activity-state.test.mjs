@@ -63,6 +63,15 @@ test("states that are not proof are never shown as verified", () => {
   assert.equal(label({ status: "removed" }).outcome, "removed");
 });
 
+test("repeated warnings group into one line with a count", () => {
+  const source = app.match(/function groupMessages\(list\) \{[\s\S]*?\n\}/)[0];
+  const context = {};
+  vm.runInNewContext(source + "\nthis.groupMessages = groupMessages;", context);
+  assert.deepEqual(Array.from(context.groupMessages(["Sonarr didn't answer.", "Sonarr didn't answer.", "Radarr didn't answer."])),
+    ["Sonarr didn't answer. ×2", "Radarr didn't answer."]);
+  assert.deepEqual(Array.from(context.groupMessages([])), []);
+});
+
 test("the Activity screen is a timeline page, not a download table", () => {
   assert.match(html, /<div class="page">[\s\S]*<h1>Activity<\/h1>/);
   assert.match(html, /<ol id="timeline" class="timeline"/);

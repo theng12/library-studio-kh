@@ -136,6 +136,17 @@ function render(st) {
   }));
 }
 
+// Repeated warnings are one line with a count, never the same sentence twice.
+function groupMessages(list) {
+  const counts = new Map();
+  for (const raw of list || []) {
+    const text = String(raw || "").trim();
+    if (!text) continue;
+    counts.set(text, (counts.get(text) || 0) + 1);
+  }
+  return [...counts].map(([text, n]) => n > 1 ? text + " ×" + n : text);
+}
+
 const has = (title, q) => title.toLowerCase().includes(q.trim().toLowerCase());
 const TYPE = { Sonarr: "TV", Radarr: "Film", Lidarr: "Music" };
 
@@ -225,7 +236,15 @@ function activityEntries() {
     if (a.ok) continue;
     entries.push({ at: null, outcome: "problems", label: "Service error", title: a.name, app: a.name, detail: a.error || "It did not answer.", stats: null });
   }
-  return entries;
+  // Identical events are one row with a count, never duplicate lines.
+  const seen = new Map();
+  for (const entry of entries) {
+    const key = [entry.title, entry.label, entry.detail, entry.at || ""].join("|");
+    const hit = seen.get(key);
+    if (hit) hit.count = (hit.count || 1) + 1;
+    else { entry.count = 1; seen.set(key, entry); }
+  }
+  return [...seen.values()];
 }
 
 function renderActivity() {
@@ -290,6 +309,13 @@ function renderActivity() {
     label.className = "timeline-label";
     label.textContent = e.label;
     head.append(title, label);
+    if ((e.count || 1) > 1) {
+      const count = document.createElement("span");
+      count.className = "timeline-count";
+      count.textContent = "×" + e.count;
+      count.title = e.count + " identical events";
+      head.append(count);
+    }
     const detail = document.createElement("p");
     detail.className = "timeline-detail muted";
     detail.textContent = e.detail;
@@ -411,7 +437,8 @@ function titleCell(m) {
 
 /* My library: poster grid over the reconciled inventory. The server owns the
    join between library items, import proof and cached metadata. */
-const lib = { items: [], problems: [], metadata: "", loading: false, error: "", filters: {}, draft: {}, view: "grid", sort: { key: "title", dir: "asc" }, selected: null, filtersOpen: false };
+const lib = { items: [], problems: [], metadata: "", loading: false, error: "", filters: {}, draft: {}, sort: { key: "title", dir: "asc" }, selected: null, filtersOpen: false,
+  view: (() => { try { return localStorage.getItem("library-view") === "table" ? "list" : "grid"; } catch { return "grid"; } })() };
 let libraryLoading = false;
 
 async function loadLibrary() {
@@ -450,8 +477,9 @@ function renderLibraryPage() {
     + (lib.metadata ? " " + lib.metadata : "")
     + (unverified ? " " + unverified + (unverified === 1 ? " imported copy has" : " imported copies have") + " no verification proof yet — open one to see whether a local copy is tracked." : "");
   const notice = $("#browse-notice");
-  notice.hidden = !lib.problems.length;
-  notice.textContent = lib.problems.join(" ");
+  const groupedProblems = groupMessages(lib.problems);
+  notice.hidden = !groupedProblems.length;
+  notice.textContent = groupedProblems.join(" ");
   const selected = lib.items.find((item) => libraryGridKey(item) === lib.selected) || null;
   const shownSelected = libraryGridFilter(lib.items, lib.filters).find((item) => libraryGridKey(item) === lib.selected) || null;
   host.replaceChildren(libraryGridPage({
@@ -473,7 +501,11 @@ function renderLibraryPage() {
       onToggleFilters: () => { lib.filtersOpen = !lib.filtersOpen; renderLibraryPage(); },
       onApply: () => { lib.filters = { ...lib.filters, ...lib.draft }; lib.draft = {}; lib.filtersOpen = false; renderLibraryPage(); },
       onReset: () => { lib.filters = {}; lib.draft = {}; renderLibraryPage(); },
-      onView: (view) => { lib.view = view === "list" ? "list" : "grid"; renderLibraryPage(); },
+      onView: (view) => {
+        lib.view = view === "list" ? "list" : "grid";
+        try { localStorage.setItem("library-view", lib.view === "list" ? "table" : "cards"); } catch {}
+        renderLibraryPage();
+      },
       onSort: (key) => {
         lib.sort = { key, dir: lib.sort.key === key && lib.sort.dir === "asc" ? "desc" : "asc" };
         renderLibraryPage();
@@ -725,6 +757,13 @@ document.addEventListener("keydown", (ev) => {
     dialog.close();
     return;
   }
+  const rowMenu = [...document.querySelectorAll("details.row-menu[open]")].pop();
+  if (rowMenu) {
+    ev.preventDefault();
+    rowMenu.open = false;
+    rowMenu.querySelector("summary")?.focus();
+    return;
+  }
 
   const search = t?.closest?.('input[type="search"]');
   if (search) {
@@ -759,7 +798,12 @@ document.addEventListener("keydown", (ev) => {
   ev.preventDefault();
   closeMenu(); menuToggle.focus();
 });
-document.addEventListener("click", (ev) => { if (!ev.target.closest(".side")) closeMenu(); });
+document.addEventListener("click", (ev) => {
+  if (!ev.target.closest(".side")) closeMenu();
+  for (const menu of document.querySelectorAll("details.row-menu[open]")) {
+    if (!menu.contains(ev.target)) menu.open = false;
+  }
+});
 
 // Save feedback belongs to the save that produced it, never to another tab
 // (including keyboard tab changes, which settings-view reports as an event).
@@ -861,7 +905,7 @@ function setDownloadNotice(text, tone) {
 
 function renderDownloadNotice() {
   const notice = $("#dl-notice");
-  const text = [dl.problems, dl.lastNotice].filter(Boolean).join(" ");
+  const text = [...groupMessages(String(dl.problems || "").split(/(?<=\.)\s+/)), dl.lastNotice].filter(Boolean).join(" ");
   notice.hidden = !text;
   notice.textContent = text;
   if (dl.lastTone && !dl.problems) notice.dataset.tone = dl.lastTone;

@@ -479,7 +479,7 @@ function libraryGridToolbar(options) {
   bar.append(libraryGridNode("span", options.count, "libgrid-count"));
 
   const views = libraryGridNode("div", null, "libgrid-views");
-  for (const [value, label] of [["grid", "Grid"], ["list", "List"]]) {
+  for (const [value, label] of [["grid", "Cards"], ["list", "Table"]]) {
     const button = libraryGridNode("button", label, "libgrid-view");
     button.type = "button";
     button.setAttribute("aria-pressed", options.view === value ? "true" : "false");

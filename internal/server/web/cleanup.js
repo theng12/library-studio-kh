@@ -114,7 +114,8 @@ function cleanupRender(status) {
     ["Next due", status.nextDue ? stamp(status.nextDue) + " · " + cleanupDaysLeft(status.nextDue) : "Not known: no tracked copy has a due time yet"],
   ]);
   body.append(summary);
-  const blockers = [...(status.engineBlocked || []), ...(status.blocked || [])];
+  const rawBlockers = [...(status.engineBlocked || []), ...(status.blocked || [])];
+  const blockers = typeof groupMessages === "function" ? groupMessages(rawBlockers) : rawBlockers;
   if (!status.engineAvailable && !blockers.length) blockers.push("Staged cleanup is unavailable on this computer.");
   if (blockers.length) body.append(mediaNode("p", blockers.join(" "), "notice"));
   body.append(mediaNode("p", "Nothing is deleted for good from the download folder or Library’s _trash. Every permanent removal happens only from the system Trash, after its wait, with the library copy checked again first.", "muted"));
@@ -146,15 +147,18 @@ function cleanupRender(status) {
     if ((item.blocked || []).length) proposed.append(mediaNode("p", item.blocked.join(" "), "muted"));
     const actions = mediaNode("td", null, "cleanup-actions");
     actions.dataset.label = "Actions";
+    // One primary action per row; Restore and Remove now sit in the overflow.
     const proof = mediaNode("button", "Show proof", "small");
     proof.type = "button";
     proof.setAttribute("aria-label", "Show import proof for " + (item.name || "this download"));
     proof.dataset.cleanupProof = item.hash;
     proof.addEventListener("click", () => cleanupProof(item, proof));
     actions.append(proof);
+    const more = [];
     if (item.phase === "staging") {
       // Moves the copy into Library's _trash now, still recoverable there.
-      const removeNow = mediaNode("button", "Remove now", "small");
+      const removeNow = mediaNode("button", null, null);
+      removeNow.textContent = "Remove now";
       removeNow.type = "button";
       removeNow.dataset.cleanupRemoveNow = item.hash;
       // A saved blocker (e.g. seeding not finished) means this cannot run yet.
@@ -165,15 +169,27 @@ function cleanupRender(status) {
       }
       removeNow.setAttribute("aria-label", "Move the local copy of " + (item.name || "this download") + " to Library’s _trash now");
       removeNow.addEventListener("click", () => cleanupAction("remove-now", { hash: item.hash }));
-      actions.append(removeNow);
+      more.push(removeNow);
     }
     if (["managed_trash", "native_trash"].includes(item.phase)) {
-      const restore = mediaNode("button", "Restore", "small");
+      const restore = mediaNode("button", null, null);
+      restore.textContent = "Restore";
       restore.type = "button";
       restore.dataset.cleanupRestore = item.hash;
       restore.setAttribute("aria-label", "Restore the local copy of " + (item.name || "this download"));
       restore.addEventListener("click", () => cleanupAction("restore", { hash: item.hash }));
-      actions.append(restore);
+      more.push(restore);
+    }
+    if (more.length) {
+      const menu = mediaNode("details", null, "row-menu");
+      const summary = document.createElement("summary");
+      summary.setAttribute("aria-label", "More actions for " + (item.name || "this download"));
+      summary.textContent = "⋯";
+      const list = mediaNode("div", null, "row-menu-list");
+      list.setAttribute("role", "menu");
+      list.append(...more);
+      menu.append(summary, list);
+      actions.append(menu);
     }
     tr.append(name, phase, size, due, proposed, actions);
     tbody.append(tr);

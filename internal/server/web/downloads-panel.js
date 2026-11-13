@@ -95,15 +95,21 @@ function downloadsStatus(item) {
   return make("other", state || status || "Status not reported", "muted");
 }
 
+// One primary action per row; the rest live in a small overflow menu.
 function downloadsRowActions(status) {
-  if (status.missing) return [{ key: "clear", label: "Clear" }];
-  if (status.key === "importing") return [{ key: "reveal", label: "Reveal" }];
-  if (status.key === "completed") return [{ key: "remove", label: "Remove" }, { key: "reveal", label: "Reveal" }];
-  return [
-    status.canPause ? { key: "pause", label: "Pause" } : status.canResume ? { key: "resume", label: "Resume" } : null,
-    { key: "remove", label: "Remove" },
-    { key: "reveal", label: "Reveal" },
-  ].filter(Boolean);
+  let primary;
+  if (status.missing) primary = { key: "clear", label: "Clear" };
+  else if (status.canResume) primary = { key: "resume", label: "Resume" };
+  else if (status.canPause) primary = { key: "pause", label: "Pause" };
+  else primary = { key: "reveal", label: "Reveal" };
+  const secondary = [];
+  const add = (action) => {
+    if (action.key !== primary.key && !secondary.some((s) => s.key === action.key)) secondary.push(action);
+  };
+  if (!status.missing && status.key !== "completed") add({ key: "remove", label: "Remove" });
+  if (!status.missing) add({ key: "reveal", label: "Reveal" });
+  if (status.key === "completed") add({ key: "remove", label: "Remove" });
+  return { primary, secondary };
 }
 
 function downloadsSourceText(item) {
@@ -476,7 +482,7 @@ function downloadsRowNode(row, model, on) {
 
   const actionsCell = dlpEl("td", null, "dlp-actions");
   actionsCell.dataset.label = "Actions";
-  for (const action of row.actions) {
+  const actionButton = (action) => {
     const button = dlpButton(action.label);
     button.dataset.action = action.key;
     if (action.key === "remove") button.title = "Removes it from qBittorrent. Its files are kept.";
@@ -484,7 +490,19 @@ function downloadsRowNode(row, model, on) {
     if (action.key === "reveal") button.title = "Shows its folder in Finder.";
     button.setAttribute("aria-label", action.label + " " + row.title);
     button.addEventListener("click", () => on("action", row, action.key));
-    actionsCell.append(button);
+    return button;
+  };
+  actionsCell.append(actionButton(row.actions.primary));
+  if (row.actions.secondary.length) {
+    const menu = dlpEl("details", null, "row-menu");
+    const summary = document.createElement("summary");
+    summary.setAttribute("aria-label", "More actions for " + row.title);
+    summary.textContent = "⋯";
+    const list = dlpEl("div", null, "row-menu-list");
+    list.setAttribute("role", "menu");
+    for (const action of row.actions.secondary) list.append(actionButton(action));
+    menu.append(summary, list);
+    actionsCell.append(menu);
   }
   tr.append(actionsCell);
 

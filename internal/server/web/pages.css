@@ -70,7 +70,7 @@
 .libgrid-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: var(--gap-card); min-width: 0; }
 
 .libgrid-card {
-  display: flex; flex-direction: column; align-items: stretch; gap: 0.35rem; min-width: 0;
+  display: flex; flex-direction: column; align-items: stretch; gap: 0.35rem; min-width: 0; height: 100%;
   padding: 0.5rem 0.5rem 0.65rem; text-align: left; color: var(--ink);
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-card);
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -85,7 +85,7 @@
   min-width: 0; font-size: var(--text-sm); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
 }
-.libgrid-meta { min-width: 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.35; overflow-wrap: anywhere; }
+.libgrid-meta { min-width: 0; margin-top: auto; color: var(--muted); font-size: var(--text-xs); line-height: 1.35; overflow-wrap: anywhere; }
 
 .libgrid-poster {
   position: relative; display: block; width: 100%; aspect-ratio: 2 / 3; flex: none;
@@ -465,6 +465,30 @@ dialog.confirm .actions { display: flex; justify-content: flex-end; gap: 0.5rem;
 dialog.dlp-dialog::backdrop, dialog.confirm::backdrop { background: rgba(15, 18, 26, 0.42); }
 dialog.dlp-dialog .dlp-detail { border: 0; border-radius: 0; box-shadow: none; }
 dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
+
+/* Row overflow menus: one primary action in the row, the rest behind one control. */
+.row-menu { position: relative; display: inline-block; margin-left: 0.35rem; }
+.row-menu > summary {
+  list-style: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2rem; min-height: 1.9rem; padding: 0 0.45rem; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: var(--ink-2); font-weight: 700;
+}
+.row-menu > summary::-webkit-details-marker { display: none; }
+.row-menu > summary:hover, .row-menu[open] > summary { border-color: var(--accent); color: var(--accent); }
+.row-menu-list {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 12; display: grid; gap: 0.3rem;
+  min-width: 9rem; padding: 0.4rem; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: var(--shadow); text-align: left;
+}
+.row-menu-list button {
+  text-align: left; min-height: 2rem; padding: 0 0.6rem; border: 1px solid var(--line);
+  border-radius: 7px; background: var(--panel); color: var(--ink); font-size: var(--text-sm);
+}
+.row-menu-list button:hover { border-color: var(--accent); color: var(--accent); }
+.row-menu-list button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Activity: an identical-event count sits beside the label. */
+.timeline-count { font-size: var(--text-xs); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 0.4rem; }
 
 /* A sideways-scrolling table says so with a fading edge as well as the hint. */
 .table-scroll[data-scrollable="1"] { box-shadow: inset -12px 0 12px -12px rgba(0, 0, 0, 0.3); }
