@@ -1,15 +1,22 @@
 :root {
-  --ground: #f3f4f7;
-  --side: #e9ebf1;
-  --panel: #ffffff;
-  --ink: #1a1d26;
+  /* Neutral ramp (owner 2026-11-13): page / rail / surface, border, muted, body.
+     The older names alias the ramp, so every page reads from one palette. */
+  --page: #f3f4f7;
+  --rail: #e9ebf1;
+  --surface: #ffffff;
+  --border: #dcdfe7;
+  --body: #1a1d26;
+  --ground: var(--page);
+  --side: var(--rail);
+  --panel: var(--surface);
+  --ink: var(--body);
   --ink-2: #4a5061;
-  --muted: #737a8c;
-  --line: #dcdfe7;
+  --muted: #667085;
+  --line: var(--border);
   --accent: #3550c8;
   --accent-soft: #e3e8fb;
   --accent-ink: #ffffff;
-  --wait: #9a5b00;
+  --wait: #8f5500;
   --connected: #187746;
   --disconnected: #c12d35;
   --warn-bg: #fbefd6;
@@ -20,13 +27,18 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --ground: #12141a;
-  --side: #171a22;
-  --panel: #1c1f28;
-  --ink: #e6e8ef;
+  --page: #12141a;
+  --rail: #171a22;
+  --surface: #1c1f28;
+  --border: #2c303c;
+  --body: #e6e8ef;
+  --ground: var(--page);
+  --side: var(--rail);
+  --panel: var(--surface);
+  --ink: var(--body);
   --ink-2: #b2b7c6;
   --muted: #8a90a2;
-  --line: #2c303c;
+  --line: var(--border);
   --accent: #8ea2ff;
   --accent-soft: #262d4d;
   --accent-ink: #10142a;
