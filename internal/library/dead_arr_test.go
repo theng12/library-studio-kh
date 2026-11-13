@@ -2,11 +2,11 @@ package library
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
