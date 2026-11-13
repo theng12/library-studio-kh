@@ -66,6 +66,41 @@ func (s *Server) registerControls(mux *http.ServeMux) {
 		dead := map[string]any{"on": c.DeadCleanupOn, "hours": c.DeadCleanupHours, "ready": ready, "candidates": cands, "problems": deadProblems}
 		writeJSON(w, 200, map[string]any{"items": items, "problems": problems, "dead": dead, "metadata": s.Meta.Notice()})
 	})
+	mux.HandleFunc("GET /api/downloads/dead", func(w http.ResponseWriter, r *http.Request) {
+		c := s.Store.Get()
+		now := s.Now()
+		cands, problems, err := library.DeadDownloads(c, s.Home, now)
+		if err != nil {
+			problems = append(problems, err.Error())
+		}
+		arr, arrProblems, aerr := library.DeadArrQueued(c, s.Home, now)
+		if aerr != nil {
+			arrProblems = append(arrProblems, aerr.Error())
+		}
+		ready := 0
+		for _, cand := range cands {
+			if !cand.EligibleAt.IsZero() && !now.Before(cand.EligibleAt) {
+				ready++
+			}
+		}
+		arrReady := 0
+		for _, it := range arr {
+			if !it.EligibleAt.IsZero() && !now.Before(it.EligibleAt) {
+				arrReady++
+			}
+		}
+		if problems == nil {
+			problems = []string{}
+		}
+		if arrProblems == nil {
+			arrProblems = []string{}
+		}
+		writeJSON(w, 200, map[string]any{
+			"on": c.DeadCleanupOn, "hours": c.DeadCleanupHours, "ready": ready,
+			"candidates": cands, "problems": problems,
+			"arr": map[string]any{"on": c.DeadArrCleanupOn, "hours": c.DeadCleanupHours, "ready": arrReady, "items": arr, "problems": arrProblems},
+		})
+	})
 	mux.HandleFunc("POST /api/downloads/action", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Hashes []string `json:"hashes"`

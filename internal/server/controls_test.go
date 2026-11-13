@@ -76,6 +76,9 @@ func TestControlRoutes(t *testing.T) {
 	if w := do("GET", "/api/downloads", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"name":"One"`) {
 		t.Fatalf("downloads: %d %s", w.Code, w.Body.String())
 	}
+	if w := do("GET", "/api/downloads/dead", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"arr"`) || !strings.Contains(w.Body.String(), `"hours":24`) {
+		t.Fatalf("dead preview: %d %s", w.Code, w.Body.String())
+	}
 	if w := do("POST", "/api/downloads/action", `{"hashes":["`+testHash+`"],"action":"pause"}`); w.Code != 200 || !paused {
 		t.Fatalf("pause: %d %s", w.Code, w.Body.String())
 	}
