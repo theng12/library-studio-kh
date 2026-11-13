@@ -1008,6 +1008,40 @@ function renderDownloadsPage() {
   // The proof opens as a modal: the table keeps its columns and the page never reflows.
   if (openRow) {
     downloadsDetailRender(detail, downloadsDetail(openRow.item, []), () => detail.close());
+    if (openRow.item.localCopy) {
+      // A saved record exists, so this is a real re-check of the stored hashes.
+      const box = document.createElement("section");
+      box.className = "dlp-detail-section";
+      const title = document.createElement("h3");
+      title.textContent = "Verify";
+      const check = document.createElement("button");
+      check.type = "button"; check.className = "small"; check.textContent = "Verify this copy";
+      const result = document.createElement("p");
+      result.className = "muted"; result.setAttribute("role", "status");
+      result.textContent = "Re-checks the saved hashes against the file on disk.";
+      check.addEventListener("click", async () => {
+        check.disabled = true;
+        result.textContent = "Checking the saved proof…";
+        try {
+          const r = await api("/api/cleanup/verify", { hash: openRow.item.hash });
+          result.textContent = (r.actions || []).concat(r.problems || []).join(" ") || "The check finished without a result.";
+        } catch (e) { result.textContent = e.message; }
+        finally { check.disabled = false; }
+      });
+      box.append(title, check, result);
+      detail.append(box);
+    } else {
+      // No saved record: say why there is no check to run, and where it happens.
+      const box = document.createElement("section");
+      box.className = "dlp-detail-section";
+      const title = document.createElement("h3");
+      title.textContent = "Verify";
+      const note = document.createElement("p");
+      note.className = "muted";
+      note.textContent = "No saved import record, so there is nothing to verify against yet. Cleanup verifies copies after an import is recorded.";
+      box.append(title, note);
+      detail.append(box);
+    }
     if (!detail.open) {
       detail.showModal();
       [...detail.querySelectorAll("button")].find((b) => /^close$/i.test(b.textContent.trim()))?.focus();
@@ -1505,6 +1539,17 @@ function settingsCardsForPhone() {
 }
 window.matchMedia?.("(max-width: 900px)").addEventListener?.("change", settingsCardsForPhone);
 window.addEventListener("resize", settingsCardsForPhone);
+// At the narrow breakpoint only one Settings card stays open at a time.
+document.addEventListener("toggle", (ev) => {
+  const card = ev.target;
+  if (!(card instanceof HTMLDetailsElement) || !card.classList.contains("settings-card") || !card.open) return;
+  if (!window.matchMedia("(max-width: 900px)").matches) return;
+  const panel = card.closest(".tabpanel");
+  for (const other of panel?.querySelectorAll(":scope > .settings-card") || []) {
+    if (other !== card && other.open) other.open = false;
+  }
+}, true);
+// A vanished row's proof must not stay on screen after the table rebuilds.
 
 if (window.librarySettingsView) {
   window.librarySettingsApi = window.librarySettingsView.mountSettingsTabs($("#settings-tabs"));

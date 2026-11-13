@@ -283,6 +283,12 @@ func TestDownloadQueueJoinsSavedProofByHash(t *testing.T) {
 		d.StatusAt != "2023-11-14T22:13:20Z" || d.SourceGone {
 		t.Fatalf("hash-verified proof wrong: %+v", d)
 	}
+	if !d.LocalCopy {
+		t.Fatal("a row with a saved record must offer the tracked-copy Verify")
+	}
+	if got[hashTwo].LocalCopy {
+		t.Fatal("a row without a saved record must not claim a tracked copy")
+	}
 	if d := got[hashOld]; d.Verified != "size" || d.Status != "copied" || d.TargetVolume != "Startup disk" || d.SourceGone {
 		t.Fatalf("a file without SHA-256 must read size: %+v", d)
 	}

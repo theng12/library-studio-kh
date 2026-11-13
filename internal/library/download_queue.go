@@ -27,6 +27,7 @@ type Download struct {
 	TargetVolume string `json:"targetVolume"`
 	TargetPath   string `json:"targetPath"`
 	SourcePath   string `json:"sourcePath"`
+	LocalCopy    bool   `json:"localCopy"`  // a saved cleanup record tracks a copy to verify
 	PosterPath   string `json:"posterPath"` // cached poster file name, "" if none
 	MediaTitle   string `json:"mediaTitle"`
 	SourceGone   bool   `json:"sourceGone"`
@@ -116,6 +117,7 @@ func DownloadQueue(c config.Config, home string, meta *metadata.Client) ([]Downl
 		rec := proofs[h]
 		if rec != nil {
 			applyRecord(&it, rec)
+			d.LocalCopy = true
 			d.Verified, d.VerifiedAt = it.Verified, stamp(it.VerifiedAt)
 			d.TargetPath, d.TargetVolume, d.SourcePath = it.TargetPath, it.TargetVolume, it.SourcePath
 		}

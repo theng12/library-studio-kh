@@ -129,7 +129,19 @@ async function loadConfiguredSources() {
       rows.length ? wrap : smNode("p", "No sources are configured in Prowlarr yet.", "empty")
     );
     body.replaceChildren(panel);
-    if (!data.configured) smStatus((data.problems || []).join(" "));
+    if (!data.configured) {
+      // One page-level sentence already explains the state; here, make the
+      // next step a control instead of an enabled button that only errors.
+      const addButton = sourceRoot.querySelector(".media-actions button");
+      if (addButton) {
+        addButton.disabled = true;
+        addButton.title = "Connect Prowlarr in Settings first.";
+      }
+      body.replaceChildren(smNode("p", "Sources can be managed once Prowlarr is connected.", "empty"));
+      const open = smButton("Open Settings", () => show("settings"));
+      body.append(open);
+      smStatus("");
+    }
   } catch (err) {
     body.replaceChildren(smNode("p", "Configured sources could not be read.", "empty"));
     smStatus(err.message);

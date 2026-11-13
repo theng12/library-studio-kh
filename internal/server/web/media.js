@@ -208,7 +208,7 @@ async function loadSources() {
     if (serial !== sourcesSerial) return;
     const problems = data.problems || [];
     message.hidden = data.configured && !problems.length;
-    message.textContent = !data.configured ? "Prowlarr isn't connected. Add it in Settings to view its sources. " + problems.join(" ") : problems.join(" ");
+    message.textContent = problems.join(" "); // the server already names a missing Prowlarr once
     const health = mediaNode("ul", null, "source-notes");
     for (const h of data.health || []) health.append(mediaNode("li", (h.type || "Message") + ": " + h.message));
     if (!health.childNodes.length) health.append(mediaNode("li", "No health messages were reported. Check any availability errors before relying on this result."));

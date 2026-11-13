@@ -117,7 +117,7 @@
 .libgrid-row.is-selected { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
 .libgrid-row-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.6rem; min-width: 0; }
 .libgrid-row .libgrid-card-title { display: block; -webkit-line-clamp: unset; line-clamp: none; overflow: visible; }
-.libgrid-row-location { justify-self: end; min-width: 0; max-width: 100%; text-align: right; color: var(--muted); font-size: var(--text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.libgrid-row-location { justify-self: end; min-width: 0; max-width: 100%; text-align: right; color: var(--muted); font-size: var(--text-xs); white-space: normal; overflow-wrap: anywhere; }
 .libgrid-row .libgrid-status { white-space: nowrap; }
 
 /* List header: the same columns as every row, with sort controls. */
@@ -526,6 +526,8 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
     position: static; background: transparent;
   }
   .downloads-panel .downloads-table td.dlp-title::before { content: none; }
+  .downloads-panel .downloads-table td.dlp-status { align-items: start; }
+  .downloads-panel .downloads-table td.dlp-status .badge { width: max-content; justify-self: start; }
   .downloads-panel .downloads-table td.dlp-progress { display: block; min-width: 0; max-width: none; }
   .downloads-panel .downloads-table td.dlp-progress::before { display: block; margin-bottom: 0.15rem; }
   .downloads-panel .downloads-table td.dlp-progress progress { display: block; width: 100%; margin-bottom: 0.2rem; }
