@@ -957,7 +957,8 @@ $("#show-recovery").addEventListener("click", () => showGate("recovery"));
 $("#cancel-recovery").addEventListener("click", () => showGate("signin"));
 $("#gate-retry").addEventListener("click", start);
 
-$("#logout").addEventListener("click", async () => {
+// The sign-out button is created with the Settings tabs, so this runs after the mount.
+async function signOut() {
   const btn = $("#logout");
   btn.disabled = true;
   try { await api("/api/auth/logout", null, true); }
@@ -972,12 +973,14 @@ $("#logout").addEventListener("click", async () => {
   btn.disabled = false;
   showGate(AUTH.setupRequired ? "blocked" : "signin");
   document.dispatchEvent(new CustomEvent("library:signedout"));
-});
+}
 
 // Update check: read the shared KH feed, never install here. Studio Launcher KH does that.
 const updateStatus = $("#update-status"), checkUpdates = $("#check-updates"), openUpdate = $("#open-update");
 function updateLine(text, version) {
   updateStatus.textContent = text;
+  const cardState = document.getElementById("updates-state");
+  if (cardState) cardState.textContent = text;
   openUpdate.hidden = !version;
   if (version) openUpdate.setAttribute("aria-label", "Update to " + version);
   if (version) openUpdate.title = "Update to " + version;
@@ -1007,7 +1010,7 @@ $("#form").addEventListener("change", (ev) => {
 
 $("#form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const f = ev.target, msg = $("#form-msg"), btn = f.querySelector("button.primary");
+  const f = ev.target, msg = $("#form-msg"), btn = $("#settings-save") || f.querySelector("button.primary");
   const body = {
     appearance: f.querySelector('input[name="appearance"]:checked')?.value || "system",
     tailscaleOn: f.tailscaleOn.checked, tailscalePort: Number(f.tailscalePort.value),
@@ -1072,6 +1075,15 @@ $("#close-public-help").addEventListener("click", () => {
   start();
 });
 
+// Settings is four tabs of self-contained cards; the module owns the markup.
+if (window.librarySettingsView) {
+  window.librarySettingsApi = window.librarySettingsView.mountSettingsTabs($("#settings-tabs"));
+  const cardCheck = $("#updates-check"), cardOpen = $("#updates-open");
+  if (cardCheck) cardCheck.addEventListener("click", () => $("#check-updates").click());
+  if (cardOpen) cardOpen.addEventListener("click", () => $("#open-update").click());
+  const logoutBtn = $("#logout");
+  if (logoutBtn) logoutBtn.addEventListener("click", signOut);
+}
 buildArrFields();
 window.libraryKeyboard(document);
 start();

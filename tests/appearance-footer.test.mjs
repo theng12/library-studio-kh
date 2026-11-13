@@ -36,10 +36,9 @@ test("the footer rows share one inset and never wrap", () => {
 });
 
 test("Settings offers System, Light and Dark and starts on System", () => {
-  const panel = html.match(/<fieldset class="panel" id="appearance-panel">[\s\S]*?<\/fieldset>/)?.[0] || "";
-  const values = [...panel.matchAll(/name="appearance" value="([a-z]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(values, ["system", "light", "dark"]);
-  assert.ok(!panel.includes('value="default"'), "the retired Default option is still offered");
+  const view = readFileSync(new URL("../internal/server/web/settings-view.js", import.meta.url), "utf8");
+  assert.match(view, /options: \[\["system", "System", true\], \["light", "Light"\], \["dark", "Dark"\]\]/);
+  assert.ok(!view.includes('"default", "Default"'), "the retired Default option is still offered");
   assert.match(js, /r\.value === saved/);
   assert.match(js, /c\.appearance === "default" \? "system"/);
   assert.match(js, /saved === "default" \? "system" : saved/);

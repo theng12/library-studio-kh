@@ -5,12 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Library Studio KH</title>
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="layout.css">
 <link rel="stylesheet" href="media.css">
 <link rel="stylesheet" href="movie-extras.css">
 <script src="download-view.js" defer></script>
 <script src="library-view.js" defer></script>
 <script src="addresses.js" defer></script>
 <script src="keyboard.js" defer></script>
+<script src="settings-view.js" defer></script>
 <script src="app.js" defer></script>
 <script src="setup.js" defer></script>
 <script src="media.js" defer></script>
@@ -328,59 +330,18 @@
     </section>
 
     <section id="view-settings" class="view" hidden>
-      <header class="head"><h1>Settings</h1></header>
-      <form id="form" novalidate>
-        <fieldset class="panel" id="appearance-panel">
-          <legend>Appearance</legend>
-          <div class="appearance" role="radiogroup" aria-label="Appearance">
-            <label class="check"><input type="radio" name="appearance" value="system"> System</label>
-            <label class="check"><input type="radio" name="appearance" value="light"> Light</label>
-            <label class="check"><input type="radio" name="appearance" value="dark"> Dark</label>
-          </div>
-          <p class="muted">System follows this Mac.</p>
-        </fieldset>
-        <fieldset class="panel" id="auth-panel" hidden>
-          <legend>Sessions &amp; security</legend>
-          <p class="muted" id="auth-note"></p>
-          <p id="sessions-msg" class="msg" role="status" hidden></p>
-          <ul id="sessions" class="sessions" aria-label="Signed-in sessions"></ul>
-          <div class="actions"><button type="button" class="small" id="logout">Sign out this browser</button></div>
-        </fieldset>
-        <fieldset class="panel">
-          <legend>Phone &amp; Tailscale access</legend>
-          <label class="check"><input type="checkbox" name="tailscaleOn"> Allow access from my Tailscale devices</label>
-          <p class="muted">Off by default. Connect this computer and your phone to the same Tailscale network. Keep Library Studio KH open and this computer awake.</p>
-          <label class="short">Port <input type="number" name="tailscalePort" min="1024" max="65535" inputmode="numeric"></label>
-          <p id="remote-status" class="msg" role="status"></p>
-          <label id="remote-link-box" hidden>Phone link <span class="hint">· keep it private</span>
-            <input id="remote-link" readonly type="text" aria-describedby="remote-help">
-          </label>
-          <p id="remote-help" class="muted">Save to apply. Send the phone link to your own phone and open it in its browser with Tailscale connected. The address is HTTP over your Tailscale network, not HTTPS.</p>
-        </fieldset>
-        <fieldset class="panel">
-          <legend>Folders</legend>
-          <label>Download folder on this computer <input name="downloadPath" placeholder="Used to show free space"></label>
-          <label>Library folder on the NAS <input name="libraryPath" placeholder="Used to check the NAS is reachable"></label>
-        </fieldset>
-        <fieldset class="panel">
-          <legend>qBittorrent</legend>
-          <label>Address <input name="qbittorrent.url" placeholder="http://127.0.0.1:8080" inputmode="url"></label>
-          <div class="pair">
-            <label>Username <input name="qbittorrent.username" autocomplete="off"></label>
-            <label>Password <input name="qbittorrent.password" type="password" autocomplete="new-password" data-secret="qbittorrent"></label>
-          </div>
-        </fieldset>
-        <div id="arr-fields"></div>
-        <fieldset class="panel">
-          <legend>Help</legend>
-          <p class="muted">Setup steps, phone access and troubleshooting live on one page.</p>
-          <button type="button" class="small" data-view="help">Open setup &amp; help</button>
-        </fieldset>
-        <div class="actions">
-          <button type="submit" class="primary">Save</button>
-          <p id="form-msg" class="msg" role="status" hidden></p>
+      <div class="page">
+        <header class="page-head">
+          <div><h1>Settings</h1><p class="page-status" id="settings-status">Changes apply when you save.</p></div>
+          <div class="page-actions"><button type="submit" form="form" class="primary" id="settings-save">Save</button></div>
+        </header>
+        <div class="page-body">
+          <form id="form" novalidate>
+            <div id="settings-tabs"></div>
+            <p id="form-msg" class="msg" role="status" hidden></p>
+          </form>
         </div>
-      </form>
+      </div>
     </section>
 
     <section id="view-help" class="view" hidden>

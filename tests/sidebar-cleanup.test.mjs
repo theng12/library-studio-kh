@@ -27,7 +27,8 @@ test("Setup & help is a first-run item that retires once setup is done", () => {
 test("Cleanup has one destination and stays reachable after setup", () => {
   const settings = html.match(/<section id="view-settings"[\s\S]*?<\/section>/)?.[0] || "";
   assert.ok(!settings.includes('data-view="cleanup"'), "Settings still duplicates the Cleanup destination");
-  assert.match(settings, /<legend>Help<\/legend>[\s\S]*data-view="help"/);
+  const view = readFileSync(new URL("../internal/server/web/settings-view.js", import.meta.url), "utf8");
+  assert.match(view, /title: "Help"[\s\S]*view: "help"/);
 });
 
 test("group headers never show in the phone tab bar or menu", () => {

@@ -1,0 +1,113 @@
+/* Page frame for the dense full-width layout. Loaded after style.css; these rules
+   replace its narrow-column defaults (page capped at 60rem, form at 40rem). */
+
+:root {
+  --pad-page: clamp(1rem, 1.8vw, 1.75rem);
+  --gap-page: 1rem;
+  --gap-card: 0.9rem;
+  --radius-card: 12px;
+  --control-h: 2.25rem;
+  --text-xs: 0.78rem;
+  --text-sm: 0.88rem;
+}
+
+/* Every page uses the window width; the old 60rem page and 40rem form left a dead right half. */
+.view { max-width: none; gap: var(--gap-page); }
+#form { max-width: none; }
+.content { padding: var(--pad-page) var(--pad-page) 2.5rem; }
+
+/* Page frame: title, one status line, primary action, then the body. */
+.page { display: grid; gap: var(--gap-page); min-width: 0; }
+.page-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.25rem 1rem; min-height: 2rem; }
+.page-head h1 { margin: 0; font-size: 1.45rem; line-height: 1.2; letter-spacing: -0.02em; }
+.page-status {
+  flex: 1 1 16rem; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: var(--muted); font-size: var(--text-sm);
+}
+.page-status strong { color: var(--ink); font-weight: 600; }
+.page-actions { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
+.page-actions button { min-height: var(--control-h); }
+.page-body { min-width: 0; }
+
+/* Tables fill the width; too many columns scroll sideways with the first column pinned. */
+.table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel); }
+.page-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.page-table th {
+  text-align: left; font-size: var(--text-xs); letter-spacing: 0.03em; text-transform: uppercase;
+  color: var(--muted); background: var(--panel); padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+.page-table td { padding: 0.45rem 0.75rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.page-table tr:last-child td { border-bottom: 0; }
+.page-table th:first-child, .page-table td:first-child { position: sticky; left: 0; z-index: 1; background: var(--panel); }
+.page-table tbody tr:hover td { background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel)); }
+.page-table .nowrap { white-space: nowrap; }
+
+/* Cards: self-contained blocks of one concern. */
+.card {
+  min-width: 0; overflow: hidden; background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow);
+}
+.card-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.15rem 0.6rem; padding: 0.7rem 0.9rem 0.55rem; border-bottom: 1px solid var(--line); }
+.card-head h2 { margin: 0; font-size: 0.95rem; }
+.card-head p { margin: 0; color: var(--muted); font-size: var(--text-xs); }
+.card-body { display: grid; gap: 0.6rem; padding: 0.8rem 0.9rem 0.9rem; }
+.card-grid, .tabpanel {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(21rem, 1fr));
+  gap: var(--gap-card); align-items: start;
+}
+
+/* Switches: a real on/off control with room for "Saved" feedback beside it. */
+.switch-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+.switch { display: inline-flex; align-items: center; gap: 0.6rem; min-height: var(--control-h); margin: 0; color: var(--ink); font-size: var(--text-sm); cursor: pointer; }
+.switch input {
+  appearance: none; -webkit-appearance: none; flex: none; width: 2.2rem; height: 1.25rem;
+  margin: 0; padding: 0; border: 0; border-radius: 999px; background: var(--line);
+  position: relative; cursor: pointer; transition: background 0.15s;
+}
+.switch input::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: calc(1.25rem - 4px); height: calc(1.25rem - 4px); border-radius: 50%;
+  background: #fff; transition: transform 0.15s;
+}
+.switch input:checked { background: var(--accent); }
+.switch input:checked::after { transform: translateX(calc(2.2rem - 1.25rem)); }
+.switch-saved { min-height: 1em; font-size: var(--text-xs); color: var(--muted); }
+.switch-saved[data-state="saved"] { color: var(--connected); }
+.switch-saved[data-state="error"] { color: var(--disconnected); }
+
+/* Appearance: exactly System / Light / Dark as a segmented control. */
+.appearance { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.appearance label {
+  display: inline-flex; align-items: center; gap: 0.4rem; margin: 0; min-height: var(--control-h);
+  padding: 0 0.7rem; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--ground); color: var(--ink-2); cursor: pointer;
+}
+.appearance label:hover { color: var(--ink); }
+.appearance label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.appearance input[type="radio"] { width: auto; min-height: 0; margin: 0; padding: 0; border: 0; background: none; accent-color: var(--accent); }
+
+/* Settings: four tabs, four self-contained cards, no single long scroll. */
+.settings { display: grid; gap: var(--gap-card); min-width: 0; }
+.tabs {
+  display: flex; gap: 0.15rem; width: max-content; max-width: 100%; padding: 0.15rem;
+  overflow-x: auto; background: var(--side); border: 1px solid var(--line); border-radius: 10px;
+}
+.tab {
+  border: 0; background: transparent; color: var(--ink-2); white-space: nowrap;
+  min-height: 2rem; padding: 0.35rem 0.85rem; border-radius: 8px;
+  font-size: var(--text-sm); font-weight: 550;
+}
+.tab:hover { color: var(--ink); background: var(--panel); }
+.tab[aria-selected="true"] { background: var(--panel); color: var(--accent); box-shadow: var(--shadow); }
+
+@media (max-width: 900px) {
+  .card-grid, .tabpanel { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .content { padding: 1rem 1rem calc(6rem + env(safe-area-inset-bottom)); }
+  .page-head h1 { font-size: 1.3rem; }
+  .page-status { flex-basis: 100%; }
+  .page-actions { margin-left: 0; }
+  .tabs { width: 100%; }
+}
