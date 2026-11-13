@@ -28,7 +28,20 @@ type Item struct {
 	Speed    int64     `json:"speed,omitempty"`
 	SavePath string    `json:"savePath,omitempty"`
 	Category string    `json:"category,omitempty"`
-	Stats    *Stats    `json:"stats,omitempty"` // downloads in qBittorrent only
+	// Proof and destination: filled from the import/cleanup record, never guessed.
+	StatusAt       time.Time `json:"statusAt,omitempty"`
+	SourcePath     string    `json:"sourcePath,omitempty"`
+	TargetVolume   string    `json:"targetVolume,omitempty"`
+	TargetPath     string    `json:"targetPath,omitempty"`
+	Verified       string    `json:"verified,omitempty"` // hash | size | none
+	VerifiedAt     time.Time `json:"verifiedAt,omitempty"`
+	PosterPath     string    `json:"posterPath,omitempty"`
+	Overview       string    `json:"overview,omitempty"`
+	Year           int       `json:"year,omitempty"`
+	Genres         []string  `json:"genres,omitempty"`
+	RuntimeMinutes int       `json:"runtimeMinutes,omitempty"`
+	Rating         float64   `json:"rating,omitempty"`
+	Stats          *Stats    `json:"stats,omitempty"` // downloads in qBittorrent only
 }
 
 // itemStatus is the owner-facing state behind the kind; it never claims a copy is
@@ -181,7 +194,10 @@ func Gather(c config.Config, home string, now time.Time) Snapshot {
 			speedMu.Unlock()
 			for _, t := range ts {
 				kind, at, rm := Decide(t, imported, queued, now, c.CleanupDays)
-				it := Item{Title: t.Name, Kind: kind, State: t.State, Status: itemStatus(kind, t.State), App: appOf[strings.ToUpper(t.Hash)], Progress: t.Progress, Size: t.Size, ETA: t.ETA, Speed: t.DlSpeed, SavePath: t.SavePath, Category: t.Category, Stats: statsOf(t, speeds[t.Hash])}
+				it := Item{Title: t.Name, Kind: kind, State: t.State, Status: itemStatus(kind, t.State), App: appOf[strings.ToUpper(t.Hash)], Progress: t.Progress, Size: t.Size, ETA: t.ETA, Speed: t.DlSpeed, SavePath: t.SavePath, SourcePath: t.SavePath, Category: t.Category, Stats: statsOf(t, speeds[t.Hash])}
+				if t.CompletionOn > 0 {
+					it.StatusAt = time.Unix(t.CompletionOn, 0)
+				}
 				if kind == "imported" {
 					it.When = at
 				}
