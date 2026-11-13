@@ -6,7 +6,7 @@
 - My library is a poster grid with a remembered Cards/Table switch and a detail panel: status, real volume and path, how the copy was verified and when, the proof hash and its history. A copy never reads verified without proof.
 - Downloads shows only work still in progress, with one main action per row and the rest under ⋯, plus proof and target. Imported and verified titles leave Downloads and appear in My library; Clear removes the qBittorrent entry only and never the files.
 - Activity is a timestamped timeline with filters, repeated warnings grouped with counts and identical events shown once with ×N. Cleanup gains per-row actions, stage and remaining wait, and says plainly that nothing is deleted for good outside its waits.
-- Optional “Remove dead downloads automatically” is off by default: after a grace of 1–168 hours, Library removes only the torrent entry for downloads whose files are missing and that have no import proof. Files on disk are never deleted.
+- Optional “Remove dead downloads automatically” is off by default: after a grace of 1–168 hours, Library removes only the torrent entry for downloads whose files are missing and that have no import proof, and can separately clear the same dead item from a Sonarr/Radarr/Lidarr queue so the app stops retrying it. Files on disk are never deleted and nothing is blocklisted.
 - Every page fills the window at phone, tablet and desktop widths, with measured contrast in light and dark.
 
 ## 0.7.15 — 2026-11-13
