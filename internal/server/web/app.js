@@ -81,6 +81,8 @@ function render(st) {
   fillWebAddresses(st);
   const s = st.snapshot, cfg = st.settings;
   $("#version").textContent = st.version;
+  const updatesVersion = $("#updates-version");
+  if (updatesVersion) updatesVersion.textContent = "This Mac runs Library Studio KH " + st.version + " · checks are manual, and nothing installs without you.";
   applyAppearance(cfg.appearance || "system");
   // Setup is done once a download client and a library app are both saved.
   const configured = !!cfg.qbittorrent?.url && ["sonarr", "radarr", "lidarr"].some((a) => !!cfg[a]?.url);
@@ -89,9 +91,10 @@ function render(st) {
   const parts = [];
   parts.push(s.freeBytes == null ? "Free space on this computer: not known yet." : "<strong>" + gb(s.freeBytes) + "</strong> free on this computer.");
   parts.push(cfg.stagedCleanupOn
-    ? "Staged cleanup is <strong>on</strong> for verified imports. Check Cleanup for eligibility and blockers."
+    ? "Staged cleanup is <strong>on</strong> for verified imports."
     : "Local copies are <strong>kept</strong>. Staged cleanup is off.");
   if (s.library === "missing") parts.push("<span class=off>The NAS library folder can't be found.</span>");
+  if (st.metadata) parts.push("<span class=off>" + st.metadata + "</span>");
   $("#summary").innerHTML = parts.join(" ");
 
   $("#apps").replaceChildren(...s.apps.map((a) => {
@@ -109,7 +112,14 @@ function render(st) {
 
   renderActivity();
 
-  $("#cleanup-lede").innerHTML = parts.slice(0, 2).join(" ");
+  // Cleanup's own line: its policy and the truth about the library, never a
+  // second free-space figure (the status table below carries that one).
+  const lede = [cfg.stagedCleanupOn
+    ? "Staged cleanup is <strong>on</strong> for verified imports; Preview checks current files without changing them."
+    : "Local copies are <strong>kept</strong>. Staged cleanup is off."];
+  if (s.library === "missing") lede.push("<span class=off>The NAS library folder can't be found.</span>");
+  if (st.metadata) lede.push("<span class=off>" + st.metadata + "</span>");
+  $("#cleanup-lede").innerHTML = lede.join(" ");
 
   $("#releases").replaceChildren(...st.releases.map((r) => {
     const box = document.createElement("div");
@@ -137,7 +147,10 @@ function activityLabel(it) {
     return { outcome: "importing", label: torrentStateWord(it.state), detail: downloadProgressText(it.progress), at: it.statusAt || null };
   }
   if (status === "copied" || status === "moved") {
-    const done = status === "moved" ? "Moved off this computer" : "Copied to the NAS";
+    const where = libraryVolumeLabel(it.targetVolume);
+    const done = status === "moved"
+      ? (where ? "Moved to " + where : "Moved off this computer")
+      : (where ? "Copied to " + where : "Copied");
     if (it.verified === "hash" || it.verified === "size") {
       return {
         outcome: "verified",
@@ -150,6 +163,15 @@ function activityLabel(it) {
     return { outcome: "problems", label: done + " · not verified yet", detail: "The library app recorded the import, but no verification proof is saved yet. Cleanup’s Preview checks the copy.", at: it.statusAt || it.when || null };
   }
   if (status === "importing") return { outcome: "importing", label: "Importing", detail: "", at: it.statusAt || null };
+  if (status === "paused" || status === "resumed") {
+    return { outcome: "downloading", label: status === "paused" ? "Paused by you" : "Resumed by you", detail: it.sourcePath || "", at: it.when || null };
+  }
+  if (status === "download-removed") {
+    return { outcome: "removed", label: "Removed from qBittorrent · files kept", detail: it.sourcePath ? "Still on disk at " + it.sourcePath : "Its files were left on disk.", at: it.when || null };
+  }
+  if (status === "download-cleared") {
+    return { outcome: "removed", label: "Cleared from qBittorrent · files were already missing", detail: "", at: it.when || null };
+  }
   if (status === "downloading" || status === "queued" || status === "stalled") {
     const word = torrentStateWord(it.state);
     const broken = word === "Missing files" || /error/i.test(it.state || "");
@@ -201,8 +223,8 @@ function renderActivity() {
   const entries = all.filter((e) => (!app || e.app === app) && (!outcome || e.outcome === outcome) && (!q.trim() || has(e.title, q)));
   entries.sort((a, b) => {
     if (!a.at && !b.at) return a.title.localeCompare(b.title);
-    if (!a.at) return -1;
-    if (!b.at) return 1;
+    if (!a.at) return 1; // "Time not recorded" belongs at the end, not the top
+    if (!b.at) return -1;
     return new Date(b.at) - new Date(a.at);
   });
   const empty = $("#empty");
@@ -364,7 +386,7 @@ function titleCell(m) {
 
 /* My library: poster grid over the reconciled inventory. The server owns the
    join between library items, import proof and cached metadata. */
-const lib = { items: [], problems: [], loading: false, error: "", filters: {}, draft: {}, view: "grid", selected: null, filtersOpen: false };
+const lib = { items: [], problems: [], metadata: "", loading: false, error: "", filters: {}, draft: {}, view: "grid", sort: { key: "title", dir: "asc" }, selected: null, filtersOpen: false };
 let libraryLoading = false;
 
 async function loadLibrary() {
@@ -376,6 +398,7 @@ async function loadLibrary() {
     const r = await api("/api/library");
     lib.items = Array.isArray(r.items) ? r.items : [];
     lib.problems = (r.problems || []).filter(Boolean);
+    lib.metadata = r.metadata || "";
     lib.error = "";
   } catch (e) {
     lib.error = e.message;
@@ -398,14 +421,16 @@ function renderLibraryPage() {
     ? lib.items.length + (lib.items.length === 1 ? " item" : " items") + " across Sonarr, Radarr and Lidarr. Status and proof come from import records."
     : "Everything Sonarr, Radarr and Lidarr look after.";
   const notice = $("#browse-notice");
-  notice.hidden = !lib.problems.length;
-  notice.textContent = lib.problems.join(" ");
+  const noticeText = [...lib.problems, lib.metadata].filter(Boolean).join(" ");
+  notice.hidden = !noticeText;
+  notice.textContent = noticeText;
   const selected = lib.items.find((item) => libraryGridKey(item) === lib.selected) || null;
   host.replaceChildren(libraryGridPage({
     items: lib.items,
     filters: lib.filters,
     draft: { ...lib.filters, ...lib.draft },
     view: lib.view,
+    sort: lib.sort,
     selected: lib.selected,
     count: libraryGridCount(libraryGridFilter(lib.items, lib.filters).length, lib.items.length),
     loading: lib.loading,
@@ -420,6 +445,10 @@ function renderLibraryPage() {
       onApply: () => { lib.filters = { ...lib.filters, ...lib.draft }; lib.draft = {}; lib.filtersOpen = false; renderLibraryPage(); },
       onReset: () => { lib.filters = {}; lib.draft = {}; renderLibraryPage(); },
       onView: (view) => { lib.view = view === "list" ? "list" : "grid"; renderLibraryPage(); },
+      onSort: (key) => {
+        lib.sort = { key, dir: lib.sort.key === key && lib.sort.dir === "asc" ? "desc" : "asc" };
+        renderLibraryPage();
+      },
       onSelect: (key) => { lib.selected = key; renderLibraryPage(); },
       onRetry: () => loadLibrary(),
       onFindAndAdd: () => show("find"),
@@ -656,6 +685,23 @@ document.addEventListener("keydown", (ev) => {
     }
     return;
   }
+  // Close a page-level detail pane and put focus back on the row that opened it.
+  if (!$("#view-downloads").hidden && dl.openKey) {
+    const key = dl.openKey;
+    ev.preventDefault();
+    dl.openKey = null;
+    renderDownloadsPage();
+    document.querySelector('#dl tr[data-key="' + CSS.escape(key) + '"] .dlp-open')?.focus();
+    return;
+  }
+  if (!$("#view-browse").hidden && lib.selected) {
+    const key = lib.selected;
+    ev.preventDefault();
+    lib.selected = null;
+    renderLibraryPage();
+    document.querySelector('#library-host [data-key="' + CSS.escape(key) + '"]')?.focus();
+    return;
+  }
   if (menuToggle.getAttribute("aria-expanded") !== "true") return;
   const editableHost = t?.closest?.("[contenteditable]");
   if (t?.closest?.("input, textarea, select")
@@ -664,6 +710,27 @@ document.addEventListener("keydown", (ev) => {
   closeMenu(); menuToggle.focus();
 });
 document.addEventListener("click", (ev) => { if (!ev.target.closest(".side")) closeMenu(); });
+
+// Cmd/Ctrl+F focuses the current screen's search, on every browser and system.
+document.addEventListener("keydown", (ev) => {
+  if (!(ev.key === "f" || ev.key === "F") || !(ev.metaKey || ev.ctrlKey) || ev.altKey) return;
+  const view = document.querySelector(".view:not([hidden])");
+  const input = view?.querySelector('input[type="search"]');
+  if (!input) return;
+  ev.preventDefault();
+  input.focus();
+  input.select?.();
+});
+
+// Arrow keys walk the Downloads rows, like the library grid.
+$("#dl").addEventListener("keydown", (ev) => {
+  if (!["ArrowDown", "ArrowUp"].includes(ev.key) || ev.altKey || ev.metaKey || ev.ctrlKey) return;
+  const buttons = [...document.querySelectorAll("#dl .dlp-open")];
+  const index = buttons.indexOf(document.activeElement);
+  if (index < 0) return;
+  const next = buttons[index + (ev.key === "ArrowDown" ? 1 : -1)];
+  if (next) { ev.preventDefault(); next.focus(); }
+});
 
 function show(view) {
   closeMenu();
@@ -701,7 +768,7 @@ async function load() {
 
 /* Downloads: the reconciled table. Remove takes the torrent out of qBittorrent's
    list and never deletes its files; Reveal shows the saved folder in Finder. */
-const dl = { items: [], problems: "", filter: "all", query: "", selected: new Set(), openKey: null, loading: false };
+const dl = { items: [], problems: "", metadata: "", filter: "all", query: "", selected: new Set(), openKey: null, loading: false, focusAfter: null };
 let downloadsLoading = false;
 
 async function loadDownloads(preserveSelection = false) {
@@ -716,6 +783,7 @@ async function loadDownloads(preserveSelection = false) {
       posterPath: t.posterPath ? "/api/poster?path=" + encodeURIComponent(t.posterPath) : "",
     }));
     dl.problems = [r.error, ...(r.problems || [])].filter(Boolean).join(" ");
+    dl.metadata = r.metadata || "";
   } catch (e) {
     dl.items = [];
     dl.problems = e.message;
@@ -724,10 +792,12 @@ async function loadDownloads(preserveSelection = false) {
   renderDownloadsPage();
 }
 
-function setDownloadNotice(text) {
+function setDownloadNotice(text, tone) {
   const notice = $("#dl-notice");
   notice.hidden = !text;
   notice.textContent = text || "";
+  if (tone) notice.dataset.tone = tone;
+  else delete notice.dataset.tone;
 }
 
 function renderDownloadsPage() {
@@ -752,12 +822,16 @@ function renderDownloadsPage() {
     emptyAction: () => { dl.filter = "all"; dl.query = ""; renderDownloadsPage(); },
   };
   downloadsPanelRender(host, model, handlers);
-  $("#dl-page-status").textContent = dl.problems
+  // Say so when the table needs sideways scrolling, so hidden columns are not a trap.
+  const scrollBox = host.querySelector(".table-scroll");
+  const scrolls = scrollBox ? scrollBox.scrollWidth > scrollBox.clientWidth + 1 : false;
+  $("#dl-page-status").textContent = (dl.problems
     ? "Some sources did not answer."
-    : model.countText + " · status and proof come from import records";
+    : model.countText + " · status and proof come from import records") + (scrolls ? " · Scroll sideways for more columns." : "");
   const notice = $("#dl-notice");
-  notice.hidden = !dl.problems;
-  notice.textContent = dl.problems;
+  const noticeText = [dl.problems, dl.metadata].filter(Boolean).join(" ");
+  notice.hidden = !noticeText;
+  notice.textContent = noticeText;
   const openRow = model.rows.find((row) => row.key === dl.openKey);
   detail.hidden = !openRow;
   if (openRow) downloadsDetailRender(detail, downloadsDetail(openRow.item, []));
@@ -772,6 +846,11 @@ function renderDownloadsPage() {
     host.querySelector("[data-select-all]")?.focus();
   } else if (wasFilter) {
     host.querySelector("select")?.focus();
+  } else if (dl.focusAfter) {
+    // After Remove/Clear the row is gone; focus the search instead of dropping to the page.
+    host.querySelector('tr[data-key="' + CSS.escape(dl.focusAfter) + '"] .dlp-open')?.focus();
+    if (document.activeElement === document.body) $("#dl-q")?.focus();
+    dl.focusAfter = null;
   }
 }
 
@@ -779,19 +858,21 @@ async function downloadAction(hashes, action) {
   if (!hashes.length || downloadsLoading) return;
   const words = {
     pause: "Paused", resume: "Resumed",
-    remove: "Removed from qBittorrent. Its files were kept.",
-    clear: "Cleared from qBittorrent. Its files were kept.",
+    remove: "Removed from qBittorrent. Its files were kept on disk.",
+    clear: "Cleared from qBittorrent. Its files were already missing.",
   };
   try {
     const r = await api("/api/downloads/action", { hashes, action });
     const errs = (r.errors || r.problems || []).filter(Boolean);
     dl.selected.clear();
     dl.openKey = null;
+    dl.focusAfter = hashes[0];
     await loadDownloads();
-    setDownloadNotice(errs.length ? errs.join(" ") : (hashes.length === 1 ? words[action] : words[action] + " (" + hashes.length + ")"));
+    await load(); // Activity and every other page move on with the action
+    setDownloadNotice(errs.length ? errs.join(" ") : (hashes.length === 1 ? words[action] : words[action] + " (" + hashes.length + ")"), errs.length ? "warn" : "ok");
   } catch (e) {
     await loadDownloads();
-    setDownloadNotice(e.message);
+    setDownloadNotice(e.message, "warn");
   }
 }
 
@@ -868,9 +949,13 @@ async function loadSessions() {
     box.replaceChildren(...items.map((s) => {
       const li = document.createElement("li");
       const info = document.createElement("div");
+      const device = document.createElement("span");
+      device.className = "session-device";
+      device.textContent = s.device || "Browser on an unrecorded system";
       const when = document.createElement("span");
-      when.textContent = "Signed in " + stamp(s.created) + " · ends " + stamp(s.expires);
-      info.append(when);
+      when.textContent = (s.lastSeen ? "last seen " + stamp(s.lastSeen) : "not used yet")
+        + " · signed in " + stamp(s.created) + " · ends " + stamp(s.expires);
+      info.append(device, when);
       if (s.current) {
         const badge = document.createElement("span");
         badge.className = "badge";
@@ -1031,7 +1116,14 @@ openUpdate.addEventListener("click", async () => {
 });
 
 $("#form").addEventListener("change", (ev) => {
-  if (ev.target.name === "appearance") applyAppearance(ev.target.value);
+  if (ev.target.name !== "appearance") return;
+  applyAppearance(ev.target.value);
+  const hint = $("#settings-card-appearance .card-body > p.muted");
+  if (hint) {
+    hint.textContent = ev.target.value === "system"
+      ? "System follows this Mac."
+      : "This library always uses the " + ev.target.value + " theme.";
+  }
 });
 
 $("#form").addEventListener("submit", async (ev) => {
@@ -1045,15 +1137,18 @@ $("#form").addEventListener("submit", async (ev) => {
     qbittorrent: { url: f["qbittorrent.url"].value.trim(), username: f["qbittorrent.username"].value.trim(), password: f["qbittorrent.password"].value },
   };
   for (const a of ARRS) body[a] = { url: f[a + ".url"].value.trim(), apiKey: f[a + ".apiKey"].value.trim() };
-  btn.disabled = true; msg.hidden = false; msg.textContent = "Saving…";
+  // The header line sits next to Save, so feedback is visible without scrolling.
+  const status = $("#settings-status");
+  const say = (text) => { msg.textContent = text; if (status) status.textContent = text; };
+  btn.disabled = true; msg.hidden = false; say("Saving…");
   try {
     const r = await api("/api/settings", body);
-    msg.textContent = r.problems && r.problems.length
-      ? "Saved, but these settings couldn't be applied:" + r.problems.join("; ")
-      : "Saved.";
+    say(r.problems && r.problems.length
+      ? "Saved, but these settings couldn't be applied: " + r.problems.join("; ")
+      : "Saved.");
     await load();
     fillForm(current);
-  } catch (e) { msg.textContent = e.message; }
+  } catch (e) { say("Not saved. " + e.message); }
   finally { btn.disabled = false; }
 });
 

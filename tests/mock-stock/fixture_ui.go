@@ -22,6 +22,7 @@ func uiHash(short string) string { return strings.Repeat(short, 20) }
 type uiFixture struct {
 	downloads, library string
 	now                time.Time
+	paused             map[string]bool // shared with the mock's stop/start handler
 }
 
 func (u uiFixture) unix(hours float64) int64 {
@@ -38,7 +39,14 @@ func (u uiFixture) importedSize() int64 {
 
 func (u uiFixture) torrents() []map[string]any {
 	size := u.importedSize()
+	// One active download so Pause/Resume and its Activity record are exercisable.
+	activeState := "downloading"
+	if u.paused[uiHash("c5")] {
+		activeState = "stoppedDL"
+	}
 	return []map[string]any{
+		{"hash": uiHash("c5"), "name": "Fresh Film (2021) 1080p", "progress": 0.42, "state": activeState, "size": 4e9, "downloaded": 1.68e9,
+			"dlspeed": 8e6, "eta": 360, "added_on": u.unix(2), "num_seeds": 9, "num_leechs": 2, "save_path": u.downloads, "category": "radarr"},
 		{"hash": uiHash("c1"), "name": uiImportedFile, "progress": 1, "state": "stalledUP", "size": size, "downloaded": size, "uploaded": size / 2,
 			"ratio": 0.5, "seeding_time": 3600, "added_on": u.unix(30), "completion_on": u.unix(26), "num_seeds": 0, "num_leechs": 0, "save_path": u.downloads, "category": "tv-sonarr"},
 		{"hash": uiHash("c2"), "name": "A Quiet Film (1998) 1080p", "progress": 1, "state": "moving", "size": 6e9, "downloaded": 6e9,

@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -81,5 +82,29 @@ func TestSeriesUseTVmaze(t *testing.T) {
 	}
 	if stripHTML("<p>a <b>b</b></p>") != "a b" {
 		t.Fatalf("summary stripping = %q", stripHTML("<p>a <b>b</b></p>"))
+	}
+}
+
+type unreachable struct{}
+
+func (unreachable) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("dial tcp: no route")
+}
+
+func TestUnreachableProviderRaisesOneNoticeAndLogLine(t *testing.T) {
+	client := &Client{Dir: t.TempDir(), HTTP: &http.Client{Transport: unreachable{}}}
+	if client.Notice() != "" {
+		t.Fatal("a client that has not tried yet must not claim an outage")
+	}
+	info := client.Lookup(context.Background(), "movie", "Example Film", 2021)
+	if info.Source != "placeholder" {
+		t.Fatalf("lookup = %+v", info)
+	}
+	off, reason := client.Offline()
+	if !off || !strings.Contains(reason, "no route") {
+		t.Fatalf("offline=%v reason=%q", off, reason)
+	}
+	if !strings.Contains(client.Notice(), "Metadata provider unreachable") {
+		t.Fatalf("notice = %q", client.Notice())
 	}
 }

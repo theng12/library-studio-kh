@@ -142,7 +142,7 @@ func TestInventoryJoinsProofByMediaID(t *testing.T) {
 	}{
 		{"Queued Show", "queued", "", "", "", "", time.Time{}},
 		{"Disk Show", "on-disk", "", "", "", "", time.Time{}},
-		{"Copied Show", "copied", "hash", "/Volumes/ATLAS/TV/Copied Show", "ATLAS", "/dl/Copied", verifiedAt},
+		{"Copied Show", "copied", "hash", "/Volumes/ATLAS/TV/Copied Show", "ATLAS", "/dl/Copied", importedAt},
 		{"Moved Show", "moved", "size", "/Volumes/ATLAS/TV/Moved Show", "ATLAS", "/dl/Moved", importedAt},
 		{"Missing Show", "missing", "", "/Volumes/ATLAS/TV/Missing Show", "ATLAS", "", importedAt},
 	} {
@@ -220,7 +220,7 @@ func TestGatherJoinsSavedCleanupProofAndStaysOffline(t *testing.T) {
 		by[it.Title] = it
 	}
 	old := by["Old Imported"]
-	if old.ID != "aaa" || old.Verified != "hash" || !old.VerifiedAt.Equal(verifiedAt) || old.TargetPath != "/Volumes/ATLAS/TV/Old" || old.TargetVolume != "ATLAS" || old.SourcePath != "/dl/old" {
+	if old.ID != "aaa" || old.Verified != "hash" || !old.VerifiedAt.Equal(importedAt) || old.TargetPath != "/Volumes/ATLAS/TV/Old" || old.TargetVolume != "ATLAS" || old.SourcePath != "/dl/old" {
 		t.Fatalf("saved proof not joined: %+v", old)
 	}
 	fresh := by["New Imported"]
@@ -237,6 +237,47 @@ func TestVolumeName(t *testing.T) {
 		if got := volumeName(in); got != want {
 			t.Errorf("volumeName(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestInventoryKeepsAVerifiedCopyCopiedWhenAnotherDownloadIsQueued(t *testing.T) {
+	queueDownload := hashE
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/series":
+			json.NewEncoder(w).Encode([]map[string]any{{"id": 1, "title": "Copied Show", "statistics": map[string]any{"episodeFileCount": 1}}})
+		case "/api/v3/history":
+			json.NewEncoder(w).Encode(map[string]any{"page": 1, "totalRecords": 1, "records": []map[string]any{
+				{"eventType": "downloadFolderImported", "downloadId": hashC, "date": importedAt, "seriesId": 1, "data": map[string]any{"importedPath": "/Volumes/ATLAS/TV/Copied Show"}},
+			}})
+		case "/api/v3/queue":
+			json.NewEncoder(w).Encode(map[string]any{"page": 1, "totalRecords": 1, "records": []map[string]any{
+				{"downloadId": queueDownload, "seriesId": 1},
+			}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	home := t.TempDir()
+	writeLedger(t, home,
+		map[string]any{"hash": hashC, "app": "Sonarr", "state": phaseStaging, "savePath": "/dl/Copied", "importedPath": "/Volumes/ATLAS/TV/Copied Show", "importedAt": importedAt, "verifiedAt": verifiedAt, "files": []map[string]any{{"rel": "", "size": 1, "sha256": sha}}},
+	)
+	c := config.Config{Sonarr: config.App{URL: srv.URL, APIKey: "k"}}
+	items, problems := Inventory(c, home, nil)
+	if len(problems) != 0 || len(items) != 1 {
+		t.Fatalf("items %d, problems %v", len(items), problems)
+	}
+	if got := items[0].Status; got != "copied" {
+		t.Fatalf("a new episode queued for the same show made its verified copy read %q, want copied", got)
+	}
+	if !items[0].VerifiedAt.Equal(importedAt) {
+		t.Fatalf("the one verification time must be the import instant, got %v", items[0].VerifiedAt)
+	}
+	queueDownload = hashC // the app is now handling the very download that was imported
+	items, _ = Inventory(c, home, nil)
+	if got := items[0].Status; got != "importing" {
+		t.Fatalf("a queued import of that same download reads %q, want importing", got)
 	}
 }
 

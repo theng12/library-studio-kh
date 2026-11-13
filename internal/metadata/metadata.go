@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -38,6 +39,8 @@ type Client struct {
 
 	mu       sync.Mutex
 	lastCall time.Time
+	offline  bool
+	lastErr  string
 
 	// Overridden by tests.
 	iTunesBase string
@@ -241,13 +244,55 @@ func (c *Client) getJSON(ctx context.Context, address string, into any) error {
 	}
 	resp, err := c.http().Do(req)
 	if err != nil {
+		c.setProvider(false, err) // transport failure: the provider is unreachable
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		// The provider answered; a missing result is not an outage.
 		return fmt.Errorf("%s answered %s", address, resp.Status)
 	}
+	c.setProvider(true, nil)
 	return json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(into)
+}
+
+// setProvider records reachability and logs only the transitions, so an offline
+// provider is visible in the app log without one line per lookup.
+func (c *Client) setProvider(ok bool, err error) {
+	c.mu.Lock()
+	was := c.offline
+	if ok {
+		c.offline, c.lastErr = false, ""
+	} else {
+		c.offline, c.lastErr = true, err.Error()
+	}
+	now := c.offline
+	c.mu.Unlock()
+	switch {
+	case now && !was:
+		log.Printf("metadata: provider unreachable (%v); showing cached facts and placeholders", err)
+	case !now && was:
+		log.Printf("metadata: provider reachable again")
+	}
+}
+
+// Offline reports whether the last provider call failed at the transport level.
+func (c *Client) Offline() (bool, string) {
+	if c == nil {
+		return false, ""
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.offline, c.lastErr
+}
+
+// Notice is the one quiet line the UI shows while the provider is unreachable;
+// empty while it answers.
+func (c *Client) Notice() string {
+	if off, _ := c.Offline(); off {
+		return "Metadata provider unreachable · showing cached facts and placeholders."
+	}
+	return ""
 }
 
 func cacheKey(kind, title string, year int) string {

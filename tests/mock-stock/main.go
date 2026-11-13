@@ -20,10 +20,9 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:7890", "address (port 0 picks a free one)")
 	downloads := flag.String("downloads", "/Users/me/Downloads", "download folder the UI fixture torrents report")
 	nas := flag.String("library", "/Volumes/NAS/Media", "library folder the UI fixture import points into")
-	uiOnly := flag.Bool("ui-fixtures", false, "serve only the c1-c4 headless UI fixture torrents (seed shapes from tests/mock-stock/fixture_ui.go)")
+	uiOnly := flag.Bool("ui-fixtures", false, "serve only the c1-c5 headless UI fixture torrents (seed shapes from tests/mock-stock/fixture_ui.go)")
 	flag.Parse()
 	now := time.Now()
-	ui := uiFixture{downloads: *downloads, library: *nas, now: now}
 	ago := func(d int) string { return now.Add(-time.Duration(d) * 24 * time.Hour).Format(time.RFC3339) }
 	ahead := func(d int) string { return now.Add(time.Duration(d) * 24 * time.Hour).Format(time.RFC3339) }
 	unix := func(h float64) int64 { return now.Add(-time.Duration(h * float64(time.Hour))).Unix() }
@@ -31,6 +30,7 @@ func main() {
 	var mu sync.Mutex
 	paused := map[string]bool{}
 	removed := map[string]bool{} // metadata-only removals, like qBittorrent's delete with files off
+	ui := uiFixture{downloads: *downloads, library: *nas, now: now, paused: paused}
 	done := func(hash, name string, size float64, added, finished float64) map[string]any {
 		state := "stalledUP"
 		if paused[hashOf(hash)] {

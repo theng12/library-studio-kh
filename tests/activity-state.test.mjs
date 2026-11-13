@@ -7,7 +7,9 @@ const app = readFileSync(new URL("../internal/server/web/app.js", import.meta.ur
 const html = readFileSync(new URL("../internal/server/web/index.html", import.meta.url), "utf8");
 
 function labelHelpers() {
+  const grid = readFileSync(new URL("../internal/server/web/library-grid.js", import.meta.url), "utf8");
   const source = [
+    grid.match(/function libraryVolumeLabel\(volume\) \{[\s\S]*?\n\}/)[0],
     app.match(/function torrentStateWord\(state\) \{[\s\S]*?\n\}/)[0],
     app.match(/function activityLabel\(it\) \{[\s\S]*?\n\}/)[0],
   ].join("\n");
@@ -35,9 +37,11 @@ test("a verified copy names its proof and location; an unproven one says so", ()
   const label = labelHelpers();
   const verified = label({ status: "copied", verified: "hash", verifiedAt: "2026-01-02T03:04:05Z", targetPath: "/Volumes/NAS/Films/X" });
   assert.equal(verified.outcome, "verified");
-  assert.match(verified.label, /Copied to the NAS · verified/);
+  assert.match(verified.label, /Copied · verified/);
   assert.match(verified.detail, /SHA-256 hash match/);
   assert.match(verified.detail, /\/Volumes\/NAS\/Films\/X/);
+  assert.match(label({ status: "copied", verified: "hash", targetVolume: "/Volumes/NAS" }).label, /Copied to NAS · verified/);
+  assert.match(label({ status: "copied", verified: "hash", targetVolume: "/" }).label, /Copied to this Mac · verified/);
   const size = label({ status: "moved", verified: "size" });
   assert.equal(size.outcome, "verified");
   assert.match(size.detail, /Size and readback match/);

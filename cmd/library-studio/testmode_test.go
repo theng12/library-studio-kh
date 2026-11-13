@@ -47,12 +47,19 @@ func TestSeededRecordPassesLibraryValidation(t *testing.T) {
 	eng.TrashDir = func() (string, error) { return trash, nil }
 	eng.FreeBytes = func(string) (int64, error) { return 1e12, nil }
 	st := eng.Status(store.Get())
-	if len(st.Blocked) != 0 || len(st.Items) != 1 {
+	if len(st.Blocked) != 0 || len(st.Items) != 2 {
 		t.Fatalf("blocked=%v items=%d", st.Blocked, len(st.Items))
 	}
-	it := st.Items[0]
-	if it.Hash != testImportedHash || it.Phase != "staging" || it.Proposed != "Keep in the download folder." || it.Files != 1 {
-		t.Fatalf("item = %+v", it)
+	byHash := map[string]library.CleanupItem{}
+	for _, it := range st.Items {
+		byHash[it.Hash] = it
+	}
+	it := byHash[testImportedHash]
+	if it.Phase != "staging" || it.Proposed != "Keep in the download folder." || it.Files != 1 || it.Verified != "hash" {
+		t.Fatalf("staging item = %+v", it)
+	}
+	if managed := byHash[testManagedHash]; managed.Phase != "managed_trash" || managed.Proposed != "Keep in Library's _trash." || managed.RestorePath == "" || managed.Verified != "hash" {
+		t.Fatalf("managed item = %+v", managed)
 	}
 	b, err := os.ReadFile(filepath.Join(e.Downloads, testImportedFile))
 	if err != nil {
@@ -87,7 +94,7 @@ func TestSeedTwiceKeepsOneRecord(t *testing.T) {
 	}
 	var saved struct{ Items []json.RawMessage }
 	raw, _ := os.ReadFile(filepath.Join(e.Home, "staged_cleanup.json"))
-	if err := json.Unmarshal(raw, &saved); err != nil || len(saved.Items) != 1 {
+	if err := json.Unmarshal(raw, &saved); err != nil || len(saved.Items) != 2 {
 		t.Fatalf("items=%d err=%v", len(saved.Items), err)
 	}
 }

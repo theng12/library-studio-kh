@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -25,6 +26,7 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 			writeJSON(w, 500, map[string]string{"error": err.Error()})
 			return
 		}
+		log.Printf("cleanup: preview %d proposed action(s), %d problem(s), nothing changed", len(res.Actions), len(res.Problems))
 		writeJSON(w, 200, res)
 	})
 	mux.HandleFunc("POST /api/cleanup/run", func(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +43,24 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 			writeJSON(w, 500, map[string]string{"error": err.Error()})
 			return
 		}
+		log.Printf("cleanup: run %d removed, %d action(s), %d problem(s)", res.Purged, len(res.Actions), len(res.Problems))
+		writeJSON(w, 200, res)
+	})
+	mux.HandleFunc("POST /api/cleanup/remove-now", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Hash string `json:"hash"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil || strings.TrimSpace(req.Hash) == "" {
+			writeJSON(w, 400, map[string]string{"error": "Choose a tracked download to remove."})
+			return
+		}
+		res, err := s.cleanup.RemoveNow(s.Store.Get(), req.Hash)
+		if err != nil {
+			log.Printf("cleanup: remove-now %s refused: %v", req.Hash, err)
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		log.Printf("cleanup: remove-now %s moved its local copy to Library's _trash", req.Hash)
 		writeJSON(w, 200, res)
 	})
 	mux.HandleFunc("POST /api/cleanup/restore", func(w http.ResponseWriter, r *http.Request) {
@@ -53,9 +73,11 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 		}
 		res, err := s.cleanup.Restore(s.Store.Get(), req.Hash)
 		if err != nil {
+			log.Printf("cleanup: restore %s refused: %v", req.Hash, err)
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
+		log.Printf("cleanup: restore %s %s", req.Hash, strings.Join(res.Actions, " "))
 		writeJSON(w, 200, res)
 	})
 }
@@ -73,4 +95,5 @@ func (s *Server) runStagedCleanup() {
 		last.Blocked = strings.Join(append(append([]string{}, res.Status.Blocked...), res.Status.EngineBlocked...), " ")
 	}
 	s.last = last
+	log.Printf("cleanup: hourly run removed=%d blocked=%q problems=%q", res.Purged, last.Blocked, strings.Join(last.Errors, " "))
 }

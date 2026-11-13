@@ -57,7 +57,7 @@ function cleanupCanRun(status) {
 function cleanupButtons() {
   for (const id of ["#cleanup-save", "#cleanup-preview", "#cleanup-refresh"]) $(id).disabled = cleanupBusy;
   $("#cleanup-run").disabled = cleanupBusy || !cleanupCanRun(cleanupState);
-  for (const button of document.querySelectorAll("[data-cleanup-restore]")) button.disabled = cleanupBusy;
+  for (const button of document.querySelectorAll("[data-cleanup-restore], [data-cleanup-remove-now]")) button.disabled = cleanupBusy;
 }
 
 function cleanupDaysLeft(due) {
@@ -76,12 +76,13 @@ function cleanupProof(item) {
     ["Managed by", item.app || "Not reported"],
     ["Stage", CLEANUP_PHASES[item.phase] || item.phase || "Not reported"],
     ["Verified import", item.verifiedImport ? stamp(item.verifiedImport) : "Not reported"],
+    ["Verification", item.verified === "hash" ? "SHA-256 hash match" : item.verified === "size" ? "Size and readback match" : "Method not recorded"],
     ["Library file", item.importPath || "Not reported"],
     ["Verified files", Number.isInteger(item.files) ? String(item.files) : "Not reported"],
     ["Original local path", item.sourcePath || "Not reported"],
     ["Managed copy", item.managedPath || "—"],
     ["System Trash copy", item.nativePath || "—"],
-    ["Restore to", item.restorePath || "Not reported"],
+    ["Returns to", item.restorePath || "Not reported"],
     ["Next due", item.nextDue ? stamp(item.nextDue) + " · " + cleanupDaysLeft(item.nextDue) : "Not reported"],
     ["Blocker", (item.blocked || []).join(" ") || "None recorded"],
   ]);
@@ -95,7 +96,7 @@ function cleanupRender(status) {
   const summary = mediaNode("dl", null, "facts");
   facts(summary, [
     ["Policy", status.enabled ? "On · only proven eligible imports can move" : "Off · no automatic cleanup"],
-    ["Free space", Number.isFinite(status.freeBytes) ? bytes(status.freeBytes) : "Not reported"],
+    ["Free space where Library’s _trash lives", Number.isFinite(status.freeBytes) ? bytes(status.freeBytes) : "Not reported"],
     ["Download folder", status.stagedDays + (status.stagedDays === 1 ? " day" : " days") + " after a verified import"],
     ["Library’s _trash", status.managedTrashDays + " extra days · " + status.totalDays + " days from import"],
     ["macOS Trash", status.nativeTrashDays + " days, or earlier below the free-space threshold"],
@@ -141,6 +142,15 @@ function cleanupRender(status) {
     proof.setAttribute("aria-label", "Show import proof for " + (item.name || "this download"));
     proof.addEventListener("click", () => cleanupProof(item));
     actions.append(proof);
+    if (item.phase === "staging") {
+      // Moves the copy into Library's _trash now, still recoverable there.
+      const removeNow = mediaNode("button", "Remove now", "small");
+      removeNow.type = "button";
+      removeNow.dataset.cleanupRemoveNow = item.hash;
+      removeNow.setAttribute("aria-label", "Move the local copy of " + (item.name || "this download") + " to Library’s _trash now");
+      removeNow.addEventListener("click", () => cleanupAction("remove-now", { hash: item.hash }));
+      actions.append(removeNow);
+    }
     if (["managed_trash", "native_trash"].includes(item.phase)) {
       const restore = mediaNode("button", "Restore", "small");
       restore.type = "button";
@@ -168,7 +178,7 @@ async function loadCleanup() {
     if (serial !== cleanupSerial) return;
     cleanupFill(state.settings);
     cleanupRender(status);
-    $("#cleanup-msg").textContent = "Saved status. Use Preview to verify current files and the next proposed action.";
+    $("#cleanup-msg").textContent = "Showing the saved policy. Preview checks current files and the next proposed action without changing anything.";
   } catch (e) {
     cleanupState = null;
     $("#cleanup-msg").textContent = e.message;
@@ -184,6 +194,7 @@ async function cleanupAction(action, request = {}) {
     cleanupRender(result.status);
     const messages = [...(result.actions || []), ...(result.problems || [])];
     $("#cleanup-msg").textContent = messages.join(" ") || (action === "preview" ? "Preview complete. No changes made." : "Check complete. No changes were needed.");
+    if (action !== "preview") await load(); // Activity and other pages move on too
   } catch (e) { $("#cleanup-msg").textContent = e.message; }
   finally { cleanupBusy = false; cleanupButtons(); }
 }

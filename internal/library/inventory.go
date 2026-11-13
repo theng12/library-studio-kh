@@ -13,8 +13,9 @@ import (
 	"librarystudio/internal/stock"
 )
 
-// metaKinds maps each library app to the metadata kind of its items.
-var metaKinds = map[string]string{"Sonarr": "series", "Radarr": "movie", "Lidarr": "artist"}
+// metaKinds maps each library app to the metadata kind of its items. Lidarr has
+// no keyless provider, so an artist is never given a film's facts or poster.
+var metaKinds = map[string]string{"Sonarr": "series", "Radarr": "movie", "Lidarr": ""}
 
 // prefetchMax bounds network lookups per Prefetch run so one poll never queues the whole library.
 const prefetchMax = 40
@@ -33,18 +34,25 @@ func savedRecords(home string) map[string]*cleanupRecord {
 	return out
 }
 
-// applyRecord copies the saved verification and destination onto an item.
-func applyRecord(it *Item, rec *cleanupRecord) {
-	it.Verified = "hash"
+// cleanupVerified is the proof strength saved for one record: a SHA-256 per
+// file, or the weaker size-and-readback check.
+func cleanupVerified(rec *cleanupRecord) string {
 	for _, f := range rec.Files {
 		if b, err := hex.DecodeString(f.SHA256); err != nil || len(b) != 32 {
-			it.Verified = "size"
-			break
+			return "size"
 		}
 	}
-	it.VerifiedAt = rec.VerifiedAt
+	return "hash"
+}
+
+// applyRecord copies the saved verification and destination onto an item. The
+// time shown is the import instant the proof and the cleanup waits both count
+// from, so every page names the same moment for the same copy.
+func applyRecord(it *Item, rec *cleanupRecord) {
+	it.Verified = cleanupVerified(rec)
+	it.VerifiedAt = rec.ImportedAt
 	if it.VerifiedAt.IsZero() {
-		it.VerifiedAt = rec.ImportedAt
+		it.VerifiedAt = rec.VerifiedAt
 	}
 	it.TargetPath, it.TargetVolume, it.SourcePath = rec.ImportedPath, volumeName(rec.ImportedPath), rec.SavePath
 	if it.StatusAt.IsZero() {
@@ -95,9 +103,11 @@ func Inventory(c config.Config, home string, meta *metadata.Client) ([]Item, []s
 			}
 		}
 	}
-	// An app still handling the media is the current truth, so a moving or
-	// downloading item never reads as a finished copy on disk.
-	queued := map[string]bool{}
+	// An app still handling a download is the current truth for that download.
+	// The download ID matters for a proven item: a new episode queued for the
+	// same show must never turn its already verified copy into "Importing".
+	queuedMedia := map[string]bool{}
+	queuedHash := map[string]bool{}
 	for _, a := range arrs(c) {
 		entries, err := a.QueueEntries()
 		if err != nil {
@@ -106,7 +116,10 @@ func Inventory(c config.Config, home string, meta *metadata.Client) ([]Item, []s
 		}
 		for _, e := range entries {
 			if e.MediaID > 0 {
-				queued[proofKey(a.Name, e.MediaID)] = true
+				queuedMedia[proofKey(a.Name, e.MediaID)] = true
+			}
+			if e.DownloadID != "" {
+				queuedHash[strings.ToUpper(e.DownloadID)] = true
 			}
 		}
 	}
@@ -124,9 +137,11 @@ func Inventory(c config.Config, home string, meta *metadata.Client) ([]Item, []s
 			}
 		}
 		switch {
-		case queued[proofKey(m.App, m.ID)] && m.HaveFiles:
+		case proven && queuedHash[strings.ToUpper(p.DownloadID)]:
+			it.Status = "importing" // the app is still handling the download that imported it
+		case !proven && queuedMedia[proofKey(m.App, m.ID)] && m.HaveFiles:
 			it.Status = "importing"
-		case queued[proofKey(m.App, m.ID)]:
+		case !proven && queuedMedia[proofKey(m.App, m.ID)]:
 			it.Status = "downloading"
 		case m.HaveFiles && proven && rec != nil && rec.State == phaseRemoved:
 			it.Status = "moved"

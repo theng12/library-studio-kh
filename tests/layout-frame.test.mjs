@@ -60,7 +60,7 @@ test("the page frame fills the window instead of a 60rem column", () => {
   assert.match(css, /#form \{ max-width: none; \}/);
   assert.match(css, /\.content \{[^}]*padding: var\(--pad-page\) var\(--pad-page\)/);
   assert.match(css, /\.page-head \{[^}]*display: flex/);
-  assert.match(css, /\.page-status \{[^}]*text-overflow: ellipsis/);
+  assert.match(css, /\.page-status \{[^}]*overflow-wrap: anywhere/);
   assert.match(css, /\.page-actions \{ margin-left: auto/);
 });
 

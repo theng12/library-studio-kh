@@ -107,8 +107,9 @@ function downloadsRowActions(status) {
 function downloadsSourceText(item) {
   if (item.indexer) return String(item.indexer);
   const app = String(item.app || "");
-  if (app === "Unmatched") return "qBittorrent · unmatched";
-  if (!app || app === "Unknown") return "App not verified";
+  // Short enough that the column never clips the one word that matters.
+  if (app === "Unmatched") return "Unmatched";
+  if (!app || app === "Unknown") return "Not verified";
   return app;
 }
 
@@ -173,7 +174,7 @@ function downloadsRow(item) {
     sizeText: downloadsSizeText(item),
     progress: downloadsProgress(item, status),
     source: downloadsSourceText(item),
-    target: String(item.targetPath || "Target not known yet"),
+    target: String(item.targetPath || "Not known yet — not imported"),
     actions: downloadsRowActions(status),
   };
 }
@@ -237,7 +238,7 @@ function downloadsModel(items, state) {
     selected: selected,
     bulk: downloadsBulk(rows, selected),
     empty: downloadsEmpty(list, rows, filter, query),
-    countText: list.length === 0 ? "No downloads" : rows.length + " of " + list.length + " downloads",
+    countText: list.length === 0 ? "No downloads" : rows.length + " of " + list.length + (list.length === 1 ? " download" : " downloads"),
   };
 }
 
@@ -253,7 +254,11 @@ function downloadsDetail(item, history) {
     title: String(item.name || item.title || "Untitled download"),
     poster: String(item.posterPath || ""),
     status: status,
+    // Proof and location lead: the first read answers where it is and whether
+    // it is proven, not just how big it is.
     facts: [
+      ["Target", item.targetPath ? (libraryVolumeLabel(item.targetVolume) ? libraryVolumeLabel(item.targetVolume) + " · " : "") + item.targetPath : "Not known yet — not imported"],
+      ["Verified", method ? method + " · " + downloadsWhen(item.verifiedAt) : "Not verified yet"],
       ["Size", downloadsSizeText(item)],
       ["Source", downloadsSourceText(item)],
       ["Save folder", item.savePath || "Not reported"],
@@ -266,12 +271,12 @@ function downloadsDetail(item, history) {
         ["Source file", item.sourcePath || "Not reported"],
       ] },
       { key: "target", title: "Target", facts: [
-        ["Volume", item.targetVolume || "Not reported"],
-        ["Path", item.targetPath || "Not reported"],
+        ["Volume", libraryVolumeLabel(item.targetVolume) || "Not recorded"],
+        ["Path", item.targetPath || "Not known yet — nothing imported"],
       ] },
       { key: "verification", title: "Verification", facts: [
-        ["Method", method || "Not verified"],
-        ["Verified", method ? downloadsWhen(item.verifiedAt) : "Not yet"],
+        ["Method", method || "Not verified yet"],
+        ["Verified at", method ? downloadsWhen(item.verifiedAt) : "Not yet"],
       ] },
       { key: "history", title: "History", events: events, empty: "No history reported yet." },
     ],
@@ -445,6 +450,7 @@ function downloadsRowNode(row, model, on) {
 
   const sourceCell = dlpEl("td", row.source, "dlp-source");
   sourceCell.dataset.label = "Source";
+  sourceCell.title = row.source;
   tr.append(sourceCell);
 
   const targetCell = dlpEl("td", row.target, "dlp-target");

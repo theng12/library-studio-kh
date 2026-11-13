@@ -45,6 +45,12 @@ const (
 // testImportedHash is the mock's c1 torrent, upper-case as the cleanup ledger stores it.
 var testImportedHash = strings.ToUpper(strings.Repeat("c1", 20))
 
+// testManagedHash is a second tracked import whose local copy is already inside
+// Library's _trash, so Restore is visible and exercisable in the headless test.
+var testManagedHash = strings.ToUpper(strings.Repeat("e1", 20))
+
+const testManagedName = "Old Show S01E01 720p"
+
 type testEnv struct {
 	Home, Stock, Downloads, Library, Metadata string
 	Port                                      int
@@ -123,6 +129,9 @@ type testRecord struct {
 	State        string                `json:"state"`
 	SavePath     string                `json:"savePath"`
 	MoveRoot     string                `json:"moveRoot"`
+	ManagedPath  string                `json:"managedPath,omitempty"`
+	ManagedRoot  string                `json:"managedRoot,omitempty"`
+	StagedAt     time.Time             `json:"stagedAt,omitempty"`
 	Label        string                `json:"label"`
 	Files        []library.CleanupFile `json:"files"`
 	Bytes        int64                 `json:"bytes"`
@@ -167,11 +176,36 @@ func seedFixtures(e testEnv, now time.Time) error {
 		}
 	}
 	sum := sha256.Sum256(episode)
+	importedAt := now.Add(-24 * time.Hour).UTC()
 	rec := testRecord{
 		Hash: testImportedHash, Name: testImportedFile, App: "Sonarr", DownloadID: testImportedHash,
-		ImportedAt: now.Add(-24 * time.Hour).UTC(), ImportedPath: filepath.Join(e.Library, testImportedRel), VerifiedAt: now.UTC(),
+		// One import instant for everything the proof and the cleanup waits show.
+		ImportedAt: importedAt, ImportedPath: filepath.Join(e.Library, testImportedRel), VerifiedAt: importedAt,
 		State: "staging", SavePath: e.Downloads, MoveRoot: filepath.Join(e.Downloads, testImportedFile), Label: testImportedFile,
 		Files: []library.CleanupFile{{Rel: "", Size: int64(len(episode)), SHA256: hex.EncodeToString(sum[:])}}, Bytes: int64(len(episode)),
+	}
+	if err := addCleanupRecord(filepath.Join(e.Home, "staged_cleanup.json"), rec); err != nil {
+		return err
+	}
+	// A copy already in Library's _trash: the row offers Restore and its proof
+	// carries the same one import time.
+	managedRoot := filepath.Join(e.Downloads, "_trash")
+	managedPath := filepath.Join(managedRoot, "library-studio-"+strings.ToLower(testManagedHash)[:12]+"-"+testManagedName)
+	managedBytes := bytes.Repeat([]byte("Library Studio KH headless test managed fixture\n"), 512)
+	managedSum := sha256.Sum256(managedBytes)
+	if err := writeFile(managedPath, managedBytes); err != nil {
+		return err
+	}
+	if err := writeFile(filepath.Join(e.Library, "Old Show", "Season 01", testManagedName+".mkv"), managedBytes); err != nil {
+		return err
+	}
+	managedAt := now.Add(-5 * 24 * time.Hour).UTC()
+	rec = testRecord{
+		Hash: testManagedHash, Name: testManagedName, App: "Sonarr", DownloadID: testManagedHash,
+		ImportedAt: managedAt, ImportedPath: filepath.Join(e.Library, "Old Show", "Season 01", testManagedName+".mkv"), VerifiedAt: managedAt,
+		State: "managed_trash", SavePath: e.Downloads, MoveRoot: filepath.Join(e.Downloads, testManagedName), Label: testManagedName,
+		ManagedPath: managedPath, ManagedRoot: managedRoot, StagedAt: now.Add(-4 * 24 * time.Hour).UTC(),
+		Files: []library.CleanupFile{{Rel: "", Size: int64(len(managedBytes)), SHA256: hex.EncodeToString(managedSum[:])}}, Bytes: int64(len(managedBytes)),
 	}
 	if err := addCleanupRecord(filepath.Join(e.Home, "staged_cleanup.json"), rec); err != nil {
 		return err

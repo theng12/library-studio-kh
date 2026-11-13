@@ -3,11 +3,13 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"librarystudio/internal/library"
 	"librarystudio/internal/stock"
@@ -60,22 +62,47 @@ func (s *Server) registerControls(mux *http.ServeMux) {
 			writeJSON(w, 400, map[string]string{"error": "That request could not be read."})
 			return
 		}
+		if len(req.Hashes) == 0 || len(req.Hashes) > 1000 {
+			writeJSON(w, 400, map[string]string{"error": "Choose between 1 and 1000 downloads."})
+			return
+		}
+		// What Activity will show: the name and folder as they were before the action.
+		events := make([]library.Item, 0, len(req.Hashes))
+		kinds := map[string]string{"pause": "paused", "resume": "resumed", "remove": "download-removed", "clear": "download-cleared"}
+		now := s.Now()
+		for _, h := range req.Hashes {
+			it := library.Item{ID: h, Title: "Download " + h, Kind: kinds[req.Action], When: now}
+			if t, err := library.Torrent(s.Store.Get(), h); err == nil {
+				it.Title, it.SourcePath = t.Name, t.SavePath
+			}
+			events = append(events, it)
+		}
 		errs := []string{}
 		switch req.Action {
 		case "pause", "resume":
 			if err := library.TorrentAction(s.Store.Get(), req.Hashes, req.Action); err != nil {
+				log.Printf("downloads: %s %d download(s) failed: %v", req.Action, len(req.Hashes), err)
 				writeJSON(w, 400, map[string]string{"error": err.Error()})
 				return
 			}
 		case "remove", "clear": // clear is the same metadata-only removal, for rows whose files are gone
 			var err error
 			if errs, err = library.RemoveTorrents(s.Store.Get(), req.Hashes); err != nil {
+				log.Printf("downloads: %s %d download(s) failed: %v", req.Action, len(req.Hashes), err)
 				writeJSON(w, 400, map[string]string{"error": err.Error()})
 				return
 			}
 		default:
 			writeJSON(w, 400, map[string]string{"error": `action must be "pause", "resume", "remove" or "clear"`})
 			return
+		}
+		if len(errs) == 0 {
+			for _, it := range events {
+				library.RecordEvent(s.Home, it)
+			}
+			log.Printf("downloads: %s %d download(s); files stay on disk (first folder %q)", req.Action, len(req.Hashes), events[0].SourcePath)
+		} else {
+			log.Printf("downloads: %s %d download(s) partly failed, nothing recorded: %s", req.Action, len(req.Hashes), strings.Join(errs, " "))
 		}
 		writeJSON(w, 200, map[string]any{"ok": len(errs) == 0, "errors": errs})
 	})

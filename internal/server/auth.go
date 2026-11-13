@@ -27,8 +27,10 @@ const rememberDays = 30
 const sessionCookie = "library_session"
 
 type browserSession struct {
-	Created time.Time `json:"created"`
-	Expires time.Time `json:"expires"`
+	Created  time.Time `json:"created"`
+	Expires  time.Time `json:"expires"`
+	Device   string    `json:"device,omitempty"`   // browser and system, from the sign-in request
+	LastSeen time.Time `json:"lastSeen,omitempty"` // last authenticated request, kept coarse
 }
 type accessData struct {
 	Token    string                    `json:"token"`
@@ -170,6 +172,38 @@ func (s *Server) saveAccessLocked() error {
 func (s *Server) bootstrap(r *http.Request) bool {
 	return s.Token != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Library-Token")), []byte(s.Token)) == 1
 }
+// describeDevice names a sign-in from its own User-Agent: browser and system,
+// never a guessed machine name.
+func describeDevice(ua string) string {
+	browser := "Browser"
+	switch {
+	case strings.Contains(ua, "Edg/"):
+		browser = "Edge"
+	case strings.Contains(ua, "Chrome/"):
+		browser = "Chrome"
+	case strings.Contains(ua, "Firefox/"):
+		browser = "Firefox"
+	case strings.Contains(ua, "Safari/"):
+		browser = "Safari"
+	}
+	system := "Unknown system"
+	switch {
+	case strings.Contains(ua, "iPhone"):
+		system = "iPhone"
+	case strings.Contains(ua, "iPad"):
+		system = "iPad"
+	case strings.Contains(ua, "Android"):
+		system = "Android"
+	case strings.Contains(ua, "Macintosh"), strings.Contains(ua, "Mac OS X"):
+		system = "macOS"
+	case strings.Contains(ua, "Windows"):
+		system = "Windows"
+	case strings.Contains(ua, "Linux"):
+		system = "Linux"
+	}
+	return browser + " on " + system
+}
+
 func sessionID(r *http.Request) string {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil || len(c.Value) != 64 {
@@ -189,7 +223,17 @@ func (s *Server) authorized(r *http.Request) bool {
 	s.access.mu.Lock()
 	defer s.access.mu.Unlock()
 	record, ok := s.access.data.Sessions[id]
-	return ok && s.Now().Before(record.Expires)
+	now := s.Now()
+	if !ok || !now.Before(record.Expires) {
+		return false
+	}
+	// Last seen is shown to the owner; keep it current without a write per request.
+	if now.Sub(record.LastSeen) > 5*time.Minute {
+		record.LastSeen = now
+		s.access.data.Sessions[id] = record
+		_ = s.saveAccessLocked()
+	}
+	return true
 }
 func loopbackPeer(r *http.Request) bool {
 	h, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -339,7 +383,7 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 409, map[string]string{"error": "There are 32 signed-in sessions. Revoke one from the host before adding another."})
 		return
 	}
-	s.access.data.Sessions[id] = browserSession{Created: now, Expires: now.Add(lifetime)}
+	s.access.data.Sessions[id] = browserSession{Created: now, Expires: now.Add(lifetime), Device: describeDevice(r.UserAgent()), LastSeen: now}
 	if err = s.saveAccessLocked(); err != nil {
 		delete(s.access.data.Sessions, id)
 		writeJSON(w, 500, map[string]string{"error": "Sign-in could not be saved. Check host storage."})
@@ -380,7 +424,7 @@ func (s *Server) authSessions(w http.ResponseWriter, r *http.Request) {
 	current := sessionID(r)
 	for id, v := range s.access.data.Sessions {
 		if s.Now().Before(v.Expires) {
-			items = append(items, map[string]any{"id": id, "created": v.Created, "expires": v.Expires, "current": id == current})
+			items = append(items, map[string]any{"id": id, "created": v.Created, "expires": v.Expires, "device": v.Device, "lastSeen": v.LastSeen, "current": id == current})
 		}
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i]["created"].(time.Time).After(items[j]["created"].(time.Time)) })

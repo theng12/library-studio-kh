@@ -35,12 +35,23 @@ const LIBGRID_STATUS = {
   downloading: { label: "Downloading", tone: "active" },
   stalled: { label: "Stalled", tone: "problem" },
   importing: { label: "Importing", tone: "active" },
-  copied: { label: "Copied to NAS", tone: "ok" },
-  moved: { label: "Moved to NAS", tone: "ok" },
+  copied: { label: "Copied", tone: "ok" },
+  moved: { label: "Moved", tone: "ok" },
   missing: { label: "Missing", tone: "problem" },
   "on-disk": { label: "On disk", tone: "neutral" },
   upcoming: { label: "Upcoming", tone: "neutral" },
 };
+
+// The volume as a person names it: the real disk the copy is on, never a
+// guessed "NAS" label. "/" is this Mac's own disk.
+function libraryVolumeLabel(volume) {
+  const v = String(volume || "").trim();
+  if (!v) return "";
+  if (v === "/") return "this Mac";
+  const parts = v.split("/").filter(Boolean);
+  if (parts[0] === "Volumes" && parts[1]) return parts[1];
+  return v;
+}
 
 function libraryGridKey(item) {
   return String(item.app || "Library") + ":" + String(item.id ?? item.title ?? "");
@@ -56,9 +67,11 @@ function libraryGridStatus(item) {
   if (item.status !== "copied" && item.status !== "moved") {
     return { key: item.status || "unknown", label: def.label, tone: def.tone };
   }
+  const where = libraryVolumeLabel(item.targetVolume);
+  const base = where ? def.label + " to " + where : def.label;
   return libraryGridVerified(item)
-    ? { key: item.status, label: def.label + " (verified)", tone: "ok" }
-    : { key: item.status, label: def.label + " (not verified)", tone: "problem" };
+    ? { key: item.status, label: base + " (verified)", tone: "ok" }
+    : { key: item.status, label: base + " (not verified)", tone: "problem" };
 }
 
 function libraryGridRuntime(minutes) {
@@ -89,12 +102,17 @@ function libraryGridMeta(item) {
   return parts.length ? parts.join(" · ") : "Metadata not reported";
 }
 
-function libraryGridTime(value) {
+// Go's zero time serialises as 0001-01-01; it means "not recorded", never a date.
+function libraryGridRealTime(value) {
   if (!value) return "";
   const date = new Date(value);
-  // Go's zero time serialises as 0001-01-01; it means "not recorded", never a date.
-  if (Number.isNaN(date.getTime()) || date.getFullYear() < 2000) return "";
-  return date.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return Number.isNaN(date.getTime()) || date.getFullYear() < 2000 ? "" : value;
+}
+
+function libraryGridTime(value) {
+  const real = libraryGridRealTime(value);
+  if (!real) return "";
+  return new Date(real).toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function libraryGridPoster(item, posterURL) {
@@ -105,8 +123,10 @@ function libraryGridPoster(item, posterURL) {
 
 function libraryGridLocation(item) {
   const volume = String(item.targetVolume || "").trim();
+  const where = libraryVolumeLabel(volume);
   const path = String(item.targetPath || "").trim();
-  return { volume, path, text: [volume, path].filter(Boolean).join(" · ") || "No storage location recorded yet" };
+  const disk = where ? where + (volume === "/" ? " (/)" : "") : "";
+  return { volume, where, path, text: [disk, path].filter(Boolean).join(" · ") || "No storage location recorded yet" };
 }
 
 function libraryGridVerification(item) {
@@ -118,17 +138,20 @@ function libraryGridVerification(item) {
 
 function libraryGridHistory(item) {
   const entries = [];
-  if (item.when) {
+  const when = libraryGridRealTime(item.when);
+  if (when) {
     entries.push({
-      at: item.when,
+      at: when,
       label: item.status === "moved" ? "Local copy moved off this computer"
         : item.status === "upcoming" ? "Release date" : "Recorded",
     });
   }
-  if (item.statusAt) entries.push({ at: item.statusAt, label: "Status: " + libraryGridStatus(item).label });
-  if (item.verifiedAt) {
+  const statusAt = libraryGridRealTime(item.statusAt);
+  if (statusAt) entries.push({ at: statusAt, label: "Status: " + libraryGridStatus(item).label });
+  const verifiedAt = libraryGridRealTime(item.verifiedAt);
+  if (verifiedAt) {
     entries.push({
-      at: item.verifiedAt,
+      at: verifiedAt,
       label: "Verified: " + (item.verified === "hash" ? "SHA-256 hash match"
         : item.verified === "size" ? "Size and readback match" : "method not recorded"),
     });
@@ -166,9 +189,13 @@ function libraryGridFilter(items, filters = {}) {
     (!filters.year || String(item.year || "") === String(filters.year)));
 }
 
-function libraryGridSort(items) {
+// Title is the default order; the list's column headers can ask for status.
+function libraryGridSort(items, sort = {}) {
+  const key = sort.key === "status" ? "status" : "title";
+  const dir = sort.dir === "desc" ? -1 : 1;
+  const value = (item) => key === "status" ? libraryGridStatus(item).label : String(item.title || "");
   return (items || []).slice().sort((a, b) =>
-    String(a.title || "").localeCompare(String(b.title || ""), undefined, { sensitivity: "base", numeric: true }));
+    dir * value(a).localeCompare(value(b), undefined, { sensitivity: "base", numeric: true }));
 }
 
 function libraryGridCount(shown, total) {
@@ -201,7 +228,7 @@ function libraryGridFilterOptions(items) {
 }
 
 // The one place that decides what an empty screen says and what to do next.
-function libraryGridEmpty({ items = [], shown = 0, loading = false, error = "" } = {}) {
+function libraryGridEmpty({ items = [], shown = 0, loading = false, error = "", query = "" } = {}) {
   if (loading && !items.length) {
     return { kind: "loading", title: "Loading your library…", message: "Posters, status and storage location appear as soon as each source answers.", action: "" };
   }
@@ -212,6 +239,9 @@ function libraryGridEmpty({ items = [], shown = 0, loading = false, error = "" }
     return { kind: "empty", title: "Nothing in your library yet.", message: "Use Find & add to add a film or series; it appears here with its status and storage location.", action: "Find & add" };
   }
   if (!shown) {
+    if (String(query || "").trim()) {
+      return { kind: "filtered", title: "Nothing matches your search.", message: "Clear the search to see the rest of your library.", action: "Clear search" };
+    }
     return { kind: "filtered", title: "Nothing matches these filters.", message: "Reset the filters to see the rest of your library.", action: "Reset filters" };
   }
   return null;
@@ -294,8 +324,26 @@ function libraryGridGrid(items, options = {}) {
   return grid;
 }
 
+// The list is a table with aligned columns and one sort control per column.
 function libraryGridList(items, options = {}) {
+  const sort = options.sort || {};
   const list = libraryGridNode("div", null, "libgrid-list");
+  const head = libraryGridNode("div", null, "libgrid-list-head");
+  head.setAttribute("role", "row");
+  const sortButton = (key, label) => {
+    const active = (sort.key || "title") === key;
+    const button = libraryGridNode("button", label + (active ? (sort.dir === "desc" ? " ↓" : " ↑") : ""), "libgrid-sort");
+    button.type = "button";
+    button.setAttribute("role", "columnheader");
+    button.setAttribute("aria-sort", active ? (sort.dir === "desc" ? "descending" : "ascending") : "none");
+    button.addEventListener("click", () => options.handlers?.onSort?.(key));
+    return button;
+  };
+  head.append(libraryGridNode("span", "", "libgrid-list-cell"));
+  head.append(sortButton("title", "Title"));
+  head.append(libraryGridNode("span", "Location", "libgrid-list-cell"));
+  head.append(sortButton("status", "Status"));
+  list.append(head);
   list.append(...items.map((item) => libraryGridRow(item, options)));
   return list;
 }
@@ -454,7 +502,7 @@ function libraryGridPage(options = {}) {
   const filters = options.filters || {};
   const handlers = options.handlers || {};
   const view = options.view === "list" ? "list" : "grid";
-  const shown = libraryGridSort(libraryGridFilter(items, filters));
+  const shown = libraryGridSort(libraryGridFilter(items, filters), options.sort);
 
   const page = libraryGridNode("div", null, "libgrid-page");
   page.append(libraryGridToolbar({
@@ -471,7 +519,7 @@ function libraryGridPage(options = {}) {
 
   const body = libraryGridNode("div", null, "libgrid-body");
   const results = libraryGridNode("div", null, "libgrid-results");
-  const empty = libraryGridEmpty({ items, shown: shown.length, loading: options.loading, error: options.error });
+  const empty = libraryGridEmpty({ items, shown: shown.length, loading: options.loading, error: options.error, query: filters.query });
   if (empty) results.append(libraryGridStateBlock(empty, handlers));
   else results.append(view === "list" ? libraryGridList(shown, { ...options, handlers }) : libraryGridGrid(shown, { ...options, handlers }));
   body.append(results);

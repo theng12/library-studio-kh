@@ -88,6 +88,7 @@ type CleanupItem struct {
 	App            string     `json:"app"`
 	Phase          string     `json:"phase"`
 	VerifiedImport time.Time  `json:"verifiedImport"`
+	Verified       string     `json:"verified,omitempty"` // hash | size: how the saved proof was made
 	ImportPath     string     `json:"importPath,omitempty"`
 	NextDue        *time.Time `json:"nextDue,omitempty"`
 	Proposed       string     `json:"proposed"`
@@ -396,15 +397,16 @@ func (e *StagedCleanup) plan(c config.Config, execute bool, app string) (Cleanup
 }
 
 type settleCtx struct {
-	app      string
-	e        *StagedCleanup
-	c        config.Config
-	now      time.Time
-	execute  bool
-	torrents map[string]stock.CleanupTorrent
-	queued   map[string]string
-	res      *CleanupResult
-	problems []string
+	app       string
+	e         *StagedCleanup
+	c         config.Config
+	now       time.Time
+	execute   bool
+	skipWait  bool // the owner asked for this one move now; all safety checks still run
+	torrents  map[string]stock.CleanupTorrent
+	queued    map[string]string
+	res       *CleanupResult
+	problems  []string
 }
 
 func (x *settleCtx) block(rec *cleanupRecord, reason string) {
@@ -479,7 +481,7 @@ func (x *settleCtx) settleStaging(rec *cleanupRecord) {
 		}
 	}
 	due := rec.ImportedAt.Add(days(x.c.StagedDays))
-	if x.now.Before(due) {
+	if x.now.Before(due) && !x.skipWait {
 		return // the copy stays in the download folder; no premature removal
 	}
 	if err := verifyTree(rec.MoveRoot, rec.Files); err != nil {
@@ -783,6 +785,69 @@ func safeNativeName(name string) bool {
 		strings.HasPrefix(name, "library-studio-")
 }
 
+// RemoveNow moves one download-folder copy into Library's _trash immediately,
+// ahead of its staged wait. Every normal safety check still runs (whole verified
+// import, no app still handling it, seeding stopped by its own limit), and the
+// copy stays recoverable there with its remaining waits; nothing is deleted for
+// good by this call.
+func (e *StagedCleanup) RemoveNow(c config.Config, hash string) (CleanupResult, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	now := e.Now()
+	hash = strings.ToUpper(strings.TrimSpace(hash))
+	st := e.baseStatus(c)
+	res := CleanupResult{Status: st, Actions: []string{}}
+	recs, err := e.load()
+	if err != nil {
+		return res, err
+	}
+	if err := validateRecords(recs, managedRoot(c), now, e.LocalVolume); err != nil {
+		return res, fmt.Errorf("saved cleanup state is unsafe, so nothing was changed: %w", err)
+	}
+	var rec *cleanupRecord
+	for _, r := range recs {
+		if strings.EqualFold(r.Hash, hash) {
+			rec = r
+			break
+		}
+	}
+	if rec == nil {
+		return res, errors.New("that download isn't tracked")
+	}
+	if rec.State != phaseStaging {
+		return res, errors.New("that copy isn't waiting in the download folder")
+	}
+	if !st.EngineAvailable || st.ManagedTrashPath == "" || !st.ManagedTrashLocal {
+		return res, errors.New("Library's _trash isn't available on this computer, so nothing was moved")
+	}
+	torrents, err := e.Source.Torrents()
+	if err != nil {
+		return res, fmt.Errorf("qBittorrent could not be read, so nothing was moved: %w", err)
+	}
+	byTorrent := map[string]stock.CleanupTorrent{}
+	for _, t := range torrents {
+		byTorrent[strings.ToUpper(t.Hash)] = t
+	}
+	queued, _, err := e.Source.Queued()
+	if err != nil {
+		return res, fmt.Errorf("the library apps' queues could not be read, so nothing was moved: %w", err)
+	}
+	ctx := &settleCtx{e: e, c: c, now: now, execute: true, skipWait: true, torrents: byTorrent, queued: queued, res: &res}
+	ctx.settle(rec)
+	if len(ctx.problems) > 0 {
+		res.Problems = append(res.Problems, ctx.problems...)
+	}
+	if err := e.save(recs); err != nil {
+		return res, err
+	}
+	e.render(&st, recs, c, now)
+	res.Status = st
+	if rec.State != phaseManaged {
+		return res, errors.New(strings.Join(res.Problems, " "))
+	}
+	return res, nil
+}
+
 // Restore puts one managed or native-Trash item back at its original download
 // path. It never overwrites something already there.
 func (e *StagedCleanup) Restore(c config.Config, hash string) (CleanupResult, error) {
@@ -931,7 +996,8 @@ func (e *StagedCleanup) render(st *CleanupStatus, recs []*cleanupRecord, c confi
 	for _, rec := range recs {
 		it := CleanupItem{
 			Hash: rec.Hash, Name: rec.Name, App: rec.App, Phase: rec.State,
-			VerifiedImport: rec.ImportedAt, Files: len(rec.Files), Bytes: rec.Bytes,
+			VerifiedImport: rec.ImportedAt, Verified: cleanupVerified(rec), RestorePath: rec.MoveRoot,
+			Files: len(rec.Files), Bytes: rec.Bytes,
 			ImportPath: rec.ImportedPath, SourcePath: rec.SavePath, ManagedPath: rec.ManagedPath,
 		}
 		if rec.LastBlocked != "" {

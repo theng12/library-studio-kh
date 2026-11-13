@@ -235,6 +235,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		"settings":  pub,
 		"saved":     saved,
 		"snapshot":  library.Gather(c, s.Home, s.Now(), s.Meta),
+		"metadata":  s.Meta.Notice(),
 		"lastClean": last,
 		"remote":    s.RemoteStatus(),
 		"localUrl":  s.LocalURL,
@@ -247,7 +248,7 @@ func (s *Server) inventory(w http.ResponseWriter, r *http.Request) {
 	if problems == nil {
 		problems = []string{}
 	}
-	writeJSON(w, 200, map[string]any{"items": items, "problems": problems})
+	writeJSON(w, 200, map[string]any{"items": items, "problems": problems, "metadata": s.Meta.Notice()})
 	s.prefetch(items)
 }
 

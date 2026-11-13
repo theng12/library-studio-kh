@@ -62,11 +62,11 @@ test("status chips follow the pipeline and never say verified without proof", ()
   assert.equal(g.libraryGridStatus({ status: "downloading" }).label, "Downloading");
   assert.equal(g.libraryGridStatus({ status: "importing" }).label, "Importing");
   assert.deepEqual({ ...g.libraryGridStatus({ status: "copied", verified: "hash" }) },
-    { key: "copied", label: "Copied to NAS (verified)", tone: "ok" });
+    { key: "copied", label: "Copied (verified)", tone: "ok" });
   assert.deepEqual({ ...g.libraryGridStatus({ status: "moved", verified: "size" }) },
-    { key: "moved", label: "Moved to NAS (verified)", tone: "ok" });
+    { key: "moved", label: "Moved (verified)", tone: "ok" });
   assert.deepEqual({ ...g.libraryGridStatus({ status: "copied" }) },
-    { key: "copied", label: "Copied to NAS (not verified)", tone: "problem" });
+    { key: "copied", label: "Copied (not verified)", tone: "problem" });
   assert.deepEqual({ ...g.libraryGridStatus({ status: "missing" }) },
     { key: "missing", label: "Missing", tone: "problem" });
   assert.equal(g.libraryGridStatus({ status: "copied", verified: "none" }).tone, "problem");
@@ -162,7 +162,7 @@ test("the grid renders one card per item with poster, title, chip and meta", () 
   assert.equal(cards.length, 5);
   assert.equal(cards[0].getAttribute("data-key"), "Sonarr:2");
   assert.deepEqual(byClass(cards[0], "libgrid-card-title").map(text), ["Andor"]);
-  assert.deepEqual(byClass(cards[0], "libgrid-status").map(text), ["Moved to NAS (verified)"]);
+  assert.deepEqual(byClass(cards[0], "libgrid-status").map(text), ["Moved to NAS-1 (verified)"]);
   assert.equal(byClass(cards[0], "libgrid-poster-placeholder").length, 1, "no posterPath means a placeholder");
   assert.equal(byTag(cards[1], "img").length, 1, "a posterPath is used without a resolver");
   assert.equal(byTag(cards[1], "img")[0].src, "/cache/posters/arrival.jpg");
@@ -194,7 +194,7 @@ test("detail model carries proof, location and history newest first", () => {
   assert.equal(arrival.verification.method, "SHA-256 hash match");
   assert.ok(arrival.verification.at, "the verification time is shown");
   assert.deepEqual(Array.from(arrival.history, (entry) => entry.label),
-    ["Verified: SHA-256 hash match", "Status: Copied to NAS (verified)"]);
+    ["Verified: SHA-256 hash match", "Status: Copied to NAS-1 (verified)"]);
   assert.equal(arrival.history[0].at, "2026-11-12T10:05:00Z");
   const missing = g.libraryGridDetail(items[3]);
   assert.equal(missing.status.label, "Missing");
@@ -224,7 +224,7 @@ test("the page shows the count, the selected detail and working state actions", 
 
   const filtered = g.libraryGridPage({ items, filters: { query: "zzz" }, selected: null, handlers });
   const filteredState = byClass(filtered, "libgrid-state")[0];
-  assert.ok(text(filteredState).includes("Nothing matches these filters."));
+  assert.ok(text(filteredState).includes("Nothing matches your search."));
   byClass(filteredState, "libgrid-state-action")[0].fire("click");
   assert.deepEqual(calls.shift(), ["reset"]);
 });

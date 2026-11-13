@@ -93,6 +93,7 @@ const SETTINGS_CARDS = {
       title: "Updates",
       hint: "Library Studio KH checks the shared KH feed; Studio Launcher KH installs the update.",
       fields: [
+        { kind: "slot", id: "updates-version", tag: "p", class: "muted", text: "This Mac's version is shown here." },
         { kind: "slot", id: "updates-state", tag: "p", class: "muted", role: "status", text: "Not checked" },
         { kind: "button", id: "updates-check", class: "small", label: "Check now" },
         { kind: "button", id: "updates-open", class: "small", label: "Open update page", hidden: true },

@@ -527,6 +527,11 @@ test("Escape acts in its own context and never silently does nothing", () => {
     },
     menuToggle: { getAttribute: () => "true", focus() {} },
     closeMenu: () => { calls.menu += 1; },
+    $: () => ({ hidden: true }),
+    dl: { openKey: null },
+    lib: { selected: null },
+    renderDownloadsPage() {},
+    renderLibraryPage() {},
     Event: class { constructor(type, options) { this.type = type; this.bubbles = options?.bubbles; } },
   };
   runInNewContext(listener[0], context);

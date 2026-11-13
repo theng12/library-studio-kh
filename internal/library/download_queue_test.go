@@ -278,7 +278,7 @@ func TestDownloadQueueJoinsSavedProofByHash(t *testing.T) {
 	}
 	got := byHash(items)
 	d := got[hashOne]
-	if d.Verified != "hash" || d.VerifiedAt != "2026-11-02T00:00:00Z" || d.Status != "copied" ||
+	if d.Verified != "hash" || d.VerifiedAt != "2026-11-01T00:00:00Z" || d.Status != "copied" ||
 		d.TargetPath != "/Volumes/NAS/TV/Show" || d.TargetVolume != "NAS" || d.SourcePath != "/downloads/tv" ||
 		d.StatusAt != "2023-11-14T22:13:20Z" || d.SourceGone {
 		t.Fatalf("hash-verified proof wrong: %+v", d)

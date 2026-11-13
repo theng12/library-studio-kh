@@ -1097,3 +1097,36 @@ func TestFutureOrImpossibleLedgerTimesFailClosed(t *testing.T) {
 		})
 	}
 }
+
+func TestRemoveNowMovesOneCopyEarlyAndRefusesBusyWork(t *testing.T) {
+	h := newHarness(t)
+	importedAt := *h.clock
+	it := h.add("Ready Now", importedAt)
+	if res := h.run(); phaseOf(t, res, it.hash) != phaseStaging {
+		t.Fatalf("the copy should start in the download folder: %+v", res.Status.Items)
+	}
+	res, err := h.engine().RemoveNow(h.cfg, it.hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if phaseOf(t, res, it.hash) != phaseManaged {
+		t.Fatalf("remove now must end in Library's _trash: %+v", res.Status.Items)
+	}
+	if exists(it.src) {
+		t.Fatal("the download-folder copy should have moved")
+	}
+	if _, err := h.engine().Restore(h.cfg, it.hash); err != nil {
+		t.Fatalf("a copy moved by Remove now must stay restorable: %v", err)
+	}
+	busy := h.add("Busy", importedAt)
+	if res := h.run(); phaseOf(t, res, busy.hash) != phaseStaging {
+		t.Fatalf("the second copy should be tracked too: %+v", res.Status.Items)
+	}
+	h.src.queued[busy.hash] = "Sonarr"
+	if _, err := h.engine().RemoveNow(h.cfg, busy.hash); err == nil || !strings.Contains(err.Error(), "still handled") {
+		t.Fatalf("work an app still handles must be refused, got %v", err)
+	}
+	if !exists(busy.src) {
+		t.Fatal("a refused item must not move")
+	}
+}

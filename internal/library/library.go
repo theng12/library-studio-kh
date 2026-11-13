@@ -141,6 +141,7 @@ func Gather(c config.Config, home string, now time.Time, meta *metadata.Client) 
 	s := Snapshot{Items: []Item{}, Apps: []AppState{}, Library: "not set"}
 	imported, queued := map[string]time.Time{}, map[string]bool{}
 	appOf := map[string]string{}
+	upcomingSeen := map[string]bool{}
 	for _, a := range arrs(c) {
 		st := AppState{Name: a.Name, OK: true}
 		im, err := a.Imports()
@@ -166,6 +167,13 @@ func Gather(c config.Config, home string, now time.Time, meta *metadata.Client) 
 				st = AppState{Name: a.Name, Error: uerr.Error()}
 			}
 			for _, u := range up {
+				// One calendar entry belongs to the app that handles its kind;
+				// a second app echoing the same release is not a second event.
+				k := u.Title + "|" + u.When.UTC().Format(time.RFC3339)
+				if upcomingSeen[k] {
+					continue
+				}
+				upcomingSeen[k] = true
 				s.Items = append(s.Items, Item{Title: u.Title, Kind: "upcoming", App: a.Name, When: u.When})
 			}
 			handling, removesNow, herr := a.Handling()
@@ -374,3 +382,8 @@ func appendLog(home string, it Item) {
 	_ = os.MkdirAll(home, 0o700)
 	_ = os.WriteFile(logPath(home), b, 0o600)
 }
+
+// RecordEvent appends one owner-visible event to the local history log, so an
+// action that removes something from another app's list stays traceable in
+// Activity with its path and time.
+func RecordEvent(home string, it Item) { appendLog(home, it) }

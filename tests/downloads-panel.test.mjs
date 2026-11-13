@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 // Script-level consts are not context properties; hand them out explicitly.
-const source = readFileSync(new URL("../internal/server/web/downloads-panel.js", import.meta.url), "utf8") +
+const grid = readFileSync(new URL("../internal/server/web/library-grid.js", import.meta.url), "utf8");
+const volumeLabel = grid.match(/function libraryVolumeLabel\(volume\) \{[\s\S]*?\n\}/)[0];
+const source = volumeLabel + "\n" + readFileSync(new URL("../internal/server/web/downloads-panel.js", import.meta.url), "utf8") +
   "\nthis.DOWNLOADS_COLUMNS = DOWNLOADS_COLUMNS;" +
   "\nthis.DOWNLOADS_BULK_ACTIONS = DOWNLOADS_BULK_ACTIONS;" +
   "\nthis.DOWNLOADS_MISSING_LABEL = DOWNLOADS_MISSING_LABEL;";
@@ -158,18 +160,18 @@ test("detail pane carries proof, target, verification and history", () => {
   const detail = downloadsDetail(imported, [{ at: "2026-11-12T09:59:00Z", text: "Import started" }]);
   assert.deepEqual(Array.from(detail.sections, (s) => s.key), ["proof", "target", "verification", "history"]);
   const section = (key) => detail.sections.find((s) => s.key === key);
-  assert.deepEqual(plain(section("target").facts), [["Volume", "Not reported"], ["Path", "/Volumes/NAS/Movies/Imported Film (2020)"]]);
-  assert.deepEqual(Array.from(section("verification").facts, (f) => f[0]), ["Method", "Verified"]);
+  assert.deepEqual(plain(section("target").facts), [["Volume", "Not recorded"], ["Path", "/Volumes/NAS/Movies/Imported Film (2020)"]]);
+  assert.deepEqual(Array.from(section("verification").facts, (f) => f[0]), ["Method", "Verified at"]);
   assert.equal(section("verification").facts[0][1], "SHA-256 hash");
   assert.match(section("verification").facts[1][1], /2026/);
   assert.equal(section("history").events.length, 1);
   assert.equal(section("history").events[0].text, "Import started");
   assert.match(section("history").events[0].when, /2026/);
   assert.equal(detail.facts.find((f) => f[0] === "Size")[1], "Size not reported");
-  assert.equal(detail.facts.find((f) => f[0] === "Source")[1], "App not verified");
+  assert.equal(detail.facts.find((f) => f[0] === "Source")[1], "Not verified");
 
   const missing = downloadsDetail(oldShow);
-  assert.equal(missing.sections.find((s) => s.key === "verification").facts[0][1], "Not verified");
+  assert.equal(missing.sections.find((s) => s.key === "verification").facts[0][1], "Not verified yet");
   assert.equal(missing.sections.find((s) => s.key === "verification").facts[1][1], "Not yet");
   assert.equal(missing.sections.find((s) => s.key === "history").empty, "No history reported yet.");
   assert.equal(missing.sections.find((s) => s.key === "proof").facts[0][1], DOWNLOADS_MISSING_LABEL);
