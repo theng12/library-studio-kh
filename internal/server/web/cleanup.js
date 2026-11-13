@@ -136,7 +136,7 @@ function cleanupRender(status) {
     if ((item.blocked || []).length) proposed.append(mediaNode("p", item.blocked.join(" "), "muted"));
     const actions = mediaNode("td", null, "cleanup-actions");
     actions.dataset.label = "Actions";
-    const proof = mediaNode("button", "Proof", "small");
+    const proof = mediaNode("button", "Show proof", "small");
     proof.type = "button";
     proof.setAttribute("aria-label", "Show import proof for " + (item.name || "this download"));
     proof.addEventListener("click", () => cleanupProof(item));

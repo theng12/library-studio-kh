@@ -30,6 +30,7 @@ func main() {
 	hashOf := func(short string) string { return strings.Repeat(short, 20) }
 	var mu sync.Mutex
 	paused := map[string]bool{}
+	removed := map[string]bool{} // metadata-only removals, like qBittorrent's delete with files off
 	done := func(hash, name string, size float64, added, finished float64) map[string]any {
 		state := "stalledUP"
 		if paused[hashOf(hash)] {
@@ -99,7 +100,7 @@ func main() {
 			case "sonarr":
 				records = []map[string]any{{"downloadId": hashOf("A1"), "seriesId": 1}, {"downloadId": hashOf("A6"), "seriesId": 1}}
 			case "radarr":
-				records = []map[string]any{{"downloadId": hashOf("A7"), "movieId": 1}}
+				records = []map[string]any{{"downloadId": hashOf("A7"), "movieId": 1}, {"downloadId": uiHash("c2"), "movieId": 2}}
 			case "lidarr":
 				records = []map[string]any{{"downloadId": hashOf("A8"), "artistId": 1}}
 			}
@@ -195,7 +196,19 @@ func main() {
 			if *uiOnly {
 				base = nil // the headless UI sees only its own fixture rows
 			}
-			json.NewEncoder(w).Encode(append(base, ui.torrents()...))
+			uiRows := []map[string]any{}
+			for _, t := range ui.torrents() {
+				if !removed[strings.ToUpper(t["hash"].(string))] {
+					uiRows = append(uiRows, t)
+				}
+			}
+			json.NewEncoder(w).Encode(append(base, uiRows...))
+			return
+		}
+		if p == "/api/v2/torrents/delete" {
+			for _, hash := range strings.Split(r.FormValue("hashes"), "|") {
+				removed[strings.ToUpper(hash)] = true
+			}
 			return
 		}
 		if p == "/api/v2/torrents/add" {

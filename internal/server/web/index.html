@@ -309,6 +309,13 @@
         </div>
       </header>
       <div class="page-body">
+      <section class="card">
+        <div class="card-head"><h2>Cleanup status</h2><p>Preview verifies files and shows the next proposed action without changing them. Nothing is deleted for good without its full staged wait.</p></div>
+        <div class="card-body">
+          <p id="cleanup-msg" role="status"></p>
+          <div id="cleanup-status"></div>
+        </div>
+      </section>
       <form id="cleanup-form" class="panel prose">
         <h2>Local copies after import</h2>
         <label class="switch"><input type="checkbox" name="stagedCleanupOn" role="switch"> Enable staged cleanup</label>
@@ -334,13 +341,6 @@
         <p id="cleanup-effect" class="cleanup-effect" role="status">A verified copy leaves the download folder after 3 days, Library’s _trash after 3 more, and the system Trash after 30.</p>
         <div class="actions"><button type="submit" class="primary" id="cleanup-save">Save cleanup policy</button><p id="cleanup-save-msg" class="msg" role="status"></p></div>
       </form>
-      <section class="card">
-        <div class="card-head"><h2>Cleanup status</h2><p>Preview verifies files and shows the next proposed action without changing them. Nothing is deleted for good without its full staged wait.</p></div>
-        <div class="card-body">
-          <p id="cleanup-msg" role="status"></p>
-          <div id="cleanup-status"></div>
-        </div>
-      </section>
       <div id="companion-settings"></div>
       </div>
       </div>

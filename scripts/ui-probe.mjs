@@ -19,7 +19,8 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 const PORT = Number(process.env.UI_PROBE_PORT || 9333);
-const pidFile = join(tmpdir(), "library-ui-probe.pid");
+const pidFile = join(tmpdir(), (process.env.UI_PROBE_PROFILE || "library-ui-probe") + ".pid");
+const profileDir = join(tmpdir(), process.env.UI_PROBE_PROFILE || "library-ui-probe-profile");
 const shell = join(homedir(), "Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -132,7 +133,7 @@ async function main() {
     }
     const child = spawn(shell, [
       "--headless", `--remote-debugging-port=${PORT}`,
-      "--user-data-dir=" + join(tmpdir(), "library-ui-probe-profile"),
+      "--user-data-dir=" + profileDir,
       "--no-first-run", "--no-default-browser-check", "--disable-gpu",
       "--disable-background-networking", "about:blank",
     ], { detached: true, stdio: "ignore" });

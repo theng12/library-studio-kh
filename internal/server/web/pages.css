@@ -140,7 +140,7 @@
 .libgrid-detail-head { display: flex; align-items: flex-start; gap: 0.75rem; min-width: 0; }
 .libgrid-detail-title { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 1.05rem; line-height: 1.3; overflow-wrap: anywhere; }
 .libgrid-close { flex: none; min-height: 2rem; padding: 0 0.65rem; }
-.libgrid-detail > .libgrid-poster { width: min(10rem, 45%); }
+.libgrid-detail > .libgrid-poster { width: 9rem; height: 13.5rem; aspect-ratio: auto; }
 .libgrid-overview { margin: 0; color: var(--ink-2); font-size: var(--text-sm); overflow-wrap: anywhere; }
 .libgrid-overview.is-muted { color: var(--muted); }
 .libgrid-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.35rem 1rem; margin: 0; font-size: var(--text-sm); }
@@ -340,7 +340,7 @@
 .downloads-panel .dlp-actions button { padding: 0 0.5rem; }
 
 /* The companion-app card spans the General tab so its six apps sit 3-4 across. */
-#settings-tabs .tabpanel > .card:has(#arr-fields) { grid-column: 1 / -1; }
+#settings-tabs .tabpanel > .card:has(#arr-fields) { grid-column: 1 / -1; order: 9; }
 #arr-fields fieldset:has(.check) { grid-column: span 2; }
 
 /* Companion card: the qBittorrent fields sit three across, then the app grid. */

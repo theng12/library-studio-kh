@@ -98,6 +98,8 @@ func sonarrLibrary(t *testing.T, historyUp bool) *httptest.Server {
 		switch r.URL.Path {
 		case "/api/v3/series":
 			json.NewEncoder(w).Encode(series)
+		case "/api/v3/queue":
+			json.NewEncoder(w).Encode(map[string]any{"page": 1, "totalRecords": 0, "records": []map[string]any{}})
 		case "/api/v3/history":
 			if !historyUp {
 				http.Error(w, "down", http.StatusServiceUnavailable)
@@ -235,5 +237,41 @@ func TestVolumeName(t *testing.T) {
 		if got := volumeName(in); got != want {
 			t.Errorf("volumeName(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestInventoryShowsActiveWorkAsImportingOrDownloading(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/series":
+			json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 1, "title": "Fresh Show", "statistics": map[string]any{"episodeFileCount": 0}},
+				{"id": 2, "title": "Moving Show", "statistics": map[string]any{"episodeFileCount": 2}},
+			})
+		case "/api/v3/history":
+			json.NewEncoder(w).Encode(map[string]any{"page": 1, "totalRecords": 0, "records": []map[string]any{}})
+		case "/api/v3/queue":
+			json.NewEncoder(w).Encode(map[string]any{"page": 1, "totalRecords": 2, "records": []map[string]any{
+				{"downloadId": hashC, "seriesId": 1},
+				{"downloadId": hashD, "seriesId": 2},
+			}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	items, problems := Inventory(config.Config{Sonarr: config.App{URL: srv.URL, APIKey: "k"}}, t.TempDir(), nil)
+	if len(problems) != 0 || len(items) != 2 {
+		t.Fatalf("items %d, problems %v", len(items), problems)
+	}
+	by := map[string]Item{}
+	for _, it := range items {
+		by[it.Title] = it
+	}
+	if got := by["Fresh Show"].Status; got != "downloading" {
+		t.Fatalf("a queued show with no files reads %q, want downloading", got)
+	}
+	if got := by["Moving Show"].Status; got != "importing" {
+		t.Fatalf("a queued show whose files exist reads %q, want importing", got)
 	}
 }

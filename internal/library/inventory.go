@@ -95,6 +95,21 @@ func Inventory(c config.Config, home string, meta *metadata.Client) ([]Item, []s
 			}
 		}
 	}
+	// An app still handling the media is the current truth, so a moving or
+	// downloading item never reads as a finished copy on disk.
+	queued := map[string]bool{}
+	for _, a := range arrs(c) {
+		entries, err := a.QueueEntries()
+		if err != nil {
+			problems = append(problems, err.Error())
+			continue
+		}
+		for _, e := range entries {
+			if e.MediaID > 0 {
+				queued[proofKey(a.Name, e.MediaID)] = true
+			}
+		}
+	}
 	items := make([]Item, 0, len(media))
 	for _, m := range media {
 		it := Item{ID: strconv.Itoa(m.ID), MediaID: m.ID, App: m.App, Title: m.Title, Year: m.Year, Genres: m.Genres, Overview: m.Overview, Kind: "library"}
@@ -109,6 +124,10 @@ func Inventory(c config.Config, home string, meta *metadata.Client) ([]Item, []s
 			}
 		}
 		switch {
+		case queued[proofKey(m.App, m.ID)] && m.HaveFiles:
+			it.Status = "importing"
+		case queued[proofKey(m.App, m.ID)]:
+			it.Status = "downloading"
 		case m.HaveFiles && proven && rec != nil && rec.State == phaseRemoved:
 			it.Status = "moved"
 		case m.HaveFiles && proven:

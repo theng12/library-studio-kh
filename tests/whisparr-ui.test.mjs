@@ -70,7 +70,7 @@ test("Settings renders an OFF switch and keeps keys empty while preserving saved
   c.buildArrFields();
   assert.match(rendered, /name="whisparrOn"/);
   assert.match(rendered, /name="whisparr\.apiKey" type="password"[^>]+data-secret="whisparr"/);
-  assert.match(rendered, /Installation and first-run compatibility remain unverified/);
+  assert.match(rendered, /off by default; first-run support unverified/);
   c.current = { settings: { qbittorrent: { url: "", username: "" }, downloadPath: "", libraryPath: "", whisparrOn: false, whisparr: { url: "http://mock.invalid" } }, saved: { whisparr: true } };
   c.fillForm(c.current);
   assert.equal(fields.whisparrOn.checked, false);
