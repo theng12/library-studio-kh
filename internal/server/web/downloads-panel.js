@@ -204,7 +204,7 @@ function downloadsFilters(items) {
 }
 
 function downloadsEmpty(all, rows, filter, query) {
-  if (!all.length) return { message: "No downloads right now. New downloads appear here while they run.", action: null };
+  if (!all.length) return { message: "No downloads right now. New downloads appear here while they run.", action: { key: "find", label: "Find & add" } };
   if (!rows.length) {
     return {
       message: String(query || "").trim() ? "No downloads match this search." : "No downloads match this filter.",
@@ -341,6 +341,7 @@ function downloadsPanelRender(root, model, handlers) {
   const bulk = dlpEl("div", null, "dlp-bulk");
   bulk.setAttribute("role", "group");
   bulk.setAttribute("aria-label", "Selected downloads");
+  if (model.bulk.count === 0) bulk.dataset.idle = "1";
   const bulkStatus = dlpEl("span", model.bulk.statusText, "dlp-count");
   bulkStatus.setAttribute("aria-live", "polite");
   bulk.append(bulkStatus);
@@ -495,6 +496,7 @@ function downloadsDetailRender(container, detail, onClose) {
     head.append(image);
   }
   const heading = dlpEl("h2", detail.title);
+  heading.id = "downloads-detail-title";
   head.append(heading, dlpEl("span", detail.status.label, "badge dlp-tone-" + detail.status.tone));
   if (typeof onClose === "function") {
     const close = dlpButton("Close");

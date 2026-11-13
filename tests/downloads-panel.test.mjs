@@ -118,7 +118,7 @@ test("empty states say what happened and name the next step", () => {
   assert.equal(none.rows.length, 0);
   assert.equal(none.countText, "No downloads");
   assert.match(none.empty.message, /No downloads right now/);
-  assert.equal(none.empty.action, null);
+  assert.deepEqual({ ...none.empty.action }, { key: "find", label: "Find & add" });
 
   // Only imported+verified rows: Downloads is empty, not full of stale 0% rows.
   const settled = downloadsModel([imported]);
@@ -257,5 +257,5 @@ test("render shows the empty state with its next-step action", () => {
   downloadsPanelRender(noRows, downloadsModel([]), {});
   const blank = findOne(noRows, hasClass("dlp-empty"));
   assert.match(blank.textContent, /No downloads right now/);
-  assert.equal(findAll(blank, (n) => n.tag === "button").length, 0);
+  assert.deepEqual(findAll(blank, (n) => n.tag === "button").map((b) => b.textContent), ["Find & add"]);
 });

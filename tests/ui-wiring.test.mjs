@@ -41,7 +41,7 @@ test("Cleanup keeps actions visible and shows import proof", () => {
   assert.match(cleanup, /"table-wrap"/);
   assert.match(cleanup, /"page-table list"/);
   assert.match(cleanup, /"Actions"/);
-  assert.match(cleanup, /cleanupProof\(item\)/);
+  assert.match(cleanup, /cleanupProof\(item, proof\)/);
   assert.match(cleanup, /dataset\.cleanupRestore/);
   assert.match(cleanup, /Nothing is deleted for good/);
   assert.match(cleanup, /cleanup-effect/);

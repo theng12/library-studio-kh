@@ -257,6 +257,14 @@ function renderActivity() {
     openSettings.textContent = "Settings";
     openSettings.addEventListener("click", () => show("settings"));
     empty.append(document.createTextNode(" "), openSettings);
+  } else if (!all.length) {
+    // A connected first run: say what to do next instead of only what will happen.
+    const find = document.createElement("button");
+    find.type = "button";
+    find.className = "inline";
+    find.textContent = "Find & add something";
+    find.addEventListener("click", () => show("find"));
+    empty.append(document.createTextNode(" "), find);
   }
   $("#timeline").replaceChildren(...entries.map((e) => {
     const li = document.createElement("li");
@@ -434,9 +442,12 @@ function renderLibraryPage() {
   const searchFocus = focused?.id === "lib-q" ? focused.selectionStart : null;
   const rowFocus = focused?.closest?.("[data-key]")?.dataset.key || null;
   const wasFilters = focused?.classList?.contains("libgrid-filters-toggle") || false;
-  $("#browse-lede").textContent = lib.items.length
+  const unverified = lib.items.filter((item) =>
+    /^(copied|moved)$/.test(item.status || "") && !(item.verified === "hash" || item.verified === "size")).length;
+  $("#browse-lede").textContent = (lib.items.length
     ? lib.items.length + (lib.items.length === 1 ? " item" : " items") + " across Sonarr, Radarr and Lidarr. Status and proof come from import records."
-    : "Everything Sonarr, Radarr and Lidarr look after.";
+    : "Everything Sonarr, Radarr and Lidarr look after.")
+    + (unverified ? " " + unverified + (unverified === 1 ? " imported copy has" : " imported copies have") + " no verification proof yet — open one and choose Verify with Cleanup." : "");
   const notice = $("#browse-notice");
   const noticeText = [...lib.problems, lib.metadata].filter(Boolean).join(" ");
   notice.hidden = !noticeText;
@@ -738,6 +749,7 @@ document.addEventListener("click", (ev) => {
   if (!ev.target.closest?.(".tab")) return;
   const msg = $("#settings-save-msg");
   if (msg) msg.textContent = "";
+  settingsCardsForPhone();
 });
 
 // Cmd/Ctrl+F focuses the current screen's search, on every browser and system.
@@ -848,7 +860,10 @@ function renderDownloadsPage() {
     open: (row) => { dl.openKey = dl.openKey === row.key ? null : row.key; renderDownloadsPage(); },
     action: (row, key) => { if (key === "reveal") revealDownload(row.hash); else downloadAction([row.hash], key); },
     bulk: (key) => downloadAction([...dl.selected], key),
-    emptyAction: () => { dl.filter = "all"; dl.query = ""; renderDownloadsPage(); },
+    emptyAction: (key) => {
+      if (key === "find") { show("find"); return; }
+      dl.filter = "all"; dl.query = ""; renderDownloadsPage();
+    },
   };
   downloadsPanelRender(host, model, handlers);
   // Say so only when the table really needs sideways scrolling, after layout settles.
@@ -858,16 +873,11 @@ function renderDownloadsPage() {
   $("#dl-page-status").textContent = baseStatus;
   const scrollBox = host.querySelector(".table-scroll");
   requestAnimationFrame(() => {
-    // Only where the table is genuinely wider than its frame (phones/tablets);
-    // at desktop width the full table fits and a scroll hint would be false.
-    const scrolls = window.innerWidth < 1000 && scrollBox && scrollBox.scrollWidth > scrollBox.clientWidth + 1;
-    if (scrolls && $("#dl-page-status").textContent === baseStatus) {
-      $("#dl-page-status").textContent = baseStatus + " · Scroll sideways for more columns.";
-      // Re-check once the web fonts and table have settled; never leave a false hint.
-      setTimeout(() => {
-        if (!scrollBox || scrollBox.scrollWidth <= scrollBox.clientWidth + 1) $("#dl-page-status").textContent = baseStatus;
-      }, 500);
-    }
+    // Only the tablet widths, where the table is genuinely wider than its frame.
+    // A hint left over from another width is removed, never left standing.
+    const tablet = window.innerWidth >= 761 && window.innerWidth < 1000;
+    const scrolls = tablet && scrollBox && scrollBox.scrollWidth > scrollBox.clientWidth + 1;
+    $("#dl-page-status").textContent = scrolls ? baseStatus + " · Scroll sideways for more columns." : baseStatus;
   });
   const notice = $("#dl-notice");
   const noticeText = [dl.problems, dl.metadata].filter(Boolean).join(" ");
@@ -904,8 +914,11 @@ $("#downloads-detail").addEventListener("close", () => {
   const key = dl.openKey;
   dl.openKey = null;
   renderDownloadsPage();
-  const back = document.querySelector('#dl tr[data-key="' + CSS.escape(key) + '"] .dlp-open');
-  (back || $("#dl-q"))?.focus();
+  // After the dialog's own focus restoration settles, land on the row.
+  requestAnimationFrame(() => {
+    const back = document.querySelector('#dl tr[data-key="' + CSS.escape(key) + '"] .dlp-open');
+    (back || $("#dl-q"))?.focus();
+  });
 });
 
 // Remove and Clear change qBittorrent's list, so they ask in Library's own
@@ -919,7 +932,9 @@ function confirmDownloadAction(action, hashes) {
   return new Promise((resolve) => {
     const dialog = document.createElement("dialog");
     dialog.className = "confirm";
+    dialog.setAttribute("aria-labelledby", "confirm-title");
     const heading = document.createElement("h2");
+    heading.id = "confirm-title";
     heading.textContent = verb + " " + who + " from qBittorrent?";
     const text = document.createElement("p");
     text.textContent = action === "clear"
@@ -1298,8 +1313,19 @@ $("#close-public-help").addEventListener("click", () => {
 });
 
 // Settings is four tabs of self-contained cards; the module owns the markup.
+// Settings cards: open on desktop; on a phone one card at a time keeps the page
+// within the window instead of one long scroll.
+function settingsCardsForPhone() {
+  const narrow = window.matchMedia("(max-width: 700px)").matches;
+  for (const panel of document.querySelectorAll("#settings-tabs .tabpanel")) {
+    [...panel.querySelectorAll(":scope > .settings-card")].forEach((card, i) => { card.open = !narrow || i === 0; });
+  }
+}
+window.matchMedia?.("(max-width: 700px)").addEventListener?.("change", settingsCardsForPhone);
+
 if (window.librarySettingsView) {
   window.librarySettingsApi = window.librarySettingsView.mountSettingsTabs($("#settings-tabs"));
+  settingsCardsForPhone();
   const cardCheck = $("#updates-check"), cardOpen = $("#updates-open");
   if (cardCheck) cardCheck.addEventListener("click", () => $("#check-updates").click());
   if (cardOpen) cardOpen.addEventListener("click", () => $("#open-update").click());
@@ -1309,6 +1335,14 @@ if (window.librarySettingsView) {
 buildArrFields();
 window.libraryKeyboard(document);
 start();
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (!$("#view-downloads").hidden) renderDownloadsPage();
+  }, 250);
+});
+
 setInterval(() => {
   if (!$("#app-shell").hidden && $("#view-settings").hidden) {
     load();

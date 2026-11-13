@@ -9,6 +9,7 @@ let cleanupBusy = false;
 let cleanupState = null;
 let cleanupSerial = 0;
 let cleanupFocus = null; // where focus goes after a row action re-renders the table
+let cleanupProofReturn = null; // the Show proof control that opened the dialog
 
 function cleanupPolicy(form) {
   const patch = { stagedCleanupOn: form.elements.stagedCleanupOn.checked, pressureBypassRetention: !!form.elements.pressureBypassRetention?.checked, managedTrashPath: form.elements.managedTrashPath.value.trim() };
@@ -74,7 +75,8 @@ function cleanupDaysLeft(due) {
   return days === 1 ? "1 day left" : days + " days left";
 }
 
-function cleanupProof(item) {
+function cleanupProof(item, opener) {
+  cleanupProofReturn = opener || null;
   const dialog = $("#cleanup-proof");
   facts($("#cleanup-proof-facts"), [
     ["Download", item.name || "Not reported"],
@@ -147,7 +149,8 @@ function cleanupRender(status) {
     const proof = mediaNode("button", "Show proof", "small");
     proof.type = "button";
     proof.setAttribute("aria-label", "Show import proof for " + (item.name || "this download"));
-    proof.addEventListener("click", () => cleanupProof(item));
+    proof.dataset.cleanupProof = item.hash;
+    proof.addEventListener("click", () => cleanupProof(item, proof));
     actions.append(proof);
     if (item.phase === "staging") {
       // Moves the copy into Library's _trash now, still recoverable there.
@@ -234,6 +237,15 @@ $("#cleanup-preview").addEventListener("click", () => cleanupAction("preview"));
 $("#cleanup-run").addEventListener("click", () => cleanupAction("run"));
 $("#cleanup-form").addEventListener("input", cleanupEffect);
 $("#cleanup-proof .close").addEventListener("click", () => $("#cleanup-proof").close());
+// Native restoration can land inside a dialog whose row was re-rendered; put
+// focus back on the control that opened it.
+$("#cleanup-proof").addEventListener("close", () => {
+  requestAnimationFrame(() => {
+    if (cleanupProofReturn && cleanupProofReturn.isConnected) cleanupProofReturn.focus();
+    else document.querySelector("[data-cleanup-proof]")?.focus();
+    cleanupProofReturn = null;
+  });
+});
 $("#cleanup-proof").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); });
 $("#cleanup-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();

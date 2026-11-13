@@ -30,7 +30,7 @@ const SETTINGS_CARDS = {
       title: "Folders",
       fields: [
         { kind: "text", name: "downloadPath", label: "Download folder on this computer", placeholder: "Used to show free space" },
-        { kind: "text", name: "libraryPath", label: "Library folder on the NAS", placeholder: "Used to check the NAS is reachable" },
+        { kind: "text", name: "libraryPath", label: "Library folder", placeholder: "The folder your library apps import into" },
       ],
     },
     {
@@ -189,8 +189,10 @@ function settingsBuildField(doc, field, savedSlots) {
 function settingsBuildCard(doc, card, savedSlots) {
   const body = settingsEl(doc, "div", { class: "card-body" });
   for (const field of card.fields) for (const node of settingsBuildField(doc, field, savedSlots)) body.append(node);
-  return settingsEl(doc, "section", { class: "card", id: "settings-card-" + card.id },
-    settingsEl(doc, "header", { class: "card-head" },
+  // A native disclosure: open on desktop, and on a phone the page shows one
+  // card at a time so Settings never becomes a long scroll.
+  return settingsEl(doc, "details", { class: "card settings-card", id: "settings-card-" + card.id, open: true },
+    settingsEl(doc, "summary", { class: "card-head" },
       settingsEl(doc, "h2", { text: card.title }),
       card.hint ? settingsEl(doc, "p", { text: card.hint }) : null),
     body);

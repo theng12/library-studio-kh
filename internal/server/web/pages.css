@@ -294,6 +294,12 @@
 .downloads-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap-card); align-items: start; min-width: 0; }
 
 @media (min-width: 761px) {
+  /* The title stays in view when the table scrolls: it is the row's identity,
+     more useful pinned than the leading checkbox. */
+  .downloads-panel .downloads-table th:first-child,
+  .downloads-panel .downloads-table td:first-child { position: static; }
+  .downloads-panel .downloads-table th[data-column="title"],
+  .downloads-panel .downloads-table td.dlp-title { position: sticky; left: 0; z-index: 2; background: var(--panel); }
   .downloads-table th, .downloads-table td { padding: 0.5rem 0.6rem; }
   .downloads-table th:first-child, .downloads-table td:first-child { padding-left: 0.9rem; width: 1px; }
   .dlp-row td { vertical-align: middle; }
@@ -322,6 +328,8 @@
   .downloads-panel .dlp-progress { max-width: 9rem; }
 }
 @media (max-width: 760px) {
+  /* An empty selection bar is 135px of nothing above the first row. */
+  .dlp-bulk[data-idle="1"] { display: none; }
   /* Stacked rows have the full card width; the dense desktop column caps would clip them. */
   .downloads-panel .downloads-table td.dlp-title,
   .downloads-panel .downloads-table td.dlp-status,
@@ -391,8 +399,14 @@
 .cleanup-companions[open] > summary::before { content: "▾"; }
 .cleanup-companions[open] { padding-bottom: 0.9rem; }
 
-/* The companion-app card spans the General tab so its six apps sit 3-4 across. */
-#settings-tabs .tabpanel > .card:has(#arr-fields) { grid-column: 1 / -1; order: 9; }
+/* Settings cards are native disclosures; their heads are the summaries. */
+.settings-card > summary.card-head { cursor: pointer; }
+.settings-card > summary::-webkit-details-marker { display: none; }
+.settings-card > summary { list-style: none; }
+@media (max-width: 700px) {
+  .settings-card > summary.card-head::after { content: "▸"; margin-left: auto; color: var(--muted); }
+  .settings-card[open] > summary.card-head::after { content: "▾"; }
+}
 
 /* Companion card: the qBittorrent fields sit three across, then the app grid. */
 .card-body:has(> #arr-fields) { grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
@@ -411,7 +425,7 @@
 .downloads-panel .dlp-progress .dlp-pct,
 .downloads-panel .dlp-progress .dlp-speed,
 .downloads-panel .dlp-progress .dlp-eta { white-space: nowrap; }
-.downloads-panel .dlp-progress .dlp-pct + span { margin-left: 0.35rem; }
+.downloads-panel .dlp-progress > span + span { margin-left: 0.35rem; }
 
 /* The Downloads proof and the in-app confirm are modal dialogs. */
 dialog.dlp-dialog, dialog.confirm {
