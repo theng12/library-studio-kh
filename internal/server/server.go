@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -70,6 +71,7 @@ func (s *Server) Handler() http.Handler {
 	s.RegisterCompanionSettings(mux)
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/host-proof", s.hostProof)
+	mux.HandleFunc("GET /api/poster", s.poster)
 	mux.HandleFunc("GET /api/update/check", s.updateCheck)
 	mux.HandleFunc("POST /api/update/open", s.openUpdater)
 	static, _ := fs.Sub(web, "web")
@@ -229,6 +231,41 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		"remote":    s.RemoteStatus(),
 		"localUrl":  s.LocalURL,
 	})
+}
+
+// poster serves one cached poster image by file name. Only files directly in the
+// metadata poster cache are reachable; paths, traversal and other names are refused.
+func (s *Server) poster(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.URL.Query().Get("path"))
+	if name == "" || name != filepath.Base(name) || strings.HasPrefix(name, ".") {
+		http.Error(w, "No such poster.", http.StatusNotFound)
+		return
+	}
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".jpg", ".jpeg", ".png", ".webp":
+	default:
+		http.Error(w, "No such poster.", http.StatusNotFound)
+		return
+	}
+	path := filepath.Join(s.Home, "metadata", "posters", name)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		http.Error(w, "No such poster.", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", mimeByExt(name))
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	_, _ = w.Write(b)
+}
+
+func mimeByExt(name string) string {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".png":
+		return "image/png"
+	case ".webp":
+		return "image/webp"
+	}
+	return "image/jpeg"
 }
 
 // updateCheck reads the shared KH feed; it never downloads or installs.
