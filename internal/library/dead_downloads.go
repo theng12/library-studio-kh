@@ -2,6 +2,7 @@ package library
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -187,6 +188,85 @@ func SweepDead(c config.Config, home string, now time.Time, execute bool) ([]Dea
 	}
 	if err := saveDeadState(home, state); err != nil {
 		problems = append(problems, "Dead-download state could not be saved: "+err.Error())
+	}
+	return removed, problems, nil
+}
+
+// ArrRemoval is a dead download that still sits in a library app's queue, so
+// the app would keep retrying it. Only that queue row is removed.
+type ArrRemoval struct {
+	App        string    `json:"app"`
+	Title      string    `json:"title"`
+	Hash       string    `json:"hash"`
+	SavePath   string    `json:"savePath"`
+	QueueID    int       `json:"queueId"`
+	EligibleAt time.Time `json:"eligibleAt,omitempty"`
+}
+
+// DeadArrQueued lists dead downloads still waiting in an app queue. Every app
+// that is connected must answer: one unreadable queue means nothing is listed,
+// so the caller never acts on a partial picture.
+func DeadArrQueued(c config.Config, home string, now time.Time) ([]ArrRemoval, []string, error) {
+	cands, _, err := DeadDownloads(c, home, now)
+	if err != nil {
+		return nil, nil, err
+	}
+	byHash := map[string]DeadCandidate{}
+	for _, cand := range cands {
+		byHash[cand.Hash] = cand
+	}
+	out := []ArrRemoval{}
+	problems := []string{}
+	for _, a := range arrs(c) {
+		entries, err := a.QueueEntries()
+		if err != nil {
+			problems = append(problems, a.Name+" queue could not be read: "+err.Error())
+			continue
+		}
+		for _, e := range entries {
+			cand, ok := byHash[strings.ToUpper(e.DownloadID)]
+			if !ok || e.ID <= 0 {
+				continue
+			}
+			out = append(out, ArrRemoval{App: a.Name, Title: cand.Name, Hash: cand.Hash, SavePath: cand.SavePath, QueueID: e.ID, EligibleAt: cand.EligibleAt})
+		}
+	}
+	if len(problems) > 0 {
+		return nil, problems, errors.New("at least one app queue could not be read, so nothing is listed")
+	}
+	return out, nil, nil
+}
+
+// SweepDeadArr removes the queue row of a dead, unimported download once the
+// grace has passed. It removes from the app's queue only: files, history and
+// library records stay, and the release is never blocklisted.
+func SweepDeadArr(c config.Config, home string, now time.Time, execute bool) ([]ArrRemoval, []string, error) {
+	if !c.DeadArrCleanupOn {
+		return nil, nil, nil
+	}
+	items, problems, err := DeadArrQueued(c, home, now)
+	if err != nil {
+		return nil, problems, err
+	}
+	removed := []ArrRemoval{}
+	for _, item := range items {
+		if item.EligibleAt.IsZero() || now.Before(item.EligibleAt) {
+			continue
+		}
+		removed = append(removed, item)
+		if !execute {
+			continue
+		}
+		a, err := arr(c, item.App)
+		if err != nil {
+			problems = append(problems, err.Error())
+			continue
+		}
+		if err := a.RemoveQueue(item.QueueID); err != nil {
+			problems = append(problems, item.App+" could not remove its queue row for "+item.Title+": "+err.Error())
+			continue
+		}
+		RecordEvent(home, Item{ID: item.Hash, Kind: "download-arr-removed", Title: item.Title, App: item.App, SourcePath: item.SavePath, When: now})
 	}
 	return removed, problems, nil
 }

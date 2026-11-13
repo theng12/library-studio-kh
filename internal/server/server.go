@@ -67,6 +67,11 @@ func New(store *config.Store, home string) *Server {
 func (s *Server) RunCleanup() {
 	s.runStagedCleanup()
 	c := s.Store.Get()
+	if c.DeadArrCleanupOn {
+		// The app queue row goes first, while the item is still visible to the arr.
+		removed, problems, err := library.SweepDeadArr(c, s.Home, s.Now(), true)
+		log.Printf("downloads: arr dead sweep removed=%d problems=%q err=%v", len(removed), strings.Join(problems, " "), err)
+	}
 	if !c.DeadCleanupOn {
 		return
 	}

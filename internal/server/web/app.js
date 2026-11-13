@@ -203,6 +203,9 @@ function activityLabel(it) {
   if (status === "download-dead-removed") {
     return { outcome: "removed", label: "Removed torrent · files stayed", detail: it.sourcePath ? "Still on disk at " + libraryGridBreakPath(it.sourcePath) : "", at: it.when || null };
   }
+  if (status === "download-arr-removed") {
+    return { outcome: "removed", label: "Removed from " + (it.app || "app") + " queue · files stayed", detail: it.sourcePath ? "Still on disk at " + libraryGridBreakPath(it.sourcePath) : "", at: it.when || null };
+  }
   if (status === "downloading" || status === "queued" || status === "stalled") {
     const word = torrentStateWord(it.state);
     const broken = word === "Missing files" || /error/i.test(it.state || "");
@@ -724,6 +727,7 @@ function fillForm(st) {
   f.whisparrOn.checked = !!c.whisparrOn;
   f.deadCleanupOn.checked = !!c.deadCleanupOn;
   f.deadCleanupHours.value = c.deadCleanupHours || 24;
+  f.deadArrCleanupOn.checked = !!c.deadArrCleanupOn;
   f.downloadPath.value = c.downloadPath;
   f.libraryPath.value = c.libraryPath;
   f["qbittorrent.url"].value = c.qbittorrent.url;
@@ -1166,6 +1170,17 @@ async function loadDeadSummary() {
       : "Off · " + (n ? n + " dead download" + (n === 1 ? " matches" : "s match") + " the rule; nothing is removed while off" : "no dead downloads match right now"))
       + (when && n ? " · next eligible " + when : "")
       + ". Removes the torrent entry only. Files on disk are never deleted.";
+    const arrLine = $("#dead-arr-status");
+    if (arrLine) {
+      const arr = d.arr || {};
+      const n = (arr.items || []).length;
+      const r = arr.ready || 0;
+      arrLine.textContent = (arr.on
+        ? "On · " + (r ? r + " dead item" + (r === 1 ? "" : "s") + " can be removed from the app queues now" : n ? n + " dead item" + (n === 1 ? " is" : "s are") + " waiting in the arr queues for its grace" : "no dead items are waiting in the arr queues")
+        : "Off · " + (n ? n + " dead item" + (n === 1 ? " is" : "s are") + " waiting in the arr queues; nothing is removed while off" : "no dead items are waiting in the arr queues"))
+        + (arr.problems && arr.problems.length ? " · " + arr.problems.join(" ") : "")
+        + ". Removes only the app's queue row; the release is never blocklisted and files, history and library records are untouched.";
+    }
   } catch (e) {
     line.textContent = e.message || "The dead-download state could not be read.";
   }
@@ -1364,6 +1379,7 @@ $("#form").addEventListener("submit", async (ev) => {
     appearance: f.querySelector('input[name="appearance"]:checked')?.value || "system",
     tailscaleOn: f.tailscaleOn.checked, tailscalePort: Number(f.tailscalePort.value),
     deadCleanupOn: f.deadCleanupOn.checked, deadCleanupHours: Number(f.deadCleanupHours.value),
+    deadArrCleanupOn: f.deadArrCleanupOn.checked,
     bazarrOn: f.bazarrOn.checked, whisparrOn: f.whisparrOn.checked,
     downloadPath: f.downloadPath.value.trim(), libraryPath: f.libraryPath.value.trim(),
     qbittorrent: { url: f["qbittorrent.url"].value.trim(), username: f["qbittorrent.username"].value.trim(), password: f["qbittorrent.password"].value },

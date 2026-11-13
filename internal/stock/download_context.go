@@ -11,6 +11,7 @@ import (
 // media ID (series/movie/artist) that asked for it. MediaID is 0 when the
 // row names no parent; callers must never invent one.
 type QueueEntry struct {
+	ID         int // the app's own queue row id, for its queue removal API
 	DownloadID string
 	MediaID    int
 }
@@ -64,6 +65,7 @@ func (a *Arr) QueueEntries() ([]QueueEntry, error) {
 // versions embed it (series/movie/artist) instead of flattening it.
 func queueEntry(app string, raw json.RawMessage) (QueueEntry, error) {
 	var r struct {
+		ID         int    `json:"id"`
 		DownloadID string `json:"downloadId"`
 		SeriesID   int    `json:"seriesId"`
 		MovieID    int    `json:"movieId"`
@@ -102,5 +104,5 @@ func queueEntry(app string, raw json.RawMessage) (QueueEntry, error) {
 	if id < 0 {
 		id = 0
 	}
-	return QueueEntry{DownloadID: strings.ToUpper(r.DownloadID), MediaID: id}, nil
+	return QueueEntry{ID: r.ID, DownloadID: strings.ToUpper(r.DownloadID), MediaID: id}, nil
 }

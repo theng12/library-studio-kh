@@ -44,6 +44,8 @@ const SETTINGS_CARDS = {
         { kind: "switch", name: "deadCleanupOn", label: "Remove dead downloads automatically" },
         { kind: "number", name: "deadCleanupHours", label: "Grace before removing (hours, 1–168)", min: 1, max: 168, inputmode: "numeric", labelClass: "short" },
         { kind: "slot", id: "dead-cleanup-status", tag: "p", class: "muted", role: "status", text: "Off by default. A dead download is one whose files are missing and that has no import proof. Removes the torrent entry only. Files on disk are never deleted." },
+        { kind: "switch", name: "deadArrCleanupOn", label: "Also remove failed items from the arr queues" },
+        { kind: "slot", id: "dead-arr-status", tag: "p", class: "muted", role: "status", text: "Off by default. Removes only the app’s queue row for a dead item; the release is never blocklisted and files, history and library records are untouched." },
         {
           kind: "details", summary: "Library apps · Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, Whisparr",
           fields: [{ kind: "slot", id: "arr-fields" }],

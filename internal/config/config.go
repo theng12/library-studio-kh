@@ -47,6 +47,9 @@ type Config struct {
 	// import proof. Off by default; removal only touches the entry, never files.
 	DeadCleanupOn    bool `json:"deadCleanupOn"`
 	DeadCleanupHours int  `json:"deadCleanupHours"` // grace, 1–168 hours
+	// Also remove the dead item's row from a library app's queue (never files,
+	// history or library records; no blocklist). Off by default.
+	DeadArrCleanupOn bool `json:"deadArrCleanupOn"`
 	QBit                    QBit    `json:"qbittorrent"`
 	Sonarr                  App     `json:"sonarr"`
 	Radarr                  App     `json:"radarr"`

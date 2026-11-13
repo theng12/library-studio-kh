@@ -183,6 +183,17 @@ func NewArr(name, base, key string) *Arr {
 	return &Arr{Name: name, base: strings.TrimRight(base, "/"), key: key, api: api, c: &http.Client{Timeout: timeout}}
 }
 
+// RemoveQueue removes one row from this app's download queue without touching
+// the download client's files and without blocklisting the release, so a later
+// search may still pick it up. History and library records are never touched.
+func (a *Arr) RemoveQueue(id int) error {
+	if id <= 0 {
+		return fmt.Errorf("%s didn't report a queue id for that download", a.Name)
+	}
+	q := url.Values{"removeFromClient": {"false"}, "blocklist": {"false"}}
+	return a.do("DELETE", fmt.Sprintf("/queue/%d?%s", id, q.Encode()), nil, nil)
+}
+
 func (a *Arr) do(method, path string, body, out any) (err error) {
 	status := 0
 	defer func() {

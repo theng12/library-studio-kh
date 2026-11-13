@@ -99,13 +99,18 @@ func main() {
 			records := []map[string]any{}
 			switch app {
 			case "sonarr":
-				records = []map[string]any{{"downloadId": hashOf("A1"), "seriesId": 1}, {"downloadId": hashOf("A6"), "seriesId": 1}}
+				records = []map[string]any{{"id": 1, "downloadId": hashOf("A1"), "seriesId": 1}, {"id": 2, "downloadId": hashOf("A6"), "seriesId": 1}}
 			case "radarr":
-				records = []map[string]any{{"downloadId": hashOf("A7"), "movieId": 1}, {"downloadId": uiHash("c2"), "movieId": 2}}
+				records = []map[string]any{{"id": 3, "downloadId": hashOf("A7"), "movieId": 1}, {"id": 4, "downloadId": uiHash("c2"), "movieId": 2}}
 			case "lidarr":
-				records = []map[string]any{{"downloadId": hashOf("A8"), "artistId": 1}}
+				records = []map[string]any{{"id": 5, "downloadId": hashOf("A8"), "artistId": 1}}
 			}
 			json.NewEncoder(w).Encode(map[string]any{"records": records, "totalRecords": len(records)})
+			return
+		}
+		if app != "" && r.Method == "DELETE" && strings.Contains(p, "/queue/") {
+			log.Printf("QUEUE DELETE %s", p)
+			w.WriteHeader(200)
 			return
 		}
 		if app != "" && strings.HasSuffix(p, "/history") {
