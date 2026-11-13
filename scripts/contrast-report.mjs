@@ -66,6 +66,7 @@ const checks = [
   ["problem chip", (t) => [t.disconnected, tint(t.disconnected, 0.14, t.surface)], 4.5],
   ["neutral chip", (t) => [t.ink2, tint(t.muted, 0.14, t.surface)], 4.5],
   ["warning chip", (t) => [t.warnink, t.warnbg], 4.5],
+  ["success banner", (t) => [t.okink, t.okbg], 4.5],
   ["border vs surface", (t) => [t.border, t.surface], 1.0],
   ["surface vs page", (t) => [t.surface, t.page], 1.0],
   ["rail vs page", (t) => [t.rail, t.page], 1.0],

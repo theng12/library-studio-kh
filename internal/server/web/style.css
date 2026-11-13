@@ -21,6 +21,8 @@
   --disconnected: #c12d35;
   --warn-bg: #fbefd6;
   --warn-ink: #6b4200;
+  --ok-bg: #dcece4;
+  --ok-ink: #146c40;
   --shadow: 0 1px 2px rgba(20, 24, 40, 0.06), 0 4px 14px rgba(20, 24, 40, 0.05);
   --gap: 1.5rem;
   color-scheme: light;
@@ -47,6 +49,8 @@
   --disconnected: #ff8585;
   --warn-bg: #3a2c10;
   --warn-ink: #f3d79c;
+  --ok-bg: #163021;
+  --ok-ink: #8decb2;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 /* Before the saved choice arrives, an unset theme follows this Mac. */
@@ -68,6 +72,8 @@
     --disconnected: #ff8585;
     --warn-bg: #3a2c10;
     --warn-ink: #f3d79c;
+    --ok-bg: #163021;
+    --ok-ink: #8decb2;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   }
 }
@@ -177,7 +183,7 @@ button.inline { border: 0; background: none; padding: 0; color: var(--accent); t
 .apps .ok::before { background: var(--connected); }
 .apps .bad::before { background: var(--disconnected); }
 .notice { margin: 0; background: var(--warn-bg); color: var(--warn-ink); padding: 0.75rem 1rem; border-radius: 10px; }
-.notice[data-tone="ok"] { background: color-mix(in srgb, var(--connected) 14%, transparent); color: var(--connected); }
+.notice[data-tone="ok"], .msg[data-tone="ok"] { background: var(--ok-bg); color: var(--ok-ink); }
 
 .list { width: 100%; border-collapse: collapse; }
 .list th { text-align: left; font-weight: 600; font-size: 0.8rem; color: var(--muted); padding: 0.7rem 1.25rem; border-bottom: 1px solid var(--line); background: var(--panel); }

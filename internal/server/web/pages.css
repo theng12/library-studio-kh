@@ -493,3 +493,73 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
 
 /* A sideways-scrolling table says so with a fading edge as well as the hint. */
 .table-scroll[data-scrollable="1"] { box-shadow: inset -12px 0 12px -12px rgba(0, 0, 0, 0.3); }
+
+/* Tablet width: the Downloads table becomes labelled cards, so no column is
+   clipped or hidden behind a pinned one. Same pattern as .list at 760. */
+@media (min-width: 761px) and (max-width: 900px) {
+  .downloads-panel > .table-scroll { overflow-x: visible; }
+  .downloads-panel .downloads-table { display: block; width: 100%; }
+  .downloads-panel .downloads-table thead { display: none; }
+  .downloads-panel .downloads-table tbody { display: block; }
+  .downloads-panel .downloads-table tr.dlp-row {
+    display: block; padding: 0.75rem 0.9rem; border-bottom: 1px solid var(--line);
+  }
+  .downloads-panel .downloads-table tr.dlp-row:last-child { border-bottom: 0; }
+  .downloads-panel .downloads-table td {
+    display: grid; grid-template-columns: 6rem minmax(0, 1fr); align-items: center;
+    gap: 0.2rem 0.75rem; padding: 0.25rem 0; border: 0;
+    white-space: normal; overflow-wrap: anywhere;
+    position: static; width: auto; max-width: none;
+  }
+  .downloads-panel .downloads-table td::before {
+    content: attr(data-label); color: var(--muted); font-size: var(--text-xs);
+  }
+  .downloads-panel .downloads-table td:first-child {
+    display: flex; align-items: center; width: auto; padding: 0 0 0.4rem;
+    position: static; background: transparent;
+  }
+  .downloads-panel .downloads-table td:first-child::before { content: none; }
+  .downloads-panel .downloads-table td.dlp-poster { display: block; width: auto; padding: 0 0 0.4rem; }
+  .downloads-panel .downloads-table td.dlp-poster::before { content: none; }
+  .downloads-panel .downloads-table td.dlp-title {
+    display: block; padding: 0 0 0.35rem; max-width: none; min-width: 0;
+    position: static; background: transparent;
+  }
+  .downloads-panel .downloads-table td.dlp-title::before { content: none; }
+  .downloads-panel .downloads-table td.dlp-progress { display: block; min-width: 0; max-width: none; }
+  .downloads-panel .downloads-table td.dlp-progress::before { display: block; margin-bottom: 0.15rem; }
+  .downloads-panel .downloads-table td.dlp-progress progress { display: block; width: 100%; margin-bottom: 0.2rem; }
+  .downloads-panel .downloads-table td.dlp-actions {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; padding-top: 0.6rem;
+    position: static; background: transparent;
+  }
+  .downloads-panel .downloads-table td.dlp-actions::before { content: none; }
+  .downloads-panel .downloads-table .dlp-open { white-space: normal; text-align: left; }
+  .downloads-panel .downloads-table tr.dlp-missing { border-left: 3px solid var(--wait); }
+  .downloads-panel .downloads-table tr.dlp-missing td { background: transparent; }
+  .downloads-panel .downloads-table tr.dlp-missing { background: color-mix(in srgb, var(--warn-bg) 35%, var(--panel)); }
+}
+
+/* Settings → General: three columns with the two wide cards spanning, so the
+   five cards fit two rows and Help stays above the fold at 1440x900. */
+@media (min-width: 1200px) {
+  #settings-panel-general {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-flow: dense;
+  }
+  #settings-card-connections { grid-column: span 2; }
+  /* Denser cards: the same content with less padding and line spacing. */
+  #settings-panel-general > .settings-card > .card-head { padding: 0.5rem 0.75rem 0.4rem; }
+  #settings-panel-general > .settings-card > .card-body { gap: 0.4rem; padding: 0.5rem 0.75rem 0.6rem; }
+  #settings-panel-general .card-head h2 { font-size: 0.9rem; }
+  #settings-panel-general .card-head p { font-size: var(--text-xs); line-height: 1.35; }
+  #settings-panel-general .card-body > label { margin-top: 0.35rem; }
+  #settings-panel-general .card-body > label:first-child { margin-top: 0; }
+  #settings-panel-general .card-body > p { margin: 0; font-size: var(--text-xs); line-height: 1.4; }
+  #settings-panel-general .switch-row { gap: 0.4rem; }
+  #settings-panel-general #arr-fields fieldset { padding: 0.35rem 0.45rem 0.4rem; }
+}
+
+/* Folder fields: the full path under the input, so download and library
+   locations are distinguishable without clicking into each field. */
+.path-full { margin: 0.15rem 0 0; font-size: var(--text-xs); overflow-wrap: anywhere; }
