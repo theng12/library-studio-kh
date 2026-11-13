@@ -56,7 +56,7 @@ function torrentStateWord(state) {
   if (word.startsWith("paused") || word.startsWith("stopped")) return "Paused";
   if (word.startsWith("queued")) return "Queued";
   if (word.startsWith("stalled")) return "Stalled";
-  if (word.startsWith("checking")) return "Checking";
+  if (word.startsWith("checking") || word === "moving") return word === "moving" ? "Moving" : "Checking";
   if (word === "missingfiles") return "Missing files";
   return "Downloading";
 }
@@ -133,6 +133,9 @@ const TYPE = { Sonarr: "TV", Radarr: "Film", Lidarr: "Music" };
 // other pages use, so Activity can never claim something the item record denies.
 function activityLabel(it) {
   const status = it.status || it.kind || "";
+  if (/^(moving|checking)/i.test(it.state || "")) {
+    return { outcome: "importing", label: torrentStateWord(it.state), detail: downloadProgressText(it.progress), at: it.statusAt || null };
+  }
   if (status === "copied" || status === "moved") {
     const done = status === "moved" ? "Moved off this computer" : "Copied to the NAS";
     if (it.verified === "hash" || it.verified === "size") {
@@ -164,11 +167,18 @@ function activityLabel(it) {
   return { outcome: "problems", label: it.kind || "Recorded", detail: "", at: it.statusAt || null };
 }
 
+function realTime(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) || date.getFullYear() < 2000 ? null : value;
+}
+
 function activityEntries() {
   const s = current.snapshot;
   const entries = [];
   for (const it of s.items || []) {
     const info = activityLabel(it);
+    info.at = realTime(info.at);
     const app = it.app || "qBittorrent";
     entries.push({ ...info, title: it.title || "Untitled", app, detail: info.detail ? info.detail + (it.app ? " · " + it.app : "") : "", stats: it.stats || null, item: it });
   }
@@ -610,10 +620,10 @@ function buildArrFields() {
   for (const a of ARRS) {
     box.insertAdjacentHTML("beforeend",
       `<fieldset class="panel"><legend>${NAMES[a]}</legend>` +
-      (a === "bazarr" ? `<label class="check"><input type="checkbox" name="bazarrOn"> Enable subtitle controls</label><p class="muted">English searches run when you request them in Library. Bazarr's own background tasks are controlled separately.</p>` : "") +
-      (a === "whisparr" ? `<label class="check"><input type="checkbox" name="whisparrOn"> Enable Whisparr connection</label><p class="muted">Off by default. Save an address and API key to connect an existing app. Installation and first-run compatibility remain unverified. Check Activity for connection health; saving alone does not prove it is running.</p>` : "") +
+      (a === "bazarr" ? `<label class="check"><input type="checkbox" name="bazarrOn"> Enable subtitle controls <span class="hint">· searches run on request; Bazarr's own tasks are separate</span></label>` : "") +
+      (a === "whisparr" ? `<label class="check"><input type="checkbox" name="whisparrOn"> Enable Whisparr connection <span class="hint">· off by default; first-run support unverified</span></label>` : "") +
       `<label>Address <input name="${a}.url" placeholder="http://127.0.0.1:${PORTS[a]}" inputmode="url"></label>` +
-      `<label>API key <span class="hint">· in ${NAMES[a].split(" ")[0]}, Settings → General</span><input name="${a}.apiKey" type="password" autocomplete="off" data-secret="${a}"></label></fieldset>`);
+      `<label>API key <span class="hint">· ${NAMES[a].split(" ")[0]} → Settings → General</span><input name="${a}.apiKey" type="password" autocomplete="off" data-secret="${a}"></label></fieldset>`);
   }
 }
 
@@ -840,7 +850,8 @@ async function authStatus() {
 
 async function enterApp() {
   hideGate();
-  $("#auth-panel").hidden = !AUTH.available;
+  const authPanel = $("#auth-panel");
+  if (authPanel) authPanel.hidden = !AUTH.available;
   $("#auth-note").textContent = AUTH.available
     ? "Browser sessions last " + AUTH.sessionHours + " hours, or " + AUTH.rememberDays + " days with Remember this device. The host desktop retains owner recovery access. Remote sign-in is encrypted by Tailscale; the page uses HTTP, not HTTPS."
     : "Sign-in is not available in this build yet. The desktop app's local access is in use.";

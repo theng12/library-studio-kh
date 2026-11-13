@@ -131,7 +131,8 @@ function dlpDuration(s) {
 function downloadsWhen(value) {
   if (!value) return "Not reported";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Not reported"
+  // Go's zero time is not a real event time.
+  return Number.isNaN(date.getTime()) || date.getFullYear() < 2000 ? "Not reported"
     : date.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 

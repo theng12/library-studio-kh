@@ -92,7 +92,8 @@ function libraryGridMeta(item) {
 function libraryGridTime(value) {
   if (!value) return "";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
+  // Go's zero time serialises as 0001-01-01; it means "not recorded", never a date.
+  if (Number.isNaN(date.getTime()) || date.getFullYear() < 2000) return "";
   return date.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 

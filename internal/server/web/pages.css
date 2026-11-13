@@ -322,3 +322,41 @@
 @media (prefers-reduced-motion: reduce) {
   .libgrid-card, .libgrid-row { transition: none; }
 }
+
+/* Dense table columns so Downloads fits a laptop width before the detail pane
+   opens; the target and source paths truncate with a title instead of widening
+   the table. */
+.downloads-panel .downloads-table th,
+.downloads-panel .downloads-table td { padding: 0.35rem 0.45rem; }
+.downloads-panel .dlp-title { max-width: 15rem; }
+.downloads-panel .dlp-title .dlp-open { text-align: left; white-space: normal; }
+.downloads-panel .dlp-size { white-space: nowrap; }
+.downloads-panel .dlp-status { max-width: 8.5rem; }
+.downloads-panel .dlp-status .badge { white-space: normal; }
+.downloads-panel .dlp-source,
+.downloads-panel .dlp-target { max-width: 6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.downloads-panel .dlp-progress { max-width: 11rem; }
+.downloads-panel .dlp-actions { white-space: nowrap; }
+.downloads-panel .dlp-actions button { padding: 0 0.5rem; }
+
+/* The companion-app card spans the General tab so its six apps sit 3-4 across. */
+#settings-tabs .tabpanel > .card:has(#arr-fields) { grid-column: 1 / -1; }
+#arr-fields fieldset:has(.check) { grid-column: span 2; }
+
+/* Companion card: the qBittorrent fields sit three across, then the app grid. */
+.card-body:has(> #arr-fields) { grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+.card-body:has(> #arr-fields) > #arr-fields { grid-column: 1 / -1; }
+
+/* The proof pane sits under the table so the full table keeps its columns in
+   view; a side column squeezed nine columns into a scroll strip. */
+.downloads-layout:has(> .dlp-detail:not([hidden])) { grid-template-columns: minmax(0, 1fr); }
+
+/* Progress stays inside its column: bar on one line, then % / speed / ETA. */
+.downloads-panel .dlp-progress {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: center; gap: 0.15rem 0.4rem; max-width: 11rem; min-width: 0;
+}
+.downloads-panel .dlp-progress progress { grid-column: 1 / -1; width: 100%; }
+.downloads-panel .dlp-progress .dlp-pct,
+.downloads-panel .dlp-progress .dlp-speed,
+.downloads-panel .dlp-progress .dlp-eta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

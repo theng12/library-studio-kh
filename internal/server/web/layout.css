@@ -156,3 +156,10 @@
   .timeline-time { white-space: normal; }
   .timeline-app { justify-self: start; }
 }
+
+/* The status line and the app grid must never force the window wider than the
+   screen: the content column may shrink, and the one-line status wraps late. */
+.shell { grid-template-columns: 15.5rem minmax(0, 1fr); }
+@media (max-width: 1000px) {
+  .page-status { white-space: normal; overflow: visible; }
+}

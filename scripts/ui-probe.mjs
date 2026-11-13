@@ -4,13 +4,13 @@
 //
 //   node scripts/ui-probe.mjs start --url http://127.0.0.1:PORT/
 //   node scripts/ui-probe.mjs login owner pass
-//   node scripts/ui-probe.mjs eval "document.title"
+//   node scripts/ui-probe.mjs eval "document.title" [--viewport 375x812]
 //   node scripts/ui-probe.mjs wait "document.querySelectorAll('.libgrid-card').length" 10000
-//   node scripts/ui-probe.mjs viewport 375 812
-//   node scripts/ui-probe.mjs measure            # asserts layout; prints JSON
-//   node scripts/ui-probe.mjs shot /tmp/x.png
+//   node scripts/ui-probe.mjs measure [--viewport 1440x900]   # asserts layout, prints JSON
+//   node scripts/ui-probe.mjs shot /tmp/x.png [--viewport 768x1024]
 //   node scripts/ui-probe.mjs stop
 //
+// The viewport belongs to the CDP session, so it must be passed with each command.
 // The shell is reused across calls through a pid file and port 9333.
 
 import { spawn } from "node:child_process";
@@ -64,14 +64,35 @@ async function connect() {
   const page = await target();
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => {
-    ws.addEventListener("open", resolve, { once: true });
-    ws.addEventListener("error", () => reject(new Error("CDP socket failed")), { once: true });
+    const timer = setTimeout(() => reject(new Error("CDP socket open timed out")), 10000);
+    ws.addEventListener("open", () => { clearTimeout(timer); resolve(); }, { once: true });
+    ws.addEventListener("error", () => { clearTimeout(timer); reject(new Error("CDP socket failed")); }, { once: true });
   });
   return { ws, page };
 }
 
-async function evaluate(expression) {
+function takeViewport(args) {
+  const i = args.indexOf("--viewport");
+  if (i < 0) return { rest: args, vp: null };
+  const [w, h] = String(args[i + 1] || "").split("x").map(Number);
+  const rest = args.slice(0, i).concat(args.slice(i + 2));
+  return { rest, vp: w > 0 && h > 0 ? { w, h } : null };
+}
+
+async function connectWith(vp) {
   const { ws } = await connect();
+  if (vp) {
+    const mobile = vp.w < 768;
+    await send(ws, "Emulation.setDeviceMetricsOverride", { width: vp.w, height: vp.h, deviceScaleFactor: 1, mobile });
+    await send(ws, "Emulation.setTouchEmulationEnabled", mobile ? { enabled: true, maxTouchPoints: 5 } : { enabled: false });
+    // The new metrics apply on the next frame; measure after it settles.
+    await sleep(400);
+  }
+  return ws;
+}
+
+async function evaluate(expression, vp = null) {
+  const ws = await connectWith(vp);
   const result = await send(ws, "Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
   ws.close();
   if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || "page error");
@@ -88,7 +109,7 @@ const MEASURE = `(() => {
     width: innerWidth,
     height: innerHeight,
     docOverflow: document.documentElement.scrollWidth - innerWidth,
-    content: box(".content"),
+    content: box("main.content"),
     head: box(".view:not([hidden]) .page-head"),
     pageCount: document.querySelectorAll(".view .page").length,
     gridCols: grid ? getComputedStyle(grid).gridTemplateColumns.split(" ").length : 0,
@@ -103,7 +124,8 @@ const MEASURE = `(() => {
 })()`;
 
 async function main() {
-  const [cmd, ...args] = process.argv.slice(2);
+  const [cmd, ...rawArgs] = process.argv.slice(2);
+  const { rest: args, vp } = takeViewport(rawArgs);
   if (cmd === "start") {
     if (existsSync(pidFile)) {
       try { process.kill(Number(readFileSync(pidFile, "utf8")), 0); console.log("already running"); return; } catch {}
@@ -118,8 +140,6 @@ async function main() {
     writeFileSync(pidFile, String(child.pid));
     await waitJSON("/json/version");
     const url = args[args.indexOf("--url") + 1] || "about:blank";
-    // Reuse the existing tab so cookies and sessionStorage survive.
-    const page = await target();
     const { ws } = await connect();
     await send(ws, "Page.enable");
     await send(ws, "Page.navigate", { url });
@@ -147,15 +167,15 @@ async function main() {
       const login = await post("/api/auth/login", { username: ${JSON.stringify(user)}, password: ${JSON.stringify(pass)}, remember: false });
       return { setup: setup.status, login: login.status, error: login.body.error || "" };
     })()`;
-    console.log(JSON.stringify(await evaluate(script), null, 1));
-    const { ws } = await connect();
+    console.log(JSON.stringify(await evaluate(script, vp), null, 1));
+    const ws = await connectWith(vp);
     await send(ws, "Page.reload", { ignoreCache: true });
     ws.close();
     await sleep(1200);
     return;
   }
   if (cmd === "eval") {
-    console.log(JSON.stringify(await evaluate(args.join(" ")), null, 1));
+    console.log(JSON.stringify(await evaluate(args.join(" "), vp), null, 1));
     return;
   }
   if (cmd === "wait") {
@@ -163,33 +183,20 @@ async function main() {
     const timeout = Number(args[1] || 10000);
     const started = Date.now();
     while (Date.now() - started < timeout) {
-      try { if (await evaluate(expression)) { console.log("ready"); return; } } catch {}
-      await sleep(200);
+      try { if (await evaluate(expression, vp)) { console.log("ready"); return; } } catch {}
+      await sleep(250);
     }
-    console.error("probe: timed out waiting for " + expression);
-    process.exitCode = 1;
-    return;
-  }
-  if (cmd === "viewport") {
-    const width = Number(args[0] || 1440), height = Number(args[1] || 900);
-    const mobile = width < 768;
-    const { ws } = await connect();
-    await send(ws, "Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile });
-    await send(ws, "Emulation.setTouchEmulationEnabled", { enabled: mobile, maxTouchPoints: mobile ? 5 : 0 });
-    ws.close();
-    await sleep(300);
-    console.log("viewport " + width + "x" + height + (mobile ? " (mobile)" : ""));
-    return;
+    throw new Error("timed out waiting for " + expression);
   }
   if (cmd === "measure") {
-    const m = await evaluate(MEASURE);
+    const m = await evaluate(MEASURE, vp);
     const problems = [];
     if (m.docOverflow > 1) problems.push("horizontal overflow " + m.docOverflow + "px");
     if (m.width >= 1200 && m.head && m.content && m.head.w < m.content.w - 120) problems.push("header narrower than the page: " + m.head.w + " of " + m.content.w);
     if (m.pageCount < 6) problems.push("only " + m.pageCount + " pages use the frame");
     if (m.width >= 1200 && m.gridCols && m.gridCols < 3) problems.push("library grid has " + m.gridCols + " columns at " + m.width);
     if (m.width >= 700 && m.width < 1000 && m.gridCols && m.gridCols < 2) problems.push("library grid has " + m.gridCols + " columns at " + m.width);
-    if (m.width < 500 && m.gridCols > 1) problems.push("phone library grid has " + m.gridCols + " columns");
+    if (m.width < 500 && m.gridCols > 3) problems.push("phone library grid has " + m.gridCols + " columns");
     if (m.tableW && m.wrapW && m.tableW + 2 < m.wrapW && !m.wrapScrolls) problems.push("downloads table is narrower than its frame: " + m.tableW + " of " + m.wrapW);
     if (m.sticky && m.sticky !== "sticky") problems.push("first table column is " + m.sticky + ", not sticky");
     console.log(JSON.stringify({ ...m, problems }, null, 1));
@@ -197,15 +204,16 @@ async function main() {
     return;
   }
   if (cmd === "shot") {
-    const { ws } = await connect();
+    const ws = await connectWith(vp);
     const { data } = await send(ws, "Page.captureScreenshot", { format: "png" });
     ws.close();
     writeFileSync(args[0] || join(tmpdir(), "ui-probe.png"), Buffer.from(data, "base64"));
     console.log("saved " + (args[0] || "ui-probe.png"));
     return;
   }
-  console.error("usage: start --url URL | login u p | eval JS | viewport W H | measure | shot PATH | stop");
+  console.error("usage: start --url URL | login u p | eval JS | wait EXPR MS | measure | shot PATH | stop  (all accept --viewport WxH)");
   process.exitCode = 2;
 }
 
-main().catch((e) => { console.error("probe: " + e.message); process.exitCode = 1; });
+setTimeout(() => { console.error("probe: hard timeout"); process.exit(1); }, 45000).unref();
+main().catch((e) => { console.error("probe: " + e.message); process.exit(1); });

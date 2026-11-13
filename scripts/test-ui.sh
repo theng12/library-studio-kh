@@ -49,7 +49,7 @@ wait_line() {
 echo "Building into $work/bin ..." >&2
 (cd "$repo" && go build -o "$work/bin/mock-stock" ./tests/mock-stock && go build -o "$work/bin/library-studio" ./cmd/library-studio)
 
-"$work/bin/mock-stock" -addr 127.0.0.1:0 -downloads "$work/downloads" -library "$work/library" >"$work/logs/mock-stock.log" 2>&1 &
+"$work/bin/mock-stock" -addr 127.0.0.1:0 -downloads "$work/downloads" -library "$work/library" -ui-fixtures >"$work/logs/mock-stock.log" 2>&1 &
 pids="$pids $!"
 stock="$(wait_line "$work/logs/mock-stock.log" MOCK_STOCK= $!)"
 

@@ -20,6 +20,7 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:7890", "address (port 0 picks a free one)")
 	downloads := flag.String("downloads", "/Users/me/Downloads", "download folder the UI fixture torrents report")
 	nas := flag.String("library", "/Volumes/NAS/Media", "library folder the UI fixture import points into")
+	uiOnly := flag.Bool("ui-fixtures", false, "serve only the c1-c4 headless UI fixture torrents (seed shapes from tests/mock-stock/fixture_ui.go)")
 	flag.Parse()
 	now := time.Now()
 	ui := uiFixture{downloads: *downloads, library: *nas, now: now}
@@ -180,7 +181,7 @@ func main() {
 				state = "stoppedDL"
 				speed = 0
 			}
-			json.NewEncoder(w).Encode(append([]map[string]any{
+			base := []map[string]any{
 				{"hash": hashOf("a1"), "name": "Sample Series S02E04 1080p", "progress": 0.62, "state": state, "size": 2.4e9, "downloaded": 1.49e9,
 					"priority": 1, "dlspeed": speed, "upspeed": 120e3, "eta": 61, "added_on": unix(0.4), "num_seeds": 14, "num_leechs": 3, "save_path": "/Users/me/Downloads", "category": "tv-sonarr"},
 				done("a2", "Example Film (2024) 2160p", 18e9, 30, 29.2),
@@ -190,7 +191,11 @@ func main() {
 				{"hash": hashOf("a6"), "name": "Sample Series S02E05 queued", "state": "queuedDL", "progress": 0, "priority": 2, "size": 2e9},
 				{"hash": hashOf("a7"), "name": "Example Film paused", "state": "stoppedDL", "progress": 0.35, "priority": 3, "size": 4e9, "downloaded": 1.4e9},
 				{"hash": hashOf("a8"), "name": "Demo Artist missing files", "state": "missingFiles", "progress": 0.4, "priority": 4, "size": 0.8e9},
-			}, ui.torrents()...))
+			}
+			if *uiOnly {
+				base = nil // the headless UI sees only its own fixture rows
+			}
+			json.NewEncoder(w).Encode(append(base, ui.torrents()...))
 			return
 		}
 		if p == "/api/v2/torrents/add" {

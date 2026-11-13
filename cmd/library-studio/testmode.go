@@ -157,6 +157,10 @@ func seedFixtures(e testEnv, now time.Time) error {
 		filepath.Join(e.Library, testImportedRel):    episode,
 		filepath.Join(e.Library, testFilmRel):        film,
 		filepath.Join(e.Downloads, testImportedFile): episode,
+		// Real payloads for the moving and completed-not-imported rows, so only
+		// the deliberately missing source reads as missing.
+		filepath.Join(e.Downloads, "A Quiet Film (1998) 1080p"):   film,
+		filepath.Join(e.Downloads, "Old Download Without Import"): film,
 	} {
 		if err := writeFile(path, b); err != nil {
 			return err
