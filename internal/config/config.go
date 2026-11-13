@@ -50,13 +50,13 @@ type Config struct {
 	// Also remove the dead item's row from a library app's queue (never files,
 	// history or library records; no blocklist). Off by default.
 	DeadArrCleanupOn bool `json:"deadArrCleanupOn"`
-	QBit                    QBit    `json:"qbittorrent"`
-	Sonarr                  App     `json:"sonarr"`
-	Radarr                  App     `json:"radarr"`
-	Lidarr                  App     `json:"lidarr"`
-	Prowlarr                App     `json:"prowlarr"`
-	BazarrOn                bool    `json:"bazarrOn"`
-	Bazarr                  App     `json:"bazarr"`
+	QBit             QBit `json:"qbittorrent"`
+	Sonarr           App  `json:"sonarr"`
+	Radarr           App  `json:"radarr"`
+	Lidarr           App  `json:"lidarr"`
+	Prowlarr         App  `json:"prowlarr"`
+	BazarrOn         bool `json:"bazarrOn"`
+	Bazarr           App  `json:"bazarr"`
 	// Whisparr is an optional native Arr app (v3, Radarr-derived). Off by
 	// default; nothing queries or starts it unless the owner enables it.
 	WhisparrOn bool `json:"whisparrOn"`

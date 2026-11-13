@@ -173,6 +173,7 @@ func (s *Server) saveAccessLocked() error {
 func (s *Server) bootstrap(r *http.Request) bool {
 	return s.Token != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Library-Token")), []byte(s.Token)) == 1
 }
+
 // describeDevice names a sign-in from its own User-Agent: browser and system,
 // never a guessed machine name.
 func describeDevice(ua string) string {

@@ -399,16 +399,16 @@ func (e *StagedCleanup) plan(c config.Config, execute bool, app string) (Cleanup
 }
 
 type settleCtx struct {
-	app       string
-	e         *StagedCleanup
-	c         config.Config
-	now       time.Time
-	execute   bool
-	skipWait  bool // the owner asked for this one move now; all safety checks still run
-	torrents  map[string]stock.CleanupTorrent
-	queued    map[string]string
-	res       *CleanupResult
-	problems  []string
+	app      string
+	e        *StagedCleanup
+	c        config.Config
+	now      time.Time
+	execute  bool
+	skipWait bool // the owner asked for this one move now; all safety checks still run
+	torrents map[string]stock.CleanupTorrent
+	queued   map[string]string
+	res      *CleanupResult
+	problems []string
 }
 
 func (x *settleCtx) block(rec *cleanupRecord, reason string) {
@@ -1058,7 +1058,7 @@ func (e *StagedCleanup) render(st *CleanupStatus, recs []*cleanupRecord, c confi
 			Hash: rec.Hash, Name: rec.Name, App: rec.App, Phase: rec.State,
 			VerifiedImport: rec.ImportedAt, Verified: cleanupVerified(rec), RestorePath: rec.MoveRoot,
 			ImportVolume: volumeName(rec.ImportedPath),
-			Files: len(rec.Files), Bytes: rec.Bytes,
+			Files:        len(rec.Files), Bytes: rec.Bytes,
 			ImportPath: rec.ImportedPath, SourcePath: rec.SavePath, ManagedPath: rec.ManagedPath,
 		}
 		for _, f := range rec.Files {

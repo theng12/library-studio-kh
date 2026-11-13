@@ -57,6 +57,13 @@ test("Cleanup keeps actions visible and shows import proof", () => {
   assert.match(html, /id="cleanup-proof"/);
 });
 
+test("a metadata provider outage is stated on both lists", () => {
+  const app = readFileSync(new URL("../internal/server/web/app.js", import.meta.url), "utf8");
+  assert.match(app, /lib\.metadata = r\.metadata \|\| ""/);
+  assert.match(app, /lib\.metadata \? " " \+ lib\.metadata : ""/);
+  assert.match(app, /dl\.metadata \? " · " \+ dl\.metadata : ""/);
+});
+
 test("Activity is filterable by app and outcome, newest first", () => {
   assert.match(app, /function activityLabel\(it\)/);
   assert.match(app, /function activityEntries\(\)/);

@@ -133,7 +133,7 @@ func main() {
 		log.Fatal(err)
 	}
 	platform.LoadVolumeLabel() // name the startup volume once, before any page asks
-go s.Meta.Watch() // keeps the metadata-reachability line honest on every page
+	go s.Meta.Watch()          // keeps the metadata-reachability line honest on every page
 	// The desktop shell reads this exact line.
 	fmt.Printf("LISTENING http://%s/#%s\n", ln.Addr(), s.Token)
 	log.Fatal(serve(s, ln))

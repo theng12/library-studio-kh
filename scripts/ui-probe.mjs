@@ -129,7 +129,20 @@ async function main() {
   const { rest: args, vp } = takeViewport(rawArgs);
   if (cmd === "start") {
     if (existsSync(pidFile)) {
-      try { process.kill(Number(readFileSync(pidFile, "utf8")), 0); console.log("already running"); return; } catch {}
+      try {
+        process.kill(Number(readFileSync(pidFile, "utf8")), 0);
+        // Reuse the browser but always go to the requested page; a stale tab
+        // would otherwise make later checks read another instance.
+        const wanted = args[args.indexOf("--url") + 1];
+        if (wanted && wanted !== "about:blank") {
+          const { ws } = await connect();
+          await send(ws, "Page.navigate", { url: wanted });
+          ws.close();
+          await sleep(800);
+        }
+        console.log("already running");
+        return;
+      } catch {}
     }
     const child = spawn(shell, [
       "--headless", `--remote-debugging-port=${PORT}`,
