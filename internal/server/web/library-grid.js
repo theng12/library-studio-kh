@@ -419,8 +419,7 @@ function libraryGridDetailPanel(detail, handlers = {}) {
     const result = libraryGridNode("p", "", "libgrid-verify-msg");
     result.setAttribute("role", "status");
     if (!detail.localCopy) {
-      check.disabled = true;
-      check.title = "No local copy is tracked — verify when a local copy is found.";
+      // No tracked copy: say so plainly instead of showing a control that cannot act.
       result.textContent = "No local copy is tracked — verify when a local copy is found.";
     } else {
       check.addEventListener("click", async () => {
@@ -435,7 +434,8 @@ function libraryGridDetailPanel(detail, handlers = {}) {
         }
       });
     }
-    aside.append(check, result);
+    if (detail.localCopy) aside.append(check, result);
+    else aside.append(result);
   }
 
   const history = libraryGridNode("div", null, "libgrid-history-block");

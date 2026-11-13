@@ -37,23 +37,31 @@ func (u uiFixture) importedSize() int64 {
 	return 0
 }
 
+// state applies Pause/Resume from the mock's stop/start handler. c3's
+// missingFiles is deliberate, so it is never replaced.
+func (u uiFixture) state(hash, original string, progress float64) string {
+	if original == "missingFiles" || !u.paused[uiHash(hash)] {
+		return original
+	}
+	if progress == 1 {
+		return "stoppedUP"
+	}
+	return "stoppedDL"
+}
+
 func (u uiFixture) torrents() []map[string]any {
 	size := u.importedSize()
 	// One active download so Pause/Resume and its Activity record are exercisable.
-	activeState := "downloading"
-	if u.paused[uiHash("c5")] {
-		activeState = "stoppedDL"
-	}
 	return []map[string]any{
-		{"hash": uiHash("c5"), "name": "Fresh Film (2021) 1080p", "progress": 0.42, "state": activeState, "size": 4e9, "downloaded": 1.68e9,
+		{"hash": uiHash("c5"), "name": "Fresh Film (2021) 1080p", "progress": 0.42, "state": u.state("c5", "downloading", 0.42), "size": 4e9, "downloaded": 1.68e9,
 			"dlspeed": 8e6, "eta": 360, "added_on": u.unix(2), "num_seeds": 9, "num_leechs": 2, "save_path": u.downloads, "category": "radarr"},
-		{"hash": uiHash("c1"), "name": uiImportedFile, "progress": 1, "state": "stalledUP", "size": size, "downloaded": size, "uploaded": size / 2,
+		{"hash": uiHash("c1"), "name": uiImportedFile, "progress": 1, "state": u.state("c1", "stalledUP", 1), "size": size, "downloaded": size, "uploaded": size / 2,
 			"ratio": 0.5, "seeding_time": 3600, "added_on": u.unix(30), "completion_on": u.unix(26), "num_seeds": 0, "num_leechs": 0, "save_path": u.downloads, "category": "tv-sonarr"},
-		{"hash": uiHash("c2"), "name": "A Quiet Film (1998) 1080p", "progress": 1, "state": "moving", "size": 6e9, "downloaded": 6e9,
+		{"hash": uiHash("c2"), "name": "A Quiet Film (1998) 1080p", "progress": 1, "state": u.state("c2", "moving", 1), "size": 6e9, "downloaded": 6e9,
 			"added_on": u.unix(3), "completion_on": u.unix(1), "save_path": u.downloads, "category": "radarr"},
-		{"hash": uiHash("c3"), "name": "Another Show S01E02 720p", "progress": 0.9, "state": "missingFiles", "size": 1.1e9, "downloaded": 0.99e9,
+		{"hash": uiHash("c3"), "name": "Another Show S01E02 720p", "progress": 0.9, "state": u.state("c3", "missingFiles", 0.9), "size": 1.1e9, "downloaded": 0.99e9,
 			"added_on": u.unix(200), "save_path": u.downloads, "category": "tv-sonarr"},
-		{"hash": uiHash("c4"), "name": "Old Download Without Import", "progress": 1, "state": "stalledUP", "size": 3.2e9, "downloaded": 3.2e9, "uploaded": 6.4e9,
+		{"hash": uiHash("c4"), "name": "Old Download Without Import", "progress": 1, "state": u.state("c4", "stalledUP", 1), "size": 3.2e9, "downloaded": 3.2e9, "uploaded": 6.4e9,
 			"ratio": 2, "seeding_time": 1_700_000, "added_on": u.unix(500), "completion_on": u.unix(480), "save_path": u.downloads, "category": "radarr"},
 	}
 }

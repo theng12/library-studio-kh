@@ -57,6 +57,18 @@ test("Cleanup keeps actions visible and shows import proof", () => {
   assert.match(html, /id="cleanup-proof"/);
 });
 
+test("actions, saves and empty states stay honest", () => {
+  const app = readFileSync(new URL("../internal/server/web/app.js", import.meta.url), "utf8");
+  // A pause/resume that qBittorrent did not carry out is never reported as success.
+  assert.match(app, /still reports " \+ \(unchanged\[0\]\.state/);
+  // Saving repaints the live dead-download lines and marks the switches saved.
+  assert.match(app, /loadDeadSummary\(\);\s*const settings = window\.librarySettingsApi/);
+  // Folder fields carry the full value so the two locations are distinguishable.
+  assert.match(app, /Full path: " \+ input\.value/);
+  // A filtered-empty Activity says what to do and offers it.
+  assert.match(app, /clear\.textContent = "Clear filters"/);
+});
+
 test("a metadata provider outage is stated on both lists", () => {
   const app = readFileSync(new URL("../internal/server/web/app.js", import.meta.url), "utf8");
   assert.match(app, /lib\.metadata = r\.metadata \|\| ""/);

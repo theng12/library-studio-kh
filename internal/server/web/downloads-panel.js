@@ -77,11 +77,12 @@ function downloadsStatus(item) {
     return make("problems", DOWNLOADS_MISSING_LABEL, "bad", { missing: true });
   }
   if (status === "importing" || item.kind === "waiting") return make("importing", "Importing", "info");
+  // A stopped torrent always offers Resume, whatever the row's proof state.
+  if (/^(paused|stopped)/.test(state)) return make("paused", DOWNLOADS_STATE_LABELS[state] || "Paused", "muted", { canResume: true });
   // The same words Activity uses for a local copy with no import proof.
   if (status === "on-disk") return make("problems", "No import proof", "warn", { canPause: true });
   if (/^(copied|moved)$/.test(status)) return make("problems", "Imported — proof missing", "warn");
   if (state === "error") return make("problems", "Error", "bad", { canResume: true });
-  if (/^(paused|stopped)/.test(state)) return make("paused", DOWNLOADS_STATE_LABELS[state] || "Paused", "muted", { canResume: true });
   if (state === "queuedDL" || state === "queuedUP") return make("queued", DOWNLOADS_STATE_LABELS[state], "muted", { canPause: true });
   if (/^(uploading|forcedUP|stalledUP)$/.test(state)) return make("seeding", DOWNLOADS_STATE_LABELS[state], "ok", { canPause: true });
   if (/^(downloading|forcedDL|stalledDL|metaDL|forcedMetaDL|checkingDL|allocating|moving)$/.test(state)) {

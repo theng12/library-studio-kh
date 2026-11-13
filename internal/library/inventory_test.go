@@ -150,6 +150,10 @@ func TestInventoryJoinsProofByMediaID(t *testing.T) {
 		if tc.title == "Copied Show" && it.DownloadHash != hashC {
 			t.Errorf("the proven item must carry the tracked download hash for verification, got %q", it.DownloadHash)
 		}
+		wantLocal := tc.title == "Copied Show" || tc.title == "Moved Show"
+		if it.LocalCopy != wantLocal {
+			t.Errorf("%s: LocalCopy %v, want %v", tc.title, it.LocalCopy, wantLocal)
+		}
 		if it.Kind != "library" || it.App != "Sonarr" || it.MediaID == 0 || it.ID == "" {
 			t.Errorf("%s: identity %+v", tc.title, it)
 		}

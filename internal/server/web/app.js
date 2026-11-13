@@ -275,6 +275,20 @@ function renderActivity() {
   if (!(s.apps || []).length) emptyText = "Nothing connected yet. Open Settings and add qBittorrent and at least one of Sonarr, Radarr or Lidarr.";
   else if (!all.length) emptyText = "Nothing has happened yet. Downloads and imports appear here as they run.";
   empty.textContent = emptyText;
+  if (all.length && !entries.length) {
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.className = "inline";
+    clear.textContent = "Clear filters";
+    clear.addEventListener("click", () => {
+      $("#act-q").value = "";
+      $("#act-app").value = "";
+      $("#act-outcome").value = "";
+      renderActivity();
+      $("#act-q").focus();
+    });
+    empty.append(" ", clear);
+  }
   if (!(s.apps || []).length) {
     const openSettings = document.createElement("button");
     openSettings.type = "button";
@@ -730,6 +744,18 @@ function fillForm(st) {
   f.deadArrCleanupOn.checked = !!c.deadArrCleanupOn;
   f.downloadPath.value = c.downloadPath;
   f.libraryPath.value = c.libraryPath;
+  for (const name of ["downloadPath", "libraryPath"]) {
+    const input = (f.elements || {})[name] || f[name];
+    if (!input || !input.parentElement || typeof input.insertAdjacentElement !== "function") continue;
+    let hint = input.parentElement.querySelector(".path-full");
+    if (!hint) {
+      hint = document.createElement("p");
+      hint.className = "path-full muted";
+      input.insertAdjacentElement("afterend", hint);
+    }
+    hint.textContent = input.value ? "Full path: " + input.value : "Not set";
+    input.title = input.value;
+  }
   f["qbittorrent.url"].value = c.qbittorrent.url;
   f["qbittorrent.username"].value = c.qbittorrent.username;
   for (const a of ARRS) {
@@ -859,7 +885,7 @@ function show(view) {
     if (b.dataset.view === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   }
   document.dispatchEvent(new CustomEvent("library:view", { detail: { view } }));
-  if (view === "settings" && current) { fillForm(current); loadSessions(); loadDeadSummary(); }
+  if (view === "settings" && current) { fillForm(current); loadSessions(); settingsCardsForPhone(); loadDeadSummary(); }
   if (view === "browse") loadLibrary();
   if (view === "downloads") loadDownloads();
   if (view === "sources") {
@@ -982,7 +1008,10 @@ function renderDownloadsPage() {
   // The proof opens as a modal: the table keeps its columns and the page never reflows.
   if (openRow) {
     downloadsDetailRender(detail, downloadsDetail(openRow.item, []), () => detail.close());
-    if (!detail.open) detail.showModal();
+    if (!detail.open) {
+      detail.showModal();
+      [...detail.querySelectorAll("button")].find((b) => /^close$/i.test(b.textContent.trim()))?.focus();
+    }
   } else if (detail.open) detail.close();
   if (searchFocus !== null) {
     const search = $("#dl-q");
@@ -1085,6 +1114,15 @@ async function downloadAction(hashes, action) {
     dl.focusAfter = hashes[0];
     await loadDownloads();
     await load(); // Activity and every other page move on with the action
+    if (action === "pause" || action === "resume") {
+      const unchanged = hashes
+        .map((h) => dl.items.find((i) => String(i.hash).toLowerCase() === String(h).toLowerCase()))
+        .filter((it) => it && /^(paused|stopped)/i.test(it.state || "") !== (action === "pause"));
+      if (unchanged.length) {
+        setDownloadNotice("qBittorrent still reports " + (unchanged[0].state || "the same state") + " for " + (unchanged[0].name || "that download") + ". Nothing changed.", "warn");
+        return;
+      }
+    }
     setDownloadNotice(errs.length ? errs.join(" ") : words[action], errs.length ? "warn" : "ok");
   } catch (e) {
     await loadDownloads();
@@ -1403,6 +1441,11 @@ $("#form").addEventListener("submit", async (ev) => {
       : "Saved.");
     await load();
     fillForm(current);
+    loadDeadSummary();
+    const settings = window.librarySettingsApi;
+    for (const name of ["tailscaleOn", "bazarrOn", "whisparrOn", "deadCleanupOn", "deadArrCleanupOn"]) {
+      settings?.savedFeedback?.(name, "Saved", "saved");
+    }
   } catch (e) { say("Not saved. " + e.message); }
   finally { btn.disabled = false; }
 });
@@ -1461,6 +1504,7 @@ function settingsCardsForPhone() {
   }
 }
 window.matchMedia?.("(max-width: 900px)").addEventListener?.("change", settingsCardsForPhone);
+window.addEventListener("resize", settingsCardsForPhone);
 
 if (window.librarySettingsView) {
   window.librarySettingsApi = window.librarySettingsView.mountSettingsTabs($("#settings-tabs"));

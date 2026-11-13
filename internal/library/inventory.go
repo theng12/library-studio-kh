@@ -141,6 +141,7 @@ func Inventory(c config.Config, home string, meta *metadata.Client) ([]Item, []s
 			rec = recs[p.DownloadID]
 			if rec != nil {
 				applyRecord(&it, rec)
+				it.LocalCopy = true // a saved record tracks the copy Verify can re-check
 			} else {
 				it.TargetPath, it.TargetVolume, it.StatusAt = p.ImportedPath, volumeName(p.ImportedPath), p.ImportedAt
 			}
