@@ -483,8 +483,15 @@ function renderLibraryPage() {
       onFindAndAdd: () => show("find"),
       onVerify: async (detail) => {
         if (!detail.downloadHash) return "No local copy is tracked for this item yet, so there is nothing to check.";
-        const r = await api("/api/cleanup/verify", { hash: detail.downloadHash });
-        return (r.actions || []).join(" ") || "Verified.";
+        try {
+          const r = await api("/api/cleanup/verify", { hash: detail.downloadHash });
+          return (r.actions || []).join(" ") || "Verified.";
+        } catch (e) {
+          if (/isn.t tracked/i.test(e.message)) {
+            return "No local copy is tracked for this item yet, so there is nothing to check. Cleanup follows imports that have a saved proof.";
+          }
+          throw e;
+        }
       },
     },
   }));

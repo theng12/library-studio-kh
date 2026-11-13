@@ -3,6 +3,7 @@
 package platform
 
 import (
+	"bytes"
 	"encoding/xml"
 	"os/exec"
 	"strings"
@@ -36,21 +37,37 @@ func VolumeLabel(path string) string {
 	return bootVolumeLabel
 }
 
-// plistVolumeName pulls VolumeName out of diskutil's plist output.
+// plistVolumeName pulls VolumeName out of diskutil's plist output. The dict
+// mixes strings, booleans and integers, so walk key/string pairs in order
+// instead of decoding the whole dict into one shape.
 func plistVolumeName(b []byte) string {
-	var doc struct {
-		Dict []struct {
-			Key   string `xml:"key"`
-			Value string `xml:"string"`
-		} `xml:"dict"`
-	}
-	if xml.Unmarshal(b, &doc) != nil {
-		return ""
-	}
-	for _, kv := range doc.Dict {
-		if kv.Key == "VolumeName" {
-			return strings.TrimSpace(kv.Value)
+	dec := xml.NewDecoder(bytes.NewReader(b))
+	lastKey := ""
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return ""
+		}
+		start, ok := tok.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		switch start.Name.Local {
+		case "key":
+			var k string
+			if dec.DecodeElement(&k, &start) != nil {
+				return ""
+			}
+			lastKey = strings.TrimSpace(k)
+		case "string":
+			var v string
+			if dec.DecodeElement(&v, &start) != nil {
+				return ""
+			}
+			if lastKey == "VolumeName" {
+				return strings.TrimSpace(v)
+			}
+			lastKey = ""
 		}
 	}
-	return ""
 }
