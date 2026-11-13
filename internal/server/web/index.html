@@ -491,6 +491,7 @@
           <dt>Required</dt><dd>Yes, for downloading. Without it, Find &amp; add and Downloads cannot work.</dd>
           <dt>Check</dt><dd>Activity shows qBittorrent connected. Settings holds its address, username and password.</dd>
           <dt>Fix</dt><dd>Start qBittorrent, then correct its address and sign-in in Settings. Keep its own remove-files action off; Library does the library check before removing anything.</dd>
+          <dt>Dead rows</dt><dd>Turn on “Remove Completed” in Sonarr, Radarr and Lidarr (and their failed-download removal) so their queues do not keep dead rows. For leftovers already there, Library’s Clear or Remove takes the entry out of qBittorrent only; the files stay on disk.</dd>
         </dl>
       </details>
 

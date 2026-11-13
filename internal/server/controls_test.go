@@ -263,6 +263,15 @@ func TestDownloadRemoveKeepsFilesAndRevealIsGuarded(t *testing.T) {
 	if w := do("/api/downloads/action", `{"hashes":["`+testHash+`"],"action":"resume"}`); w.Code != 200 || !resumed || !strings.Contains(w.Body.String(), `"ok":true`) {
 		t.Fatalf("resume: %d %s", w.Code, w.Body.String())
 	}
+	// A fully successful removal is recorded in Activity, naming the item and path.
+	deletes = nil
+	if w := do("/api/downloads/action", `{"hashes":["`+testHash+`"],"action":"remove"}`); w.Code != 200 || !strings.Contains(w.Body.String(), `"ok":true`) {
+		t.Fatalf("single remove: %d %s", w.Code, w.Body.String())
+	}
+	events, err := os.ReadFile(filepath.Join(home, "removed.json"))
+	if err != nil || !strings.Contains(string(events), `"download-removed"`) || !strings.Contains(string(events), `"One"`) || !strings.Contains(string(events), savePath) {
+		t.Fatalf("the removal must be recorded in Activity with its name and path: %v %s", err, events)
+	}
 	deletes = nil
 	if w := do("/api/downloads/action", `{"hashes":["`+testHash+`"],"action":"purge"}`); w.Code != 400 || deletes != nil {
 		t.Fatalf("unknown action must be refused untouched: %d %s", w.Code, w.Body.String())

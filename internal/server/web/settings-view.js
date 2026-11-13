@@ -36,7 +36,7 @@ const SETTINGS_CARDS = {
     {
       id: "connections",
       title: "Companion apps",
-      hint: "qBittorrent downloads; Sonarr, Radarr and Lidarr look after the library.",
+      hint: "qBittorrent downloads; Sonarr, Radarr and Lidarr look after the library. Turn on each app’s Remove Completed so dead rows do not pile up; Library’s Clear removes leftovers without touching files.",
       fields: [
         { kind: "text", name: "qbittorrent.url", label: "qBittorrent address", placeholder: "http://127.0.0.1:8080", inputmode: "url" },
         { kind: "text", name: "qbittorrent.username", label: "qBittorrent username", autocomplete: "off" },
