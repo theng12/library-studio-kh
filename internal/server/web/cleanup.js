@@ -76,7 +76,7 @@ function cleanupDaysLeft(due) {
 }
 
 function cleanupProof(item, opener) {
-  cleanupProofReturn = opener || null;
+  cleanupProofReturn = opener || document.activeElement || null;
   const dialog = $("#cleanup-proof");
   facts($("#cleanup-proof-facts"), [
     ["Download", item.name || "Not reported"],
@@ -238,13 +238,19 @@ $("#cleanup-run").addEventListener("click", () => cleanupAction("run"));
 $("#cleanup-form").addEventListener("input", cleanupEffect);
 $("#cleanup-proof .close").addEventListener("click", () => $("#cleanup-proof").close());
 // Native restoration can land inside a dialog whose row was re-rendered; put
-// focus back on the control that opened it.
+// focus back on the control that opened it, now and after the frame settles.
 $("#cleanup-proof").addEventListener("close", () => {
-  requestAnimationFrame(() => {
-    if (cleanupProofReturn && cleanupProofReturn.isConnected) cleanupProofReturn.focus();
-    else document.querySelector("[data-cleanup-proof]")?.focus();
-    cleanupProofReturn = null;
-  });
+  const opener = cleanupProofReturn;
+  cleanupProofReturn = null;
+  const restore = () => {
+    if (opener && opener.isConnected) { opener.focus(); return; }
+    const same = opener?.dataset?.cleanupProof
+      ? document.querySelector('[data-cleanup-proof="' + CSS.escape(opener.dataset.cleanupProof) + '"]')
+      : null;
+    (same || document.querySelector("[data-cleanup-proof]"))?.focus();
+  };
+  restore();
+  requestAnimationFrame(restore);
 });
 $("#cleanup-proof").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); });
 $("#cleanup-form").addEventListener("submit", async (ev) => {

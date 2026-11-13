@@ -47,10 +47,20 @@ const LIBGRID_STATUS = {
 function libraryVolumeLabel(volume) {
   const v = String(volume || "").trim();
   if (!v) return "";
-  if (v === "/") return "this Mac";
+  if (v === "/") return "Startup disk"; // older data: the boot volume, named honestly
   const parts = v.split("/").filter(Boolean);
   if (parts[0] === "Volumes" && parts[1]) return parts[1];
   return v;
+}
+
+// Middle truncation keeps both the volume and the file name readable; the full
+// path stays on the row's title and aria-label and in the detail pane.
+function libraryGridShortPath(text, max = 52) {
+  const s = String(text || "");
+  if (s.length <= max) return s;
+  const head = Math.max(8, Math.floor((max - 1) * 0.55));
+  const tail = Math.max(8, max - 1 - head);
+  return s.slice(0, head) + "…" + s.slice(s.length - tail);
 }
 
 function libraryGridKey(item) {
@@ -174,6 +184,7 @@ function libraryGridDetail(item, posterURL) {
     rating: libraryGridRating(item.rating),
     location: libraryGridLocation(item),
     verification: libraryGridVerification(item),
+    downloadHash: String(item.downloadHash || ""),
     source: String(item.sourcePath || "").trim(),
     history: libraryGridHistory(item),
   };
@@ -313,8 +324,10 @@ function libraryGridRow(item, options = {}) {
   main.append(libraryGridNode("span", item.title || "Untitled", "libgrid-card-title"));
   main.append(libraryGridNode("span", libraryGridMeta(item), "libgrid-meta"));
   row.append(main);
-  const location = libraryGridNode("span", libraryGridLocation(item).text, "libgrid-row-location");
-  location.title = location.textContent; // one line here; the full path on hover
+  const fullLocation = libraryGridLocation(item).text;
+  const location = libraryGridNode("span", libraryGridShortPath(fullLocation), "libgrid-row-location");
+  location.title = fullLocation;
+  location.setAttribute("aria-label", fullLocation);
   row.append(location);
   row.append(libraryGridStatusChip(libraryGridStatus(item)));
   row.addEventListener("click", () => options.handlers?.onSelect?.(key));
@@ -355,6 +368,12 @@ function libraryGridDetailPanel(detail, handlers = {}) {
   const aside = libraryGridNode("aside", null, "libgrid-detail");
   aside.setAttribute("aria-label", "Details for " + detail.title);
   const head = libraryGridNode("div", null, "libgrid-detail-head");
+  // On a phone the detail replaces the list, so its first control is Back.
+  const back = libraryGridNode("button", "Back", "libgrid-back");
+  back.type = "button";
+  back.setAttribute("aria-label", "Back to the list");
+  back.addEventListener("click", () => handlers.onSelect?.(null));
+  head.append(back);
   head.append(libraryGridNode("h2", detail.title, "libgrid-detail-title"));
   const close = libraryGridNode("button", "Close", "libgrid-close");
   close.type = "button";
@@ -386,11 +405,23 @@ function libraryGridDetailPanel(detail, handlers = {}) {
   if (detail.source) fact("Source", detail.source);
   aside.append(facts);
   if (!detail.verification.verified) {
-    // The next step for an unproven copy is Cleanup's own verification.
-    const check = libraryGridNode("button", "Verify with Cleanup", "libgrid-state-action");
+    // The next step is a real verification of this copy, shown right here.
+    const check = libraryGridNode("button", "Verify this copy", "libgrid-state-action");
     check.type = "button";
-    check.addEventListener("click", () => handlers.onCleanup?.());
-    aside.append(check);
+    const result = libraryGridNode("p", "", "libgrid-verify-msg");
+    result.setAttribute("role", "status");
+    check.addEventListener("click", async () => {
+      check.disabled = true;
+      result.textContent = "Checking the saved proof…";
+      try {
+        result.textContent = await handlers.onVerify?.(detail) || "The check finished without a result.";
+      } catch (e) {
+        result.textContent = e.message || "The check could not run.";
+      } finally {
+        check.disabled = false;
+      }
+    });
+    aside.append(check, result);
   }
 
   const history = libraryGridNode("div", null, "libgrid-history-block");

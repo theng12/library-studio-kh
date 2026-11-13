@@ -481,9 +481,19 @@ function renderLibraryPage() {
       onSelect: (key) => { lib.selected = key; renderLibraryPage(); },
       onRetry: () => loadLibrary(),
       onFindAndAdd: () => show("find"),
-      onCleanup: () => show("cleanup"),
+      onVerify: async (detail) => {
+        if (!detail.downloadHash) return "No local copy is tracked for this item yet, so there is nothing to check.";
+        const r = await api("/api/cleanup/verify", { hash: detail.downloadHash });
+        return (r.actions || []).join(" ") || "Verified.";
+      },
     },
   }));
+  // Below 768 the detail pushes the list away; start it at the top with Back focused.
+  if (shownSelected && window.innerWidth <= 768) {
+    $(".content").scrollTo?.(0, 0);
+    window.scrollTo(0, 0);
+    host.querySelector(".libgrid-back")?.focus();
+  }
   const openDetails = $("#lib-open-details");
   // Only when the detail panel is actually on screen; a filtered-out or closed
   // selection must not open a title the owner can no longer see.
@@ -744,9 +754,9 @@ document.addEventListener("keydown", (ev) => {
 });
 document.addEventListener("click", (ev) => { if (!ev.target.closest(".side")) closeMenu(); });
 
-// Save feedback belongs to the save that produced it, never to another tab.
-document.addEventListener("click", (ev) => {
-  if (!ev.target.closest?.(".tab")) return;
+// Save feedback belongs to the save that produced it, never to another tab
+// (including keyboard tab changes, which settings-view reports as an event).
+document.addEventListener("settings:tab", () => {
   const msg = $("#settings-save-msg");
   if (msg) msg.textContent = "";
   settingsCardsForPhone();
@@ -809,7 +819,7 @@ async function load() {
 
 /* Downloads: the reconciled table. Remove takes the torrent out of qBittorrent's
    list and never deletes its files; Reveal shows the saved folder in Finder. */
-const dl = { items: [], problems: "", metadata: "", filter: "all", query: "", selected: new Set(), openKey: null, loading: false, focusAfter: null };
+const dl = { items: [], problems: "", metadata: "", lastNotice: "", lastTone: "", filter: "all", query: "", selected: new Set(), openKey: null, loading: false, focusAfter: null };
 let downloadsLoading = false;
 
 async function loadDownloads(preserveSelection = false) {
@@ -834,10 +844,18 @@ async function loadDownloads(preserveSelection = false) {
 }
 
 function setDownloadNotice(text, tone) {
+  // Kept on the page state too, so the result survives the next re-render.
+  dl.lastNotice = text || "";
+  dl.lastTone = tone || "";
+  renderDownloadNotice();
+}
+
+function renderDownloadNotice() {
   const notice = $("#dl-notice");
+  const text = [dl.problems, dl.metadata, dl.lastNotice].filter(Boolean).join(" ");
   notice.hidden = !text;
-  notice.textContent = text || "";
-  if (tone) notice.dataset.tone = tone;
+  notice.textContent = text;
+  if (dl.lastTone && !dl.problems) notice.dataset.tone = dl.lastTone;
   else delete notice.dataset.tone;
 }
 
@@ -869,7 +887,7 @@ function renderDownloadsPage() {
   // Say so only when the table really needs sideways scrolling, after layout settles.
   const baseStatus = dl.problems
     ? "Some sources did not answer."
-    : model.countText + " · status and proof come from import records";
+    : "Status and proof come from import records";
   $("#dl-page-status").textContent = baseStatus;
   const scrollBox = host.querySelector(".table-scroll");
   requestAnimationFrame(() => {
@@ -879,10 +897,7 @@ function renderDownloadsPage() {
     const scrolls = tablet && scrollBox && scrollBox.scrollWidth > scrollBox.clientWidth + 1;
     $("#dl-page-status").textContent = scrolls ? baseStatus + " · Scroll sideways for more columns." : baseStatus;
   });
-  const notice = $("#dl-notice");
-  const noticeText = [dl.problems, dl.metadata].filter(Boolean).join(" ");
-  notice.hidden = !noticeText;
-  notice.textContent = noticeText;
+  renderDownloadNotice();
   const openRow = model.rows.find((row) => row.key === dl.openKey);
   // The proof opens as a modal: the table keeps its columns and the page never reflows.
   if (openRow) {
@@ -949,10 +964,20 @@ function confirmDownloadAction(action, hashes) {
     actions.append(cancel, go);
     dialog.append(heading, text, actions);
     document.body.append(dialog);
+    const opener = document.activeElement; // Escape must return here, not to BODY
     let answer = false;
     cancel.addEventListener("click", () => dialog.close());
     go.addEventListener("click", () => { answer = true; dialog.close(); });
-    dialog.addEventListener("close", () => { dialog.remove(); resolve(answer); });
+    dialog.addEventListener("close", () => {
+      // Restore focus before the element is removed, and again next frame.
+      const back = opener && opener.isConnected ? opener : null;
+      back?.focus();
+      requestAnimationFrame(() => {
+        dialog.remove();
+        if (back && back.isConnected) back.focus();
+        resolve(answer);
+      });
+    });
     dialog.showModal();
   });
 }
@@ -962,10 +987,12 @@ async function downloadAction(hashes, action) {
   if ((action === "remove" || action === "clear") && !(await confirmDownloadAction(action, hashes))) return;
   const names = hashes.map((h) => dl.items.find((i) => i.hash === h)?.name).filter(Boolean);
   const who = names.length === 1 ? names[0] : (names.length || hashes.length) + " downloads";
+  const folders = hashes.map((h) => dl.items.find((i) => i.hash === h)?.save_path).filter(Boolean);
+  const kept = folders.length ? " at " + folders[0] : "";
   const words = {
     pause: "Paused " + who + ".",
     resume: "Resumed " + who + ".",
-    remove: "Removed " + who + " from qBittorrent. Its files were kept on disk.",
+    remove: "Removed " + who + " from qBittorrent. Its files were kept on disk" + kept + ".",
     clear: "Cleared " + who + " from qBittorrent. Its files were already missing.",
   };
   try {

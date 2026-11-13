@@ -49,6 +49,23 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, res)
 	})
+	mux.HandleFunc("POST /api/cleanup/verify", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Hash string `json:"hash"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil || strings.TrimSpace(req.Hash) == "" {
+			writeJSON(w, 400, map[string]string{"error": "Choose a tracked download to verify."})
+			return
+		}
+		res, err := s.cleanup.Verify(s.Store.Get(), req.Hash)
+		if err != nil {
+			log.Printf("cleanup: verify %s failed: %v", req.Hash, err)
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		log.Printf("cleanup: verify %s %s", req.Hash, strings.Join(res.Actions, " "))
+		writeJSON(w, 200, res)
+	})
 	mux.HandleFunc("POST /api/cleanup/remove-now", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Hash string `json:"hash"`

@@ -146,7 +146,8 @@
 .libgrid-status-problem { background: color-mix(in srgb, var(--disconnected) 14%, transparent); color: var(--disconnected); }
 .libgrid-status-neutral { background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--ink-2); }
 
-/* Detail pane */
+/* Detail pane: a side column on desktop; the whole screen on a phone. */
+.libgrid-back { display: none; }
 .libgrid-detail {
   display: grid; gap: 0.75rem; align-content: start; min-width: 0; padding: 0.9rem;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow);
@@ -187,6 +188,13 @@
 }
 @media (max-width: 900px) {
   .libgrid-body:has(> .libgrid-detail) { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 768px) {
+  /* The detail pushes the list away instead of opening below the fold. */
+  .libgrid-body:has(> .libgrid-detail) > .libgrid-results { display: none; }
+  .libgrid-detail { max-height: none; }
+  .libgrid-back { display: inline-flex; align-items: center; justify-content: center; min-height: 2rem; padding: 0 0.65rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font-size: var(--text-sm); font-weight: 600; }
+  .libgrid-close { display: none; }
 }
 @media (max-width: 760px) {
   .libgrid-list-head { grid-template-columns: 2.5rem minmax(0, 1fr) auto; }
@@ -328,6 +336,8 @@
   .downloads-panel .dlp-progress { max-width: 9rem; }
 }
 @media (max-width: 760px) {
+  /* Chips stay pills in stacked rows, never full-width bars. */
+  .list td .badge { justify-self: start; width: fit-content; }
   /* An empty selection bar is 135px of nothing above the first row. */
   .dlp-bulk[data-idle="1"] { display: none; }
   /* Stacked rows have the full card width; the dense desktop column caps would clip them. */
@@ -411,6 +421,9 @@
 /* Companion card: the qBittorrent fields sit three across, then the app grid. */
 .card-body:has(> #arr-fields) { grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
 .card-body:has(> #arr-fields) > #arr-fields { grid-column: 1 / -1; }
+
+/* A closed dialog is never in the layout, whatever else styles it. */
+dialog:not([open]) { display: none !important; }
 
 /* The proof pane sits under the table so the full table keeps its columns in
    view; a side column squeezed nine columns into a scroll strip. */

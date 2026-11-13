@@ -147,6 +147,9 @@ func TestInventoryJoinsProofByMediaID(t *testing.T) {
 		{"Missing Show", "missing", "", "/Volumes/ATLAS/TV/Missing Show", "ATLAS", "", importedAt},
 	} {
 		it := by[tc.title]
+		if tc.title == "Copied Show" && it.DownloadHash != hashC {
+			t.Errorf("the proven item must carry the tracked download hash for verification, got %q", it.DownloadHash)
+		}
 		if it.Kind != "library" || it.App != "Sonarr" || it.MediaID == 0 || it.ID == "" {
 			t.Errorf("%s: identity %+v", tc.title, it)
 		}
@@ -233,7 +236,7 @@ func TestGatherJoinsSavedCleanupProofAndStaysOffline(t *testing.T) {
 }
 
 func TestVolumeName(t *testing.T) {
-	for in, want := range map[string]string{"": "", "/Volumes/ATLAS/TV/x": "ATLAS", "/Users/me/TV": "/", "/Volumes": "/"} {
+	for in, want := range map[string]string{"": "", "/Volumes/ATLAS/TV/x": "ATLAS", "/Users/me/TV": "Startup disk", "/Volumes": "Startup disk"} {
 		if got := volumeName(in); got != want {
 			t.Errorf("volumeName(%q) = %q, want %q", in, got, want)
 		}

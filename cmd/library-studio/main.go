@@ -132,7 +132,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	go s.Meta.Watch() // keeps the metadata-reachability line honest on every page
+	platform.LoadVolumeLabel() // name the startup volume once, before any page asks
+go s.Meta.Watch() // keeps the metadata-reachability line honest on every page
 	// The desktop shell reads this exact line.
 	fmt.Printf("LISTENING http://%s/#%s\n", ln.Addr(), s.Token)
 	log.Fatal(serve(s, ln))
@@ -173,6 +174,7 @@ func runService(home string, port int) {
 		ln.Close()
 		log.Fatal(err)
 	}
+	platform.LoadVolumeLabel()
 	go s.Meta.Watch()
 	info := runtimeInfo{PID: os.Getpid(), Address: ln.Addr().String(), Token: s.Token, Version: librarystudio.Version()}
 	if err := writeRuntime(home, info); err != nil {

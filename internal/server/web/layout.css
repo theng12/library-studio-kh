@@ -30,7 +30,9 @@
 .page-body { min-width: 0; }
 
 /* Tables fill the width; too many columns scroll sideways with the first column pinned. */
-.table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel); }
+.table-wrap { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel); }
+/* A grid cell must be allowed to shrink, or a wide table widens its card. */
+.card-body > *, #cleanup-status, .libgrid-body > * { min-width: 0; }
 .page-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 .page-table th {
   text-align: left; font-size: var(--text-xs); letter-spacing: 0.03em; text-transform: uppercase;

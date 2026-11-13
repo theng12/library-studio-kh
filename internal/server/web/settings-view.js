@@ -243,6 +243,8 @@ function mountSettingsTabs(host, doc = globalThis.document) {
       panels.get(tabId).hidden = !on;
       if (on && focus) button.focus();
     }
+    // Hosts without CustomEvent (unit harnesses) simply skip the notice.
+    if (typeof CustomEvent === "function") doc.dispatchEvent(new CustomEvent("settings:tab", { detail: { id } }));
   }
   selectTab(SETTINGS_TABS[0].id);
 

@@ -3,6 +3,7 @@ import { runInNewContext } from "node:vm";
 import assert from "node:assert/strict";
 import test from "node:test";
 
+const pagesCss = readFileSync(new URL("../internal/server/web/pages.css", import.meta.url), "utf8");
 const css = readFileSync(new URL("../internal/server/web/layout.css", import.meta.url), "utf8");
 const source = readFileSync(new URL("../internal/server/web/settings-view.js", import.meta.url), "utf8");
 
@@ -66,6 +67,11 @@ test("the page frame fills the window instead of a 60rem column", () => {
 
 test("tables fit the width or scroll sideways with the first column pinned", () => {
   assert.match(css, /\.table-wrap \{[^}]*overflow-x: auto/);
+  // A grid cell may shrink, so a wide table scrolls inside its card at 768.
+  assert.match(css, /\.table-wrap \{[^}]*min-width: 0/);
+  assert.match(css, /\.card-body > \*, #cleanup-status, \.libgrid-body > \* \{ min-width: 0; \}/);
+  // A closed dialog is never in the layout.
+  assert.match(pagesCss, /dialog:not\(\[open\]\) \{ display: none !important; \}/);
   assert.match(css, /\.page-table th:first-child, \.page-table td:first-child \{[^}]*position: sticky;[^}]*left: 0;/);
   assert.match(css, /\.page-table \{[^}]*width: 100%/);
 });

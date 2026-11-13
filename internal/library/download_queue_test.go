@@ -283,7 +283,7 @@ func TestDownloadQueueJoinsSavedProofByHash(t *testing.T) {
 		d.StatusAt != "2023-11-14T22:13:20Z" || d.SourceGone {
 		t.Fatalf("hash-verified proof wrong: %+v", d)
 	}
-	if d := got[hashOld]; d.Verified != "size" || d.Status != "copied" || d.TargetVolume != "/" || d.SourceGone {
+	if d := got[hashOld]; d.Verified != "size" || d.Status != "copied" || d.TargetVolume != "Startup disk" || d.SourceGone {
 		t.Fatalf("a file without SHA-256 must read size: %+v", d)
 	}
 	if d := got[hashTwo]; d.Status != "downloading" || d.MediaTitle != "Big Fish" || d.Verified != "" || d.TargetPath != "" || d.PosterPath != "" {

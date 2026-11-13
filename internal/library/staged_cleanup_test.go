@@ -1130,3 +1130,31 @@ func TestRemoveNowMovesOneCopyEarlyAndRefusesBusyWork(t *testing.T) {
 		t.Fatal("a refused item must not move")
 	}
 }
+
+func TestVerifyReChecksTheSavedHashesWithoutMovingAnything(t *testing.T) {
+	h := newHarness(t)
+	importedAt := *h.clock
+	it := h.add("Verify Me", importedAt)
+	if res := h.run(); phaseOf(t, res, it.hash) != phaseStaging {
+		t.Fatalf("the copy should be tracked in the download folder: %+v", res.Status.Items)
+	}
+	res, err := h.engine().Verify(h.cfg, it.hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Actions) != 1 || !strings.Contains(res.Actions[0], "every saved hash matches") {
+		t.Fatalf("actions = %v", res.Actions)
+	}
+	if !exists(it.src) {
+		t.Fatal("verification must never move or delete the copy")
+	}
+	if err := os.WriteFile(it.src, []byte("tampered bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.engine().Verify(h.cfg, it.hash); err == nil {
+		t.Fatal("a changed file must fail verification")
+	}
+	if phase := phaseOf(t, h.run(), it.hash); phase == phaseRemoved {
+		t.Fatal("a failed verification must not delete anything")
+	}
+}

@@ -37,11 +37,20 @@ test("posted posters go through the safe route and never a raw path", () => {
   assert.match(panel, /search\.id = "dl-q"/);
 });
 
+test("dialog closures return focus to the control that opened them", () => {
+  assert.match(app, /const opener = document\.activeElement/);
+  assert.match(app, /back\?\.focus\(\)/);
+  assert.match(app, /dialog\.remove\(\)/);
+});
+
 test("Cleanup keeps actions visible and shows import proof", () => {
   assert.match(cleanup, /"table-wrap"/);
   assert.match(cleanup, /"page-table list"/);
   assert.match(cleanup, /"Actions"/);
   assert.match(cleanup, /cleanupProof\(item, proof\)/);
+  // Escape/Close must return focus to the opener, never drop it to BODY.
+  assert.match(cleanup, /addEventListener\("close", \(\) => \{[\s\S]*?opener/);
+  assert.match(cleanup, /requestAnimationFrame\(restore\)/);
   assert.match(cleanup, /dataset\.cleanupRestore/);
   assert.match(cleanup, /Nothing is deleted for good/);
   assert.match(cleanup, /cleanup-effect/);

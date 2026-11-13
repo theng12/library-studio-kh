@@ -850,6 +850,64 @@ func (e *StagedCleanup) RemoveNow(c config.Config, hash string) (CleanupResult, 
 	return res, nil
 }
 
+// Verify re-checks one tracked copy against its saved file hashes, now,
+// without changing its stage, moving or deleting anything. It is the honest
+// answer to "is this copy still exactly what was imported?".
+func (e *StagedCleanup) Verify(c config.Config, hash string) (CleanupResult, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	now := e.Now()
+	hash = strings.ToUpper(strings.TrimSpace(hash))
+	st := e.baseStatus(c)
+	res := CleanupResult{Status: st, Actions: []string{}}
+	recs, err := e.load()
+	if err != nil {
+		return res, err
+	}
+	if err := validateRecords(recs, managedRoot(c), now, e.LocalVolume); err != nil {
+		return res, fmt.Errorf("saved cleanup state is unsafe, so nothing was checked: %w", err)
+	}
+	var rec *cleanupRecord
+	for _, r := range recs {
+		if strings.EqualFold(r.Hash, hash) {
+			rec = r
+			break
+		}
+	}
+	if rec == nil {
+		return res, errors.New("that download isn't tracked")
+	}
+	var target string
+	switch rec.State {
+	case phaseStaging:
+		target = rec.MoveRoot
+	case phaseManaged:
+		target = rec.ManagedPath
+	case phaseNative:
+		trash, err := e.TrashDir()
+		if err != nil {
+			return res, err
+		}
+		if !safeNativeName(rec.NativeName) {
+			return res, errors.New("the saved Trash name is unsafe")
+		}
+		target = filepath.Join(trash, rec.NativeName)
+	default:
+		return res, errors.New("no local copy is tracked for this item")
+	}
+	if err := verifyTree(target, rec.Files); err != nil {
+		return res, fmt.Errorf("the copy could not be verified: %w", err)
+	}
+	rec.VerifiedAt = now
+	if err := e.save(recs); err != nil {
+		return res, err
+	}
+	e.render(&st, recs, c, now)
+	res.Status = st
+	res.Actions = append(res.Actions, "Verified "+rec.Name+": every saved hash matches the file on disk.")
+	return res, nil
+}
+
 // Restore puts one managed or native-Trash item back at its original download
 // path. It never overwrites something already there.
 func (e *StagedCleanup) Restore(c config.Config, hash string) (CleanupResult, error) {

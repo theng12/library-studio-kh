@@ -37,7 +37,8 @@ type Item struct {
 	TargetVolume   string    `json:"targetVolume,omitempty"`
 	TargetPath     string    `json:"targetPath,omitempty"`
 	Verified       string    `json:"verified,omitempty"` // hash | size | none
-	ProofHash      string    `json:"proofHash,omitempty"` // first saved SHA-256, so the owner can compare it
+	ProofHash      string    `json:"proofHash,omitempty"`      // first saved SHA-256, so the owner can compare it
+	DownloadHash   string    `json:"downloadHash,omitempty"`   // the tracked download this proof belongs to
 	VerifiedAt     time.Time `json:"verifiedAt,omitempty"`
 	PosterPath     string    `json:"posterPath,omitempty"`
 	Overview       string    `json:"overview,omitempty"`

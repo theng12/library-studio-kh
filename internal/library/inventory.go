@@ -10,6 +10,7 @@ import (
 
 	"librarystudio/internal/config"
 	"librarystudio/internal/metadata"
+	"librarystudio/internal/platform"
 	"librarystudio/internal/stock"
 )
 
@@ -63,8 +64,9 @@ func applyRecord(it *Item, rec *cleanupRecord) {
 	}
 }
 
-// volumeName names the disk a path lives on from the path alone (no OS calls):
-// the drive on Windows, the /Volumes/<name> entry on macOS, otherwise "/".
+// volumeName names the disk a path lives on: the drive on Windows, the
+// /Volumes/<name> entry on macOS, and the startup volume's own label for
+// local paths (falling back to "Startup disk", never a guessed device name).
 func volumeName(p string) string {
 	if strings.TrimSpace(p) == "" {
 		return ""
@@ -76,7 +78,10 @@ func volumeName(p string) string {
 	if len(parts) > 2 && parts[0] == "" && parts[1] == "Volumes" {
 		return parts[2]
 	}
-	return "/"
+	if label := platform.VolumeLabel("/"); label != "" {
+		return label
+	}
+	return "Startup disk"
 }
 
 func proofKey(app string, id int) string { return app + "|" + strconv.Itoa(id) }
@@ -132,6 +137,7 @@ func Inventory(c config.Config, home string, meta *metadata.Client) ([]Item, []s
 		p, proven := proofs[proofKey(m.App, m.ID)]
 		var rec *cleanupRecord
 		if proven {
+			it.DownloadHash = strings.ToUpper(strings.TrimSpace(p.DownloadID))
 			rec = recs[p.DownloadID]
 			if rec != nil {
 				applyRecord(&it, rec)

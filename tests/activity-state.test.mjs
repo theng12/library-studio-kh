@@ -41,7 +41,7 @@ test("a verified copy names its proof and location; an unproven one says so", ()
   assert.match(verified.detail, /SHA-256 hash match/);
   assert.match(verified.detail, /\/Volumes\/NAS\/Films\/X/);
   assert.match(label({ status: "copied", verified: "hash", targetVolume: "/Volumes/NAS" }).label, /Copied to NAS · verified/);
-  assert.match(label({ status: "copied", verified: "hash", targetVolume: "/" }).label, /Copied to this Mac · verified/);
+  assert.match(label({ status: "copied", verified: "hash", targetVolume: "/" }).label, /Copied to Startup disk · verified/);
   const size = label({ status: "moved", verified: "size" });
   assert.equal(size.outcome, "verified");
   assert.match(size.detail, /Size and readback match/);

@@ -275,6 +275,37 @@ test("the Filters panel shows a draft that differs from the applied filters", ()
   assert.equal(byClass(applied, "libgrid-count").map(text)[0], "1 of 5 items");
 });
 
+test("an unproven copy can be verified in place and shows the result", async () => {
+  const g = load();
+  const calls = [];
+  const page = g.libraryGridPage({
+    items, filters: {}, selected: "Sonarr:5",
+    handlers: { onVerify: async (detail) => { calls.push(detail.title); return "Verified Dune: every saved hash matches the file on disk."; } },
+  });
+  const panel = byClass(page, "libgrid-detail")[0];
+  const button = byClass(panel, "libgrid-state-action")[0];
+  assert.equal(button.textContent, "Verify this copy");
+  button.fire("click");
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(calls, ["Dune"]);
+  assert.match(text(panel), /every saved hash matches/);
+  assert.equal(g.libraryVolumeLabel("/"), "Startup disk");
+  assert.match(g.libraryGridShortPath("NAS · /Volumes/NAS/Music/Demo Artist/First Album/Some Long Name", 40), /…/);
+});
+
+test("a phone detail offers Back, and rows keep the full path on the title", () => {
+  const g = load();
+  const handlers = { onSelect: (key) => handlers.closed = key };
+  const page = g.libraryGridPage({ items, filters: {}, view: "list", selected: "Radarr:1", handlers });
+  const panel = byClass(page, "libgrid-detail")[0];
+  byClass(panel, "libgrid-back")[0].fire("click");
+  assert.equal(handlers.closed, null);
+  const row = byClass(page, "libgrid-row")[1];
+  const location = byClass(row, "libgrid-row-location")[0];
+  assert.equal(location.title, "NAS-1 · /Volumes/NAS-1/Films/Arrival (2016)");
+  assert.equal(location.getAttribute("aria-label"), location.title);
+});
+
 test("the module stands alone: no imports and no app.js helpers", () => {
   assert.doesNotMatch(source, /\bimport\s+[^(]|\brequire\s*\(/);
   assert.doesNotMatch(source, /app\.js|mediaNode|\$\("|libraryFilter\b|libraryGenreOptions|librarySort\b/);
