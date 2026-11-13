@@ -120,11 +120,15 @@ test("appearance offers exactly System, Light and Dark, starting on System", () 
 
 test("a switch carries its own saved-feedback slot", () => {
   const { api } = mount();
-  const toggle = byTag(api.root, "input").find((n) => n.getAttribute("role") === "switch");
-  assert.equal(toggle.getAttribute("name"), "tailscaleOn");
+  const toggles = byTag(api.root, "input").filter((n) => n.getAttribute("role") === "switch");
+  const toggle = toggles.find((n) => n.getAttribute("name") === "tailscaleOn");
+  assert.ok(toggle, "the Tailscale switch exists");
+  // Every switch has its own slot, including the dead-download action.
+  assert.ok(toggles.some((n) => n.getAttribute("name") === "deadCleanupOn"));
+  assert.ok(byClass(api.root, "switch-saved").some((s) => s.getAttribute("data-saved-for") === "deadCleanupOn"));
   assert.equal(toggle.getAttribute("type"), "checkbox");
-  const slot = byClass(api.root, "switch-saved")[0];
-  assert.equal(slot.getAttribute("data-saved-for"), "tailscaleOn");
+  const slot = byClass(api.root, "switch-saved").find((n) => n.getAttribute("data-saved-for") === "tailscaleOn");
+  assert.ok(slot, "the Tailscale switch has its own saved slot");
   assert.equal(slot.getAttribute("aria-live"), "polite");
   assert.equal(api.savedFeedback("tailscaleOn", "Saved", "saved"), true);
   assert.equal(slot.textContent, "Saved");

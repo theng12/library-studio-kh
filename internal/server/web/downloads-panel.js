@@ -186,6 +186,11 @@ function downloadsRow(item) {
     progress: downloadsProgress(item, status),
     source: downloadsSourceText(item),
     target: String(item.targetPath || "Not known yet"),
+    deadNote: item.deadSince
+      ? (item.deadCleanupOn
+        ? (item.removeEligibleAt ? "Dead source · entry removable after " + downloadsWhen(item.removeEligibleAt) : "Dead source · waiting out the grace")
+        : "Dead source · automatic removal is off")
+      : "",
     actions: downloadsRowActions(status),
   };
 }
@@ -284,6 +289,11 @@ function downloadsDetail(item, history) {
       ...(status.missing ? [
         ["Why", "qBittorrent can’t find this download’s source files."],
         ["Next step", "Clear removes only its qBittorrent entry; its files are already gone."],
+      ] : []),
+      ...(item.deadSince ? [
+        ["Automatic removal", item.deadCleanupOn
+          ? (item.removeEligibleAt ? "Eligible after " + downloadsWhen(item.removeEligibleAt) : "Waiting for its grace period")
+          : "Off — remove it yourself, or switch dead-download cleanup on in Settings"],
       ] : []),
     ],
     sections: [
@@ -446,6 +456,7 @@ function downloadsRowNode(row, model, on) {
   const open = dlpButton(row.title, "dlp-open");
   open.addEventListener("click", () => on("open", row));
   titleCell.append(open);
+  if (row.deadNote) titleCell.append(dlpEl("span", row.deadNote, "dlp-dead-note"));
   tr.append(titleCell);
 
   const statusCell = dlpEl("td", null, "dlp-status");

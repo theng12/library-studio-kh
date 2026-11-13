@@ -43,6 +43,10 @@ type Config struct {
 	PressureFreeGB          int     `json:"pressureFreeGB"`          // purge eligible native-Trash items below this; 0 = no pressure purge
 	SeedRatio               float64 `json:"seedRatio"`
 	SeedMinutes             int     `json:"seedMinutes"`
+	// Dead downloads: qBittorrent entries whose source is gone and which have no
+	// import proof. Off by default; removal only touches the entry, never files.
+	DeadCleanupOn    bool `json:"deadCleanupOn"`
+	DeadCleanupHours int  `json:"deadCleanupHours"` // grace, 1–168 hours
 	QBit                    QBit    `json:"qbittorrent"`
 	Sonarr                  App     `json:"sonarr"`
 	Radarr                  App     `json:"radarr"`
@@ -63,6 +67,7 @@ func Default() Config {
 		Appearance: "system",
 		CleanupOn:  false, CleanupDays: 7, TailscalePort: 7882,
 		StagedCleanupOn: false, StagedDays: 3, ManagedTrashDays: 4, NativeTrashDays: 30,
+		DeadCleanupOn: false, DeadCleanupHours: 24,
 		PressureFreeGB: 50, SeedRatio: 2, SeedMinutes: 2880,
 	}
 }
@@ -81,6 +86,9 @@ func (c Config) Validate() error {
 	}
 	if c.CleanupDays < 0 || c.CleanupDays > 3650 {
 		return errors.New("days before removal must be between 0 and 3650")
+	}
+	if c.DeadCleanupHours < 1 || c.DeadCleanupHours > 168 {
+		return fmt.Errorf("dead-download grace must be 1–168 hours")
 	}
 	if c.StagedDays < 1 || c.StagedDays > 365 {
 		return errors.New("days in the download folder must be between 1 and 365")

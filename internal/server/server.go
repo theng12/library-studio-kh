@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -61,9 +62,17 @@ func New(store *config.Store, home string) *Server {
 	return s
 }
 
-// RunCleanup is called hourly by main. It only acts when the owner has
-// switched the staged policy on; the retired permanent-delete path is unused.
-func (s *Server) RunCleanup() { s.runStagedCleanup() }
+// RunCleanup is called hourly by main. Staged cleanup only acts when its
+// policy is on; the dead-download sweep only when its own switch is on.
+func (s *Server) RunCleanup() {
+	s.runStagedCleanup()
+	c := s.Store.Get()
+	if !c.DeadCleanupOn {
+		return
+	}
+	removed, problems, err := library.SweepDead(c, s.Home, s.Now(), true)
+	log.Printf("downloads: dead sweep removed=%d problems=%q err=%v", len(removed), strings.Join(problems, " "), err)
+}
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()

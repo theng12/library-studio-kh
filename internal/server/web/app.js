@@ -200,6 +200,9 @@ function activityLabel(it) {
   if (status === "cleanup-pass") {
     return { outcome: "removed", label: "Cleanup pass", detail: it.sourcePath || "", at: it.when || null };
   }
+  if (status === "download-dead-removed") {
+    return { outcome: "removed", label: "Removed automatically · files stayed", detail: it.sourcePath ? "Still on disk at " + libraryGridBreakPath(it.sourcePath) : "", at: it.when || null };
+  }
   if (status === "downloading" || status === "queued" || status === "stalled") {
     const word = torrentStateWord(it.state);
     const broken = word === "Missing files" || /error/i.test(it.state || "");
@@ -712,6 +715,8 @@ function fillForm(st) {
   for (const r of f.querySelectorAll('input[name="appearance"]')) r.checked = r.value === saved;
   f.bazarrOn.checked = !!c.bazarrOn;
   f.whisparrOn.checked = !!c.whisparrOn;
+  f.deadCleanupOn.checked = !!c.deadCleanupOn;
+  f.deadCleanupHours.value = c.deadCleanupHours || 24;
   f.downloadPath.value = c.downloadPath;
   f.libraryPath.value = c.libraryPath;
   f["qbittorrent.url"].value = c.qbittorrent.url;
@@ -843,7 +848,7 @@ function show(view) {
     if (b.dataset.view === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   }
   document.dispatchEvent(new CustomEvent("library:view", { detail: { view } }));
-  if (view === "settings" && current) { fillForm(current); loadSessions(); }
+  if (view === "settings" && current) { fillForm(current); loadSessions(); loadDeadSummary(); }
   if (view === "browse") loadLibrary();
   if (view === "downloads") loadDownloads();
   if (view === "sources") {
@@ -888,6 +893,13 @@ async function loadDownloads(preserveSelection = false) {
     }));
     dl.problems = [r.error, ...(r.problems || [])].filter(Boolean).join(" ");
     dl.metadata = r.metadata || "";
+    const dead = r.dead || {};
+    const byHash = new Map((dead.candidates || []).map((c) => [String(c.hash).toUpperCase(), c]));
+    dl.deadOn = !!dead.on;
+    dl.items = dl.items.map((item) => {
+      const cand = byHash.get(String(item.hash || "").toUpperCase());
+      return cand ? { ...item, deadSince: cand.firstSeen || "", removeEligibleAt: cand.eligibleAt || "", deadCleanupOn: !!dead.on } : item;
+    });
   } catch (e) {
     dl.items = [];
     dl.problems = e.message;
@@ -1133,6 +1145,25 @@ async function enterApp() {
   loadSessions();
 }
 
+// Dead-download switch: state plus what the next pass would do (never silent).
+async function loadDeadSummary() {
+  const line = $("#dead-cleanup-status");
+  if (!line) return;
+  try {
+    const d = await api("/api/downloads/dead");
+    const n = (d.candidates || []).length;
+    const next = (d.candidates || []).map((c) => c.eligibleAt).filter(Boolean).sort()[0];
+    const when = next ? new Date(next).toLocaleString() : "";
+    line.textContent = (d.on
+      ? "On · grace " + d.hours + " hours · " + (d.ready ? d.ready + " dead download" + (d.ready === 1 ? "" : "s") + " can be removed now" : n ? n + " dead download" + (n === 1 ? " is" : "s are") + " waiting out the grace" : "no dead downloads match right now")
+      : "Off · " + (n ? n + " dead download" + (n === 1 ? " matches" : "s match") + " the rule; nothing is removed while off" : "no dead downloads match right now"))
+      + (when && n ? " · next eligible " + when : "")
+      + ". Only the qBittorrent entry is removed, never the files.";
+  } catch (e) {
+    line.textContent = e.message || "The dead-download state could not be read.";
+  }
+}
+
 async function loadSessions() {
   if (!AUTH.available || !AUTH.authenticated) return;
   const box = $("#sessions"), msg = $("#sessions-msg");
@@ -1325,6 +1356,7 @@ $("#form").addEventListener("submit", async (ev) => {
   const body = {
     appearance: f.querySelector('input[name="appearance"]:checked')?.value || "system",
     tailscaleOn: f.tailscaleOn.checked, tailscalePort: Number(f.tailscalePort.value),
+    deadCleanupOn: f.deadCleanupOn.checked, deadCleanupHours: Number(f.deadCleanupHours.value),
     bazarrOn: f.bazarrOn.checked, whisparrOn: f.whisparrOn.checked,
     downloadPath: f.downloadPath.value.trim(), libraryPath: f.libraryPath.value.trim(),
     qbittorrent: { url: f["qbittorrent.url"].value.trim(), username: f["qbittorrent.username"].value.trim(), password: f["qbittorrent.password"].value },

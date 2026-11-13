@@ -41,6 +41,9 @@ const SETTINGS_CARDS = {
         { kind: "text", name: "qbittorrent.url", label: "qBittorrent address", placeholder: "http://127.0.0.1:8080", inputmode: "url" },
         { kind: "text", name: "qbittorrent.username", label: "qBittorrent username", autocomplete: "off" },
         { kind: "password", name: "qbittorrent.password", label: "qBittorrent password", secret: "qbi" + "ttorrent" },
+        { kind: "switch", name: "deadCleanupOn", label: "Remove dead downloads automatically" },
+        { kind: "number", name: "deadCleanupHours", label: "Grace before removing (hours, 1–168)", min: 1, max: 168, inputmode: "numeric", labelClass: "short" },
+        { kind: "slot", id: "dead-cleanup-status", tag: "p", class: "muted", role: "status", text: "Off by default. A dead download is one whose files are missing and that has no import proof; only the qBittorrent entry is removed, never the files." },
         {
           kind: "details", summary: "Library apps · Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, Whisparr",
           fields: [{ kind: "slot", id: "arr-fields" }],

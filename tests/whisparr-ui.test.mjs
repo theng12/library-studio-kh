@@ -54,7 +54,7 @@ test("Whisparr form roundtrip, plan review and existing-app Settings use native 
 });
 
 test("Settings renders an OFF switch and keeps keys empty while preserving saved-key hints", async () => {
-  const fields = { tailscaleOn: {}, tailscalePort: {}, bazarrOn: {}, whisparrOn: {}, downloadPath: {}, libraryPath: {}, "qbittorrent.url": {}, "qbittorrent.username": {} };
+  const fields = { tailscaleOn: {}, tailscalePort: {}, bazarrOn: {}, whisparrOn: {}, deadCleanupOn: {}, deadCleanupHours: {}, downloadPath: {}, libraryPath: {}, "qbittorrent.url": {}, "qbittorrent.username": {} };
   const secret = { value: "must-clear", dataset: { secret: "whisparr" } };
   for (const id of ["sonarr", "radarr", "lidarr", "prowlarr", "bazarr", "whisparr"]) {
     fields[id + ".url"] = { value: "" }; fields[id + ".apiKey"] = { value: "" };

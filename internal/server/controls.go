@@ -51,7 +51,20 @@ func (s *Server) registerControls(mux *http.ServeMux) {
 		if items == nil {
 			items = []library.Download{}
 		}
-		writeJSON(w, 200, map[string]any{"items": items, "problems": problems})
+		c := s.Store.Get()
+		now := s.Now()
+		cands, deadProblems, derr := library.DeadDownloads(c, s.Home, now)
+		if derr != nil {
+			deadProblems = append(deadProblems, derr.Error())
+		}
+		ready := 0
+		for _, cand := range cands {
+			if !cand.EligibleAt.IsZero() && !now.Before(cand.EligibleAt) {
+				ready++
+			}
+		}
+		dead := map[string]any{"on": c.DeadCleanupOn, "hours": c.DeadCleanupHours, "ready": ready, "candidates": cands, "problems": deadProblems}
+		writeJSON(w, 200, map[string]any{"items": items, "problems": problems, "dead": dead, "metadata": s.Meta.Notice()})
 	})
 	mux.HandleFunc("POST /api/downloads/action", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
