@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -70,7 +71,7 @@ func (s *Server) ConfigureRemote() error {
 		s.remote.error = fmt.Sprintf("Couldn't open Tailscale port %d: %v. Choose another port and save again.", c.TailscalePort, err)
 		return fmt.Errorf("%s", s.remote.error)
 	}
-	srv := &http.Server{ReadHeaderTimeout: 10 * time.Second, Handler: s.remoteHandler(address)}
+	srv := &http.Server{ReadHeaderTimeout: 10 * time.Second, Handler: s.remoteHandler(address, remoteDNSNames(ip))}
 	s.remote.server, s.remote.address, s.remote.error = srv, address, ""
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
@@ -85,13 +86,51 @@ func (s *Server) ConfigureRemote() error {
 	return nil
 }
 
-func (s *Server) remoteHandler(address string) http.Handler {
+// remoteDNSNames lists the names this machine's own resolver gives the bound
+// Tailscale address, so MagicDNS works as well as the bare IP.
+func remoteDNSNames(ip netip.Addr) []string {
+	names, err := net.LookupAddr(ip.String())
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if n = strings.TrimSuffix(strings.TrimSpace(n), "."); n != "" {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// hostAllowed accepts the bound IP:port and any DNS name (e.g. MagicDNS) that
+// resolves to it, always with the bound port. Everything else is refused.
+func hostAllowed(host, address string, names []string) bool {
+	boundIP, boundPort, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+	name, port, err := net.SplitHostPort(strings.TrimSpace(host))
+	if err != nil || port != boundPort {
+		return false
+	}
+	if strings.EqualFold(name, boundIP) {
+		return true
+	}
+	for _, n := range names {
+		if strings.EqualFold(n, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) remoteHandler(address string, names []string) http.Handler {
 	h := s.Handler()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		peer, _, err := net.SplitHostPort(r.RemoteAddr)
 		ip, parseErr := netip.ParseAddr(peer)
 		// Never trust proxy headers: the socket peer must be on Tailscale.
-		if err != nil || parseErr != nil || !tailAddress(ip) || r.Host != address {
+		if err != nil || parseErr != nil || !tailAddress(ip) || !hostAllowed(r.Host, address, names) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}

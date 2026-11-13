@@ -19,12 +19,15 @@ func TestRemoteGuard(t *testing.T) {
 		t.Fatal("remote access must start off")
 	}
 	const address = "100.88.1.2:7882"
-	h := s.remoteHandler(address)
+	const magicName = "terranash-1301-m1-16-1000.tail093f2c.ts.net"
+	h := s.remoteHandler(address, []string{magicName})
 	for _, tc := range []struct {
 		name, peer, host, token string
 		want                    int
 	}{
 		{"phone with key", "100.90.1.4:1234", address, s.Token, 200},
+		{"phone by MagicDNS name", "100.90.1.4:1234", magicName + ":7882", s.Token, 200},
+		{"MagicDNS name wrong port", "100.90.1.4:1234", magicName + ":7883", s.Token, 403},
 		{"missing key", "100.90.1.4:1234", address, "", 403},
 		{"wrong key", "100.90.1.4:1234", address, "wrong", 403},
 		{"LAN peer", "192.168.1.4:1234", address, s.Token, 403},
