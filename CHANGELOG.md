@@ -2,12 +2,12 @@
 
 ## 0.7.16 — 2026-11-13
 
-- Every film and show now gets a poster, overview, year, genres, runtime and rating from keyless public sources, cached on disk and shown when available; the list never waits on the network.
-- My library is a poster grid with a detail panel: status, NAS volume and path, how the copy was verified and when, plus its history. A copy never reads verified without proof.
-- Downloads shows only work still in progress, with proof, target and per-row Pause, Resume, Remove and Reveal. Imported and verified titles leave Downloads and appear in My library.
-- Activity is a timestamped timeline with app and outcome filters. Cleanup gains a proof pane, per-row actions, each copy's stage and remaining wait, and says plainly that nothing is deleted for good outside its waits.
-- Every page fills the window behind one page frame, with tables that scroll sideways and keep the first column in view.
-- Keyboard, focus, labels, and loading, empty, error and partial states are checked at phone, tablet and desktop widths.
+- Every film and show gets a poster, overview, year, genres, runtime and rating from keyless public sources, cached on disk and shown when available; a missing poster shows the title's letter, never an empty box. These views and posters appear after you update to 0.7.16.
+- My library is a poster grid with a remembered Cards/Table switch and a detail panel: status, real volume and path, how the copy was verified and when, the proof hash and its history. A copy never reads verified without proof.
+- Downloads shows only work still in progress, with one main action per row and the rest under ⋯, plus proof and target. Imported and verified titles leave Downloads and appear in My library; Clear removes the qBittorrent entry only and never the files.
+- Activity is a timestamped timeline with filters, repeated warnings grouped with counts and identical events shown once with ×N. Cleanup gains per-row actions, stage and remaining wait, and says plainly that nothing is deleted for good outside its waits.
+- Optional “Remove dead downloads automatically” is off by default: after a grace of 1–168 hours, Library removes only the torrent entry for downloads whose files are missing and that have no import proof. Files on disk are never deleted.
+- Every page fills the window at phone, tablet and desktop widths, with measured contrast in light and dark.
 
 ## 0.7.15 — 2026-11-13
 

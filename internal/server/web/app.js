@@ -201,7 +201,7 @@ function activityLabel(it) {
     return { outcome: "removed", label: "Cleanup pass", detail: it.sourcePath || "", at: it.when || null };
   }
   if (status === "download-dead-removed") {
-    return { outcome: "removed", label: "Removed automatically · files stayed", detail: it.sourcePath ? "Still on disk at " + libraryGridBreakPath(it.sourcePath) : "", at: it.when || null };
+    return { outcome: "removed", label: "Removed torrent · files stayed", detail: it.sourcePath ? "Still on disk at " + libraryGridBreakPath(it.sourcePath) : "", at: it.when || null };
   }
   if (status === "downloading" || status === "queued" || status === "stalled") {
     const word = torrentStateWord(it.state);
@@ -440,8 +440,15 @@ function titleCell(m) {
 
 /* My library: poster grid over the reconciled inventory. The server owns the
    join between library items, import proof and cached metadata. */
-const lib = { items: [], problems: [], metadata: "", loading: false, error: "", filters: {}, draft: {}, sort: { key: "title", dir: "asc" }, selected: null, filtersOpen: false,
-  view: (() => { try { return localStorage.getItem("library-view") === "table" ? "list" : "grid"; } catch { return "grid"; } })() };
+// The Cards/Table choice is remembered per app, not per visit.
+function storedLibraryView() {
+  try { return localStorage.getItem("library-view") === "table" ? "list" : "grid"; } catch { return "grid"; }
+}
+function storeLibraryView(view) {
+  try { localStorage.setItem("library-view", view === "list" ? "table" : "cards"); } catch {}
+}
+
+const lib = { items: [], problems: [], metadata: "", loading: false, error: "", filters: {}, draft: {}, sort: { key: "title", dir: "asc" }, selected: null, filtersOpen: false, view: storedLibraryView() };
 let libraryLoading = false;
 
 async function loadLibrary() {
@@ -506,7 +513,7 @@ function renderLibraryPage() {
       onReset: () => { lib.filters = {}; lib.draft = {}; renderLibraryPage(); },
       onView: (view) => {
         lib.view = view === "list" ? "list" : "grid";
-        try { localStorage.setItem("library-view", lib.view === "list" ? "table" : "cards"); } catch {}
+        storeLibraryView(lib.view);
         renderLibraryPage();
       },
       onSort: (key) => {
@@ -1158,7 +1165,7 @@ async function loadDeadSummary() {
       ? "On · grace " + d.hours + " hours · " + (d.ready ? d.ready + " dead download" + (d.ready === 1 ? "" : "s") + " can be removed now" : n ? n + " dead download" + (n === 1 ? " is" : "s are") + " waiting out the grace" : "no dead downloads match right now")
       : "Off · " + (n ? n + " dead download" + (n === 1 ? " matches" : "s match") + " the rule; nothing is removed while off" : "no dead downloads match right now"))
       + (when && n ? " · next eligible " + when : "")
-      + ". Only the qBittorrent entry is removed, never the files.";
+      + ". Removes the torrent entry only. Files on disk are never deleted.";
   } catch (e) {
     line.textContent = e.message || "The dead-download state could not be read.";
   }

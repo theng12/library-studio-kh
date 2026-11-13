@@ -49,10 +49,18 @@ func TestControlRoutes(t *testing.T) {
 	}))
 	defer stockSrv.Close()
 
+	// Library removes only the qBittorrent entry: the arrs are never called by Clear.
+	var arrCalls int
+	arrSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		arrCalls++
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(arrSrv.Close)
 	home := t.TempDir()
 	store, _ := config.Open(home)
 	c := config.Default()
 	c.QBit.URL = stockSrv.URL
+	c.Sonarr = config.App{URL: arrSrv.URL, APIKey: "test"}
 	c.Radarr = config.App{URL: stockSrv.URL, APIKey: "k"}
 	if err := store.Save(c); err != nil {
 		t.Fatal(err)
@@ -225,10 +233,18 @@ func TestDownloadRemoveKeepsFilesAndRevealIsGuarded(t *testing.T) {
 		}
 	}))
 	defer stockSrv.Close()
+	// Library removes only the qBittorrent entry: the arrs are never called by Clear.
+	var arrCalls int
+	arrSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		arrCalls++
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(arrSrv.Close)
 	home := t.TempDir()
 	store, _ := config.Open(home)
 	c := config.Default()
 	c.QBit.URL = stockSrv.URL
+	c.Sonarr = config.App{URL: arrSrv.URL, APIKey: "test"}
 	if err := store.Save(c); err != nil {
 		t.Fatal(err)
 	}
@@ -273,6 +289,9 @@ func TestDownloadRemoveKeepsFilesAndRevealIsGuarded(t *testing.T) {
 		t.Fatalf("the removal must be recorded in Activity with its name and path: %v %s", err, events)
 	}
 	deletes = nil
+	if arrCalls != 0 {
+		t.Fatalf("Clear/Remove must not change an arr queue; %d arr request(s) were made", arrCalls)
+	}
 	if w := do("/api/downloads/action", `{"hashes":["`+testHash+`"],"action":"purge"}`); w.Code != 400 || deletes != nil {
 		t.Fatalf("unknown action must be refused untouched: %d %s", w.Code, w.Body.String())
 	}
