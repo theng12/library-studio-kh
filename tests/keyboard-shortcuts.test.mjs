@@ -121,16 +121,26 @@ function makeDoc({ view = "activity", gateHidden = true, shellHidden = false, di
 
 function makeList({ hidden = false, count = 0, disabled = [] } = {}) {
   const list = new FakeElement("div", { id: "dl", hidden });
+  const table = new FakeElement("table", { parentNode: list });
+  const head = new FakeElement("thead", { parentNode: table });
+  const headRow = new FakeElement("tr", { parentNode: head });
+  const all = new FakeElement("input", { type: "checkbox", attributes: { type: "checkbox", "data-select-all": "" }, parentNode: headRow });
+  all.disabled = count === 0;
+  headRow.children.push(all);
+  head.children.push(headRow);
+  const body = new FakeElement("tbody", { parentNode: table });
   const boxes = [];
   for (let i = 0; i < count; i++) {
-    const card = new FakeElement("article", { parentNode: list });
-    const box = new FakeElement("input", { type: "checkbox", attributes: { type: "checkbox" }, parentNode: card });
+    const row = new FakeElement("tr", { parentNode: body });
+    const box = new FakeElement("input", { type: "checkbox", attributes: { type: "checkbox" }, parentNode: row });
     box.disabled = disabled.includes(i);
-    card.children.push(box);
-    list.children.push(card);
+    row.children.push(box);
+    body.children.push(row);
     boxes.push(box);
   }
-  return { list, boxes };
+  table.children.push(head, body);
+  list.children.push(table);
+  return { list, boxes, all };
 }
 
 function keyEvent(opts = {}) {
@@ -307,11 +317,11 @@ test("Caps Lock capitals still reach the map, without touching shifted chords", 
   assert.equal(ev2.defaultPrevented, true);
   assert.deepEqual(refresh.calls.loadDownloads, [true]);
 
-  const { list, boxes } = makeList({ count: 2 });
+  const { list, boxes, all } = makeList({ count: 2 });
   const select = setup({ view: "downloads", downloads: list });
   const ev3 = press(select.doc, cmd("A"), boxes[0]);
   assert.equal(ev3.defaultPrevented, true);
-  assert.deepEqual(boxes.map((b) => b.checked), [true, true]);
+  assert.equal(all.checked, true, "the table select-all took the shortcut");
 
   // An intentionally shifted chord is still not a command.
   const shifted = setup({ view: "activity" });
@@ -431,36 +441,28 @@ test("IME, key repeat and already-handled events are ignored", () => {
 
 /* --- Cmd/Ctrl+A in the downloads list --- */
 
-test("Cmd+A from a focused download tick box selects the visible downloads", () => {
-  // The regression: the tick box is a real input, and the old guard mistook it
-  // for a text field and returned before the list was selected.
-  const { list, boxes } = makeList({ count: 2 });
+test("Cmd+A selects the visible downloads through the table's own select-all", () => {
+  // One header checkbox drives select-all in the panel; ticking every row box
+  // separately would rebuild the table between boxes and drop focus.
+  const { list, boxes, all } = makeList({ count: 2 });
   const { doc } = setup({ view: "downloads", downloads: list });
   const changes = [];
-  for (const box of boxes) box.addEventListener("change", () => changes.push(box));
+  all.addEventListener("change", () => changes.push(all));
+  const before = boxes.slice();
   const ev = press(doc, cmd("a"), boxes[1]);
   assert.equal(ev.defaultPrevented, true);
-  assert.deepEqual(boxes.map((b) => b.checked), [true, true]);
-  assert.equal(changes.length, 2);
-  assert.equal(doc.activeElement, boxes[1]);
+  assert.equal(all.checked, true);
+  assert.equal(changes.length, 1);
+  assert.deepEqual(boxes.map((b) => b.checked), [false, false], "row boxes are the panel's job, not the shortcut's");
+  assert.deepEqual(boxes, before, "no row box was replaced or moved by the shortcut");
 });
 
-test("Cmd+A ticks only the downloads the current filter rendered", () => {
+test("Cmd+A leaves focus where the owner was", () => {
   const { list, boxes } = makeList({ count: 2 });
   const { doc } = setup({ view: "downloads", downloads: list });
-  const changes = [];
-  for (const box of boxes) box.addEventListener("change", () => changes.push(box));
-  // A monitoring switch lives outside the downloads list and must never be touched.
-  const monitor = new FakeElement("input", { type: "checkbox", attributes: { type: "checkbox" }, checked: false });
-  doc.elements.set("monitor", monitor);
-
-  const card = list.children[0];
-  const ev = press(doc, cmd("a"), card);
+  const ev = press(doc, cmd("a"), boxes[0]);
   assert.equal(ev.defaultPrevented, true);
-  assert.deepEqual(boxes.map((b) => b.checked), [true, true]);
-  assert.equal(changes.length, 2);
-  assert.equal(monitor.checked, false);
-  assert.equal(doc.activeElement, card);
+  assert.equal(doc.activeElement, boxes[0]);
 });
 
 test("Cmd+A needs the Downloads view, the signed-in shell and no open dialog", () => {
@@ -468,88 +470,46 @@ test("Cmd+A needs the Downloads view, the signed-in shell and no open dialog", (
   const behindView = setup({ view: "activity", downloads: hiddenView.list });
   const ev1 = press(behindView.doc, cmd("a"), hiddenView.list);
   assert.equal(ev1.defaultPrevented, false, "another screen in front");
-  assert.deepEqual(hiddenView.boxes.map((b) => b.checked), [false, false]);
+  assert.equal(hiddenView.all.checked, false);
 
   const gated = makeList({ count: 2 });
   const gatedDoc = setup({ view: "downloads", gateHidden: false, downloads: gated.list });
   const ev2 = press(gatedDoc.doc, cmd("a"), gated.list);
   assert.equal(ev2.defaultPrevented, false, "sign-in gate");
-  assert.deepEqual(gated.boxes.map((b) => b.checked), [false, false]);
+  assert.equal(gated.all.checked, false);
 
   const dialoged = makeList({ count: 2 });
   const dialogDoc = setup({ view: "downloads", downloads: dialoged.list, dialogs: [new FakeElement("dialog", { open: true })] });
   const ev3 = press(dialogDoc.doc, cmd("a"), dialoged.list);
   assert.equal(ev3.defaultPrevented, false, "open dialog");
-  assert.deepEqual(dialoged.boxes.map((b) => b.checked), [false, false]);
+  assert.equal(dialoged.all.checked, false);
 });
 
 test("Cmd+A from outside the list stays with the platform", () => {
-  const { list, boxes } = makeList({ count: 2 });
+  const { list, all } = makeList({ count: 2 });
   const { doc } = setup({ view: "downloads", downloads: list });
   const ev = press(doc, cmd("a"), new FakeElement("body"));
   assert.equal(ev.defaultPrevented, false);
-  assert.deepEqual(boxes.map((b) => b.checked), [false, false]);
+  assert.equal(all.checked, false);
 });
 
-test("a hidden or empty downloads list falls back to the platform", () => {
+test("a hidden, empty or disabled list falls back to the platform", () => {
   const hidden = makeList({ hidden: true, count: 2 });
   const doc1 = setup({ view: "downloads", downloads: hidden.list }).doc;
   const ev = press(doc1, cmd("a"), hidden.list);
   assert.equal(ev.defaultPrevented, false);
-  assert.deepEqual(hidden.boxes.map((b) => b.checked), [false, false]);
 
   const empty = makeList({ count: 0 });
   const doc2 = setup({ view: "downloads", downloads: empty.list }).doc;
   const ev2 = press(doc2, cmd("a"), empty.list);
   assert.equal(ev2.defaultPrevented, false);
-});
 
-test("disabled tick boxes are never ticked", () => {
-  const { list, boxes } = makeList({ count: 3, disabled: [1] });
-  const { doc } = setup({ view: "downloads", downloads: list });
-  const changes = [];
-  for (const box of boxes) box.addEventListener("change", () => changes.push(box));
-  const ev = press(doc, cmd("a"), boxes[0]);
-  assert.equal(ev.defaultPrevented, true);
-  assert.deepEqual(boxes.map((b) => b.checked), [true, false, true]);
-  assert.equal(changes.length, 2);
-
-  const all = makeList({ count: 2, disabled: [0, 1] });
-  const allDoc = setup({ view: "downloads", downloads: all.list }).doc;
-  const ev2 = press(allDoc, cmd("a"), all.boxes[0]);
-  assert.equal(ev2.defaultPrevented, false, "nothing selectable means the platform keeps Cmd+A");
-  assert.deepEqual(all.boxes.map((b) => b.checked), [false, false]);
-});
-
-test("focus survives a card rebuild that replaces the tick boxes", () => {
-  const { list, boxes } = makeList({ count: 3 });
-  const { doc } = setup({ view: "downloads", downloads: list });
-  // A change handler re-renders the list with brand new cards and tick boxes,
-  // and the old nodes are left disconnected.
-  for (const box of boxes) box.addEventListener("change", () => {
-    if (box !== boxes[0]) return;
-    const replacements = makeList({ count: 3 });
-    list.children = replacements.list.children;
-    for (const node of list.children) {
-      node.parentNode = list;
-      const wire = (n) => { n.ownerDocument = doc; for (const c of n.children) wire(c); };
-      wire(node);
-    }
-    doc.activeElement = new FakeElement("body");
-  });
-  const ev = press(doc, cmd("a"), list.children[1]);
-  assert.equal(ev.defaultPrevented, true);
-  assert.ok(list.querySelectorAll("input[type=checkbox]").length === 3, "new cards are in place");
-  assert.ok(doc.activeElement?.closest?.("#dl"), "focus landed on a live node in the list");
-  assert.ok(list.contains(doc.activeElement), "the focused node is still connected");
-});
-
-test("a refresh that leaves focus inside the list does not move it", () => {
-  const { list, boxes } = makeList({ count: 2 });
-  const { doc } = setup({ view: "downloads", downloads: list });
-  const ev = press(doc, cmd("a"), boxes[0]);
-  assert.equal(ev.defaultPrevented, true);
-  assert.equal(doc.activeElement, boxes[0], "focus was not disturbed");
+  const off = makeList({ count: 2 });
+  off.all.disabled = true;
+  const doc3 = setup({ view: "downloads", downloads: off.list }).doc;
+  const ev3 = press(doc3, cmd("a"), off.boxes[0]);
+  assert.equal(ev3.defaultPrevented, false);
+  assert.equal(off.all.checked, false);
 });
 
 /* --- Escape precedence --- */
@@ -615,7 +575,9 @@ test("the shortcut map is discoverable in the shipped markup", () => {
   assert.ok(indexHtml.indexOf("keyboard.js") < indexHtml.indexOf('<script src="app.js"'), "keyboard.js loads before app.js");
   for (const id of KBD_IDS) assert.ok(indexHtml.includes('id="' + id + '"'), id);
   assert.ok(indexHtml.includes("<h2>Keyboard</h2>"));
-  assert.ok((indexHtml.match(/aria-keyshortcuts="Meta\+F Control\+F"/g) || []).length === 5);
+  assert.ok((indexHtml.match(/aria-keyshortcuts="Meta\+F Control\+F"/g) || []).length === 3, "each markup search box names Cmd+F; the library and downloads search boxes are built by their modules");
+  assert.ok(indexHtml.indexOf("library-grid.js") < indexHtml.indexOf("app.js"), "library-grid.js loads before app.js");
+  assert.ok(indexHtml.indexOf("downloads-panel.js") < indexHtml.indexOf("app.js"), "downloads-panel.js loads before app.js");
   assert.ok(indexHtml.includes('aria-keyshortcuts="Meta+A Control+A"'));
   assert.ok(indexHtml.includes('aria-keyshortcuts="Meta+,'), "Settings menu");
   assert.ok(indexHtml.includes('aria-keyshortcuts="Meta+? Control+?"'), "help menu");

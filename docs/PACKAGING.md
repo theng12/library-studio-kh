@@ -78,7 +78,7 @@ npm run retain:accepted -- /absolute/coordination/library-accepted-dist-pins.jso
 
 Record the pin document, helper source hash, JSON result and resulting `dist/.release-dist.json` with the release evidence, then recheck every retained hash and byte size. The helper copies or adopts identical bytes into `Library Studio KH-<version>.dmg`; it never moves the source. It retires only obsolete files that its ledger owns and whose recorded bytes still match. Unmanaged files remain untouched: this is never a whole-`dist` wipe, and pending installers are not managed pins. Re-running the same set is idempotent.
 
-Retention is automatic (owner, 2026-11-12). `npm run retain:accepted -- <pins>` runs the shared helper and then `scripts/release-retain.py`, which moves any remaining Library installer older than the newest three into this project's `_trash/<date> library dist rotation/` (recoverable, never overwritten). No hand step: a version older than the latest three never needs a person.
+Retention is automatic (owner, 2026-11-12). `npm run retain:accepted -- <pins>` runs the shared portfolio helper directly, which adopts the pinned pair, copies it under the shared versioned names and retires only files its ledger owns (recoverable, never overwritten). `scripts/release-retain.py` remains as the older wrapper for a manual rotation; the normal release uses the shared helper. No hand step: a version older than the latest three never needs a person.
 
 Three is a depth, not a quota (owner, 2026-11-12): the three come from new releases only. When fewer verified versions exist, keep what exists and never restore an older installer to fill a slot. Current depth is three — 0.7.11, 0.7.10 and 0.7.9.
 

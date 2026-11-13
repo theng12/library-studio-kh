@@ -81,30 +81,14 @@ test("opening another add resets stale monitoring and search choices to safe def
   assert.equal(context.$("#add-monitor-label").textContent, "Monitor all seasons and episodes");
 });
 
-test("list monitoring changes use native readback and retain reported state on mismatch", async () => {
-  for (const [reported, expected, error] of [[true, true, false], [false, false, true], [undefined, null, true]]) {
-    const note = {}, requests = [];
-    let renders = 0;
-    const context = { URLSearchParams, $: () => note, renderLibrary: () => renders++, api: async (url, body) => { requests.push({ url, body }); return url.includes("details") ? { monitored: reported } : { ok: true }; } };
-    runInNewContext(helper("toggleMonitor"), context);
-    const item = { app: "Sonarr", id: 7, monitored: false };
-    await context.toggleMonitor(item, { checked: true });
-    assert.equal(item.monitored, expected);
-    assert.equal(requests.length, 2);
-    assert.match(requests[1].url, /\/api\/media\/details\?app=Sonarr&id=7/);
-    assert.equal(note.hidden, !error);
-    assert.equal(renders, 1);
-    if (error) assert.match(note.textContent, /did not confirm/);
-  }
-});
-
-test("a failed write is never presented as a confirmed monitoring change", async () => {
-  const note = {};
-  const context = { $: () => note, renderLibrary() {}, api: async () => { throw new Error("Sonarr unavailable"); } };
-  runInNewContext(helper("toggleMonitor"), context);
-  const item = { app: "Sonarr", id: 7, monitored: false };
-  await context.toggleMonitor(item, { checked: true });
-  assert.equal(item.monitored, null);
-  assert.equal(note.hidden, false);
-  assert.equal(note.textContent, "Sonarr unavailable");
+test("monitoring stays on the media details page and is always read back", () => {
+  // My library shows monitoring as reported data only; the only switch lives on
+  // the item's own details page, which re-reads the app after a change.
+  const media = readFileSync(new URL("../internal/server/web/media.js", import.meta.url), "utf8");
+  const app = readFileSync(new URL("../internal/server/web/app.js", import.meta.url), "utf8");
+  assert.match(media, /"\/api\/media\/monitor"/);
+  assert.match(media, /\/api\/media\/details\?/);
+  assert.match(media, /refreshMediaDetails/);
+  assert.doesNotMatch(app, /toggleMonitor/);
+  assert.doesNotMatch(app, /#lib-monitoring/);
 });

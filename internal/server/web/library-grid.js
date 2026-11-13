@@ -356,10 +356,12 @@ function libraryGridToolbar(options) {
   const bar = libraryGridNode("div", null, "libgrid-toolbar");
   const search = document.createElement("input");
   search.type = "search";
+  search.id = "lib-q";
   search.className = "libgrid-search";
   search.value = options.filters?.query || "";
   search.placeholder = "Search your library…";
   search.setAttribute("aria-label", "Search your library");
+  search.setAttribute("aria-keyshortcuts", "Meta+F Control+F");
   search.addEventListener("input", () => options.handlers?.onSearch?.(search.value));
   bar.append(search);
 

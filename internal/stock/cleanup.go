@@ -70,6 +70,7 @@ type ImportProof struct {
 	DownloadID   string
 	ImportedAt   time.Time
 	ImportedPath string
+	MediaID      int // the app's series, movie or artist ID; 0 when not reported
 }
 
 // WholeImports reads every history page the app reports, never a single newest
@@ -90,6 +91,9 @@ func (a *Arr) WholeImports() (result map[string]ImportProof, err error) {
 				DownloadID string         `json:"downloadId"`
 				Date       time.Time      `json:"date"`
 				Data       map[string]any `json:"data"`
+				SeriesID   int            `json:"seriesId"`
+				MovieID    int            `json:"movieId"`
+				ArtistID   int            `json:"artistId"`
 			} `json:"records"`
 		}
 		if err := a.do("GET", fmt.Sprintf("/history?page=%d&pageSize=1000&sortKey=date&sortDirection=descending", page), nil, &p); err != nil {
@@ -116,7 +120,14 @@ func (a *Arr) WholeImports() (result map[string]ImportProof, err error) {
 				return nil, fmt.Errorf("%s reported an import for download %s without a valid import date", a.Name, id)
 			}
 			if prev, ok := out[id]; !ok || r.Date.After(prev.ImportedAt) {
-				out[id] = ImportProof{App: a.Name, DownloadID: id, ImportedAt: r.Date, ImportedPath: strings.TrimSpace(path)}
+				media := 0
+				for _, m := range []int{r.SeriesID, r.MovieID, r.ArtistID} {
+					if m > 0 {
+						media = m
+						break
+					}
+				}
+				out[id] = ImportProof{App: a.Name, DownloadID: id, ImportedAt: r.Date, ImportedPath: strings.TrimSpace(path), MediaID: media}
 			}
 		}
 		read += len(p.Records)

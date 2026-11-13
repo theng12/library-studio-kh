@@ -74,7 +74,7 @@ func cfg(url string) config.Config {
 func TestRetiredCleanupKeepsEveryLocalCopy(t *testing.T) {
 	srv, deleted := mockStock(t, true)
 	home := t.TempDir()
-	s := Gather(cfg(srv.URL), home, now)
+	s := Gather(cfg(srv.URL), home, now, nil)
 	if s.Blocked != "" {
 		t.Fatalf("unexpected block: %s", s.Blocked)
 	}
@@ -85,7 +85,7 @@ func TestRetiredCleanupKeepsEveryLocalCopy(t *testing.T) {
 		t.Fatalf("retired cleanup must never delete, got %d %v %v", n, *deleted, errs)
 	}
 	kinds := map[string]string{}
-	for _, it := range Gather(cfg(srv.URL), home, now).Items {
+	for _, it := range Gather(cfg(srv.URL), home, now, nil).Items {
 		kinds[it.Title] = it.Kind
 	}
 	want := map[string]string{"New Imported": "imported", "Never Imported": "unmanaged", "Part Imported": "waiting",
@@ -108,7 +108,7 @@ func TestRetiredCleanupKeepsEveryLocalCopy(t *testing.T) {
 func TestCleanupDoesNothingWhenAnAppIsDownOrSwitchedOff(t *testing.T) {
 	srv, deleted := mockStock(t, false)
 	home := t.TempDir()
-	s := Gather(cfg(srv.URL), home, now)
+	s := Gather(cfg(srv.URL), home, now, nil)
 	if s.Blocked == "" {
 		t.Fatal("Sonarr down must block cleanup")
 	}
@@ -117,7 +117,7 @@ func TestCleanupDoesNothingWhenAnAppIsDownOrSwitchedOff(t *testing.T) {
 	up, deleted2 := mockStock(t, true)
 	off := cfg(up.URL)
 	off.CleanupOn = false
-	Cleanup(off, home, Gather(off, home, now), now)
+	Cleanup(off, home, Gather(off, home, now, nil), now)
 	if len(*deleted)+len(*deleted2) != 0 {
 		t.Fatalf("nothing may be removed, got %v %v", *deleted, *deleted2)
 	}

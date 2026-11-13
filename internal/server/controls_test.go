@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -194,5 +198,103 @@ func TestControlRoutesReportFailure(t *testing.T) {
 	}
 	if w := do("/api/media/options?app=Radarr"); w.Code != 502 || !strings.Contains(w.Body.String(), "Radarr") {
 		t.Fatalf("upstream failure must be explicit: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDownloadRemoveKeepsFilesAndRevealIsGuarded(t *testing.T) {
+	const otherHash = "fedcba9876543210fedcba9876543210fedcba98"
+	src := t.TempDir()
+	var deletes []url.Values
+	var resumed bool
+	savePath := src
+	stockSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/torrents/info":
+			json.NewEncoder(w).Encode([]map[string]any{{"hash": testHash, "name": "One", "progress": 1, "save_path": savePath}})
+		case "/api/v2/torrents/delete":
+			r.ParseForm()
+			deletes = append(deletes, r.PostForm)
+			if r.PostForm.Get("hashes") == otherHash {
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+		case "/api/v2/torrents/start":
+			r.ParseForm()
+			resumed = r.Form.Get("hashes") == testHash
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer stockSrv.Close()
+	home := t.TempDir()
+	store, _ := config.Open(home)
+	c := config.Default()
+	c.QBit.URL = stockSrv.URL
+	if err := store.Save(c); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	New(store, home).registerControls(mux)
+	do := func(path, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest("POST", path, strings.NewReader(body)))
+		return w
+	}
+
+	for _, action := range []string{"remove", "clear"} {
+		deletes = nil
+		w := do("/api/downloads/action", `{"hashes":["`+testHash+`","`+otherHash+`"],"action":"`+action+`"}`)
+		var out struct {
+			OK     bool     `json:"ok"`
+			Errors []string `json:"errors"`
+		}
+		json.Unmarshal(w.Body.Bytes(), &out)
+		if w.Code != 200 || out.OK || len(out.Errors) != 1 || !strings.Contains(out.Errors[0], otherHash) {
+			t.Fatalf("%s must report the one failed hash: %d %s", action, w.Code, w.Body.String())
+		}
+		if len(deletes) != 2 {
+			t.Fatalf("%s must try every hash, got %v", action, deletes)
+		}
+		for _, f := range deletes {
+			if f.Get("deleteFiles") != "false" {
+				t.Fatalf("%s must never delete files: %v", action, f)
+			}
+		}
+	}
+	if w := do("/api/downloads/action", `{"hashes":["`+testHash+`"],"action":"resume"}`); w.Code != 200 || !resumed || !strings.Contains(w.Body.String(), `"ok":true`) {
+		t.Fatalf("resume: %d %s", w.Code, w.Body.String())
+	}
+	deletes = nil
+	if w := do("/api/downloads/action", `{"hashes":["`+testHash+`"],"action":"purge"}`); w.Code != 400 || deletes != nil {
+		t.Fatalf("unknown action must be refused untouched: %d %s", w.Code, w.Body.String())
+	}
+
+	var ran []string
+	old := runReveal
+	runReveal = func(name string, args ...string) error { ran = append([]string{name}, args...); return nil }
+	defer func() { runReveal = old }()
+	if runtime.GOOS != "darwin" {
+		if w := do("/api/downloads/reveal", `{"hash":"`+testHash+`"}`); w.Code != 400 || ran != nil {
+			t.Fatalf("reveal must refuse off macOS: %d %s", w.Code, w.Body.String())
+		}
+		return
+	}
+	for name, tc := range map[string]struct{ hash, path string }{
+		"not listed": {otherHash, src},
+		"relative":   {testHash, "downloads/tv"},
+		"empty":      {testHash, ""},
+		"missing":    {testHash, filepath.Join(src, "gone")},
+	} {
+		savePath = tc.path
+		if w := do("/api/downloads/reveal", `{"hash":"`+tc.hash+`"}`); w.Code != 400 || ran != nil {
+			t.Fatalf("reveal %s must be refused without running anything: %d %s %v", name, w.Code, w.Body.String(), ran)
+		}
+	}
+	file := filepath.Join(src, "One.mkv")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	savePath = file
+	if w := do("/api/downloads/reveal", `{"hash":"`+strings.ToUpper(testHash)+`"}`); w.Code != 200 || strings.Join(ran, " ") != "open -R "+file {
+		t.Fatalf("reveal: %d %s ran=%v", w.Code, w.Body.String(), ran)
 	}
 }

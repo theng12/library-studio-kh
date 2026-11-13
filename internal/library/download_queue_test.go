@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -108,7 +110,7 @@ func TestDownloadQueueMapsParentsByHashNotTitle(t *testing.T) {
 		"/api/v3/history": `{"records":[]}`,
 	}, nil)
 
-	items, problems, err := DownloadQueue(dlCfg(qb.URL, sonarr.URL, radarr.URL))
+	items, problems, err := DownloadQueue(dlCfg(qb.URL, sonarr.URL, radarr.URL), "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +162,7 @@ func TestDownloadQueueWalksEveryQueuePage(t *testing.T) {
 	}))
 	t.Cleanup(sonarr.Close)
 
-	items, problems, err := DownloadQueue(dlCfg(qb.URL, sonarr.URL, ""))
+	items, problems, err := DownloadQueue(dlCfg(qb.URL, sonarr.URL, ""), "", nil)
 	if err != nil || len(problems) != 0 {
 		t.Fatalf("err=%v problems=%v", err, problems)
 	}
@@ -184,7 +186,7 @@ func TestDownloadQueueRefusesToGuessBetweenApps(t *testing.T) {
 		"/api/v3/history": `{"records":[]}`,
 	}, nil)
 
-	items, problems, err := DownloadQueue(dlCfg(qb.URL, sonarr.URL, radarr.URL))
+	items, problems, err := DownloadQueue(dlCfg(qb.URL, sonarr.URL, radarr.URL), "", nil)
 	if err != nil || len(problems) != 0 {
 		t.Fatalf("err=%v problems=%v", err, problems)
 	}
@@ -207,7 +209,7 @@ func TestDownloadQueuePartialFailureKeepsTorrentsVisible(t *testing.T) {
 		"/api/v3/history": `{"records":[]}`,
 	}, nil)
 
-	items, problems, err := DownloadQueue(dlCfg(qb.URL, sonarr.URL, radarr.URL))
+	items, problems, err := DownloadQueue(dlCfg(qb.URL, sonarr.URL, radarr.URL), "", nil)
 	if err != nil {
 		t.Fatalf("partial failure must not be fatal: %v", err)
 	}
@@ -229,14 +231,83 @@ func TestDownloadQueuePartialFailureKeepsTorrentsVisible(t *testing.T) {
 
 func TestDownloadQueueFailsOnlyWhenTheDownloaderIsUnreadable(t *testing.T) {
 	qb := dlQBit(t, http.StatusInternalServerError, nil)
-	items, problems, err := DownloadQueue(dlCfg(qb.URL, "", ""))
+	items, problems, err := DownloadQueue(dlCfg(qb.URL, "", ""), "", nil)
 	if err == nil || items != nil || problems != nil {
 		t.Fatalf("qBittorrent failure must be fatal, got items=%v problems=%v err=%v", items, problems, err)
 	}
 	noLeak(t, "fatal error", err.Error())
 
-	items, _, err = DownloadQueue(config.Default()) // no downloader configured
+	items, _, err = DownloadQueue(config.Default(), "", nil) // no downloader configured
 	if err == nil || !strings.Contains(err.Error(), "qBittorrent isn't connected") {
 		t.Fatalf("missing downloader must say so, got %v", err)
+	}
+}
+
+func TestDownloadQueueJoinsSavedProofByHash(t *testing.T) {
+	const hashGone = "6666666666666666666666666666666666666666"
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "present"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	qb := dlQBit(t, http.StatusOK, []map[string]any{
+		{"hash": strings.ToLower(hashOne), "name": "Show S01", "progress": 1, "state": "uploading", "completion_on": 1700000000},
+		{"hash": hashOld, "name": "Old Film", "progress": 1, "state": "uploading"},
+		{"hash": hashTwo, "name": "Big.Fish.2003.1080p", "progress": 0.5, "state": "downloading"},
+		{"hash": hashFree, "name": "Lost", "progress": 1, "state": "missingFiles"},
+		{"hash": hashBoth, "name": "present", "progress": 1, "state": "uploading", "save_path": src},
+		{"hash": hashGone, "name": "absent", "progress": 1, "state": "uploading", "save_path": src},
+	})
+	radarr := dlArr(t, map[string]string{
+		"/api/v3/queue":   fmt.Sprintf(`{"totalRecords":1,"records":[{"downloadId":%q,"movieId":9}]}`, hashTwo),
+		"/api/v3/history": `{"records":[]}`,
+		"/api/v3/movie":   `[{"id":9,"title":"Big Fish","year":2003}]`,
+	}, nil)
+	home := t.TempDir()
+	sha := strings.Repeat("ab", 32)
+	ledger := fmt.Sprintf(`{"version":1,"items":[
+		{"hash":%q,"importedAt":"2026-11-01T00:00:00Z","verifiedAt":"2026-11-02T00:00:00Z","importedPath":"/Volumes/NAS/TV/Show","savePath":"/downloads/tv","files":[{"rel":"a.mkv","size":1,"sha256":%q},{"rel":"b.mkv","size":1,"sha256":%q}]},
+		{"hash":%q,"importedAt":"2026-11-01T00:00:00Z","verifiedAt":"2026-11-02T00:00:00Z","importedPath":"/Users/me/Films/Old","savePath":"/downloads/film","files":[{"rel":"","size":1,"sha256":%q},{"rel":"b","size":1,"sha256":""}]}]}`,
+		strings.ToLower(hashOne), sha, sha, hashOld, sha)
+	if err := os.WriteFile(filepath.Join(home, cleanupStateFile), []byte(ledger), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	items, problems, err := DownloadQueue(dlCfg(qb.URL, "", radarr.URL), home, nil)
+	if err != nil || len(problems) != 0 {
+		t.Fatalf("err=%v problems=%v", err, problems)
+	}
+	got := byHash(items)
+	d := got[hashOne]
+	if d.Verified != "hash" || d.VerifiedAt != "2026-11-02T00:00:00Z" || d.Status != "copied" ||
+		d.TargetPath != "/Volumes/NAS/TV/Show" || d.TargetVolume != "NAS" || d.SourcePath != "/downloads/tv" ||
+		d.StatusAt != "2023-11-14T22:13:20Z" || d.SourceGone {
+		t.Fatalf("hash-verified proof wrong: %+v", d)
+	}
+	if d := got[hashOld]; d.Verified != "size" || d.Status != "copied" || d.TargetVolume != "/" || d.SourceGone {
+		t.Fatalf("a file without SHA-256 must read size: %+v", d)
+	}
+	if d := got[hashTwo]; d.Status != "downloading" || d.MediaTitle != "Big Fish" || d.Verified != "" || d.TargetPath != "" || d.PosterPath != "" {
+		t.Fatalf("active download wrong: %+v", d)
+	}
+	if d := got[hashFree]; !d.SourceGone || d.Verified != "" || d.VerifiedAt != "" || d.StatusAt != "" || d.MediaTitle != "Lost" {
+		t.Fatalf("missingFiles must read sourceGone with no proof: %+v", d)
+	}
+	if d := got[hashBoth]; d.SourceGone || d.Verified != "" || d.Status != "on-disk" {
+		t.Fatalf("readable source without proof wrong: %+v", d)
+	}
+	if d := got[hashGone]; !d.SourceGone {
+		t.Fatalf("finished torrent whose files are absent must read sourceGone: %+v", d)
+	}
+
+	// A damaged ledger is reported and nothing reads as verified.
+	if err := os.WriteFile(filepath.Join(home, cleanupStateFile), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	items, problems, err = DownloadQueue(dlCfg(qb.URL, "", radarr.URL), home, nil)
+	if err != nil || len(problems) != 1 || !strings.Contains(problems[0], "cleanup proof") {
+		t.Fatalf("damaged ledger must be one problem: err=%v problems=%v", err, problems)
+	}
+	if d := byHash(items)[hashOne]; d.Verified != "" || d.Status == "copied" {
+		t.Fatalf("no readable proof must not verify: %+v", d)
 	}
 }

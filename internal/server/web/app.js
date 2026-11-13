@@ -61,18 +61,6 @@ function torrentStateWord(state) {
   return "Downloading";
 }
 
-function stateOf(it, cleanupOn) {
-  switch (it.kind) {
-    case "downloading": return [torrentStateWord(it.state), downloadProgressText(it.progress)];
-    case "waiting": return ["Waiting for import", it.app || ""];
-    case "imported": return ["In library", cleanupOn ? "Local copy: check Cleanup for verified status" : "Local copy kept"];
-    case "unmanaged": return ["Downloaded", "Not from Sonarr, Radarr or Lidarr, so it stays"];
-    case "upcoming": return ["Coming up", day(it.when)];
-    case "removed": return ["In library", "Local copy removed " + day(it.when)];
-  }
-  return [it.kind, ""];
-}
-
 function row(cells, tableID) {
   const tr = document.createElement("tr");
   const headers = tableID ? document.getElementById(tableID).querySelectorAll("thead th") : [];
@@ -139,35 +127,121 @@ function render(st) {
 }
 
 const has = (title, q) => title.toLowerCase().includes(q.trim().toLowerCase());
-const byTitle = (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true });
 const TYPE = { Sonarr: "TV", Radarr: "Film", Lidarr: "Music" };
+
+// One line per real event, newest first. Events come from the same snapshot the
+// other pages use, so Activity can never claim something the item record denies.
+function activityLabel(it) {
+  const status = it.status || it.kind || "";
+  if (status === "copied" || status === "moved") {
+    const done = status === "moved" ? "Moved off this computer" : "Copied to the NAS";
+    if (it.verified === "hash" || it.verified === "size") {
+      return {
+        outcome: "verified",
+        label: done + " · verified",
+        detail: (it.verified === "hash" ? "SHA-256 hash match" : "Size and readback match")
+          + (it.targetPath ? " · " + it.targetPath : " · location not recorded"),
+        at: it.verifiedAt || it.statusAt || it.when || null,
+      };
+    }
+    return { outcome: "problems", label: done + " · not verified yet", detail: "The library app recorded the import, but no verification proof is saved yet. Cleanup’s Preview checks the copy.", at: it.statusAt || it.when || null };
+  }
+  if (status === "importing") return { outcome: "importing", label: "Importing", detail: "", at: it.statusAt || null };
+  if (status === "downloading" || status === "queued" || status === "stalled") {
+    const word = torrentStateWord(it.state);
+    const broken = word === "Missing files" || /error/i.test(it.state || "");
+    return {
+      outcome: broken ? "problems" : "downloading",
+      label: broken ? (word === "Missing files" ? word : "Error") : word || (status === "queued" ? "Queued" : "Downloading"),
+      detail: downloadProgressText(it.progress) + (it.speed ? " · " + rate(it.speed) : ""),
+      at: it.statusAt || null,
+    };
+  }
+  if (status === "removed") return { outcome: "removed", label: "Local copy removed", detail: it.targetPath || "Removed after a verified import.", at: it.when || it.statusAt || null };
+  if (status === "upcoming") return { outcome: "upcoming", label: "Coming up", detail: "", at: it.when || null };
+  if (status === "missing") return { outcome: "problems", label: "Files missing", detail: "Its source is gone; open Downloads to act on it.", at: it.statusAt || null };
+  if (status === "on-disk") return { outcome: "problems", label: "On disk · no import proof", detail: "The files are there, but no verified import record explains them.", at: it.statusAt || null };
+  return { outcome: "problems", label: it.kind || "Recorded", detail: "", at: it.statusAt || null };
+}
+
+function activityEntries() {
+  const s = current.snapshot;
+  const entries = [];
+  for (const it of s.items || []) {
+    const info = activityLabel(it);
+    const app = it.app || "qBittorrent";
+    entries.push({ ...info, title: it.title || "Untitled", app, detail: info.detail ? info.detail + (it.app ? " · " + it.app : "") : "", stats: it.stats || null, item: it });
+  }
+  for (const a of s.apps || []) {
+    if (a.ok) continue;
+    entries.push({ at: null, outcome: "problems", label: "Service error", title: a.name, app: a.name, detail: a.error || "It did not answer.", stats: null });
+  }
+  return entries;
+}
 
 function renderActivity() {
   if (!current) return;
-  const s = current.snapshot, q = $("#act-q").value, kind = $("#act-kind").value, sort = $("#act-sort").value;
-  let items = s.items.filter((it) => (!kind || it.kind === kind) && has(it.title, q));
-  if (sort === "title") items = [...items].sort(byTitle);
-  if (sort === "when") items = [...items].sort((a, b) => (b.when || "").localeCompare(a.when || ""));
+  const s = current.snapshot, q = $("#act-q").value, app = $("#act-app").value, outcome = $("#act-outcome").value;
+  const appSelect = $("#act-app"), keep = app;
+  const apps = [...new Set([...(s.items || []).map((it) => it.app).filter(Boolean), ...(s.apps || []).map((a) => a.name)])].sort();
+  appSelect.replaceChildren(mediaOption("", "All apps"), ...apps.map((name) => mediaOption(name, name)));
+  appSelect.value = apps.includes(keep) ? keep : "";
+
+  const all = activityEntries();
+  const entries = all.filter((e) => (!app || e.app === app) && (!outcome || e.outcome === outcome) && (!q.trim() || has(e.title, q)));
+  entries.sort((a, b) => {
+    if (!a.at && !b.at) return a.title.localeCompare(b.title);
+    if (!a.at) return -1;
+    if (!b.at) return 1;
+    return new Date(b.at) - new Date(a.at);
+  });
   const empty = $("#empty");
-  empty.hidden = items.length > 0;
-  if (s.apps.length > 0) empty.textContent = s.items.length
-    ? "Nothing matches. Clear the search or choose Everything."
-    : "Nothing here yet. Use Find & add to add a film, show or album.";
-  $("#list").hidden = items.length === 0;
-  $("#list tbody").replaceChildren(...items.map((it) => {
-    const [label, when] = stateOf(it, current.settings.stagedCleanupOn);
-    const tag = document.createElement("span");
-    tag.className = "state " + it.kind;
-    const word = document.createElement("span");
-    word.textContent = label;
-    tag.append(word);
-    let title = it.title;
-    if (it.stats) {
+  empty.hidden = entries.length > 0;
+  let emptyText = "Nothing matches these filters.";
+  if (!(s.apps || []).length) emptyText = "Nothing connected yet. Open Settings and add qBittorrent and at least one of Sonarr, Radarr or Lidarr.";
+  else if (!all.length) emptyText = "Nothing has happened yet. Downloads and imports appear here as they run.";
+  empty.textContent = emptyText;
+  if (!(s.apps || []).length) {
+    const openSettings = document.createElement("button");
+    openSettings.type = "button";
+    openSettings.className = "inline";
+    openSettings.textContent = "Settings";
+    openSettings.addEventListener("click", () => show("settings"));
+    empty.append(document.createTextNode(" "), openSettings);
+  }
+  $("#timeline").replaceChildren(...entries.map((e) => {
+    const li = document.createElement("li");
+    li.className = "timeline-item timeline-" + e.outcome;
+    const when = document.createElement("time");
+    when.className = "timeline-time";
+    if (e.at) { when.dateTime = String(e.at); when.textContent = stamp(e.at); }
+    else when.textContent = "Time not recorded";
+    const dot = document.createElement("span");
+    dot.className = "timeline-dot";
+    dot.setAttribute("aria-hidden", "true");
+    const main = document.createElement("div");
+    main.className = "timeline-main";
+    const head = document.createElement("p");
+    head.className = "timeline-head";
+    let title = e.title;
+    if (e.stats) {
       title = document.createElement("button");
-      title.type = "button"; title.className = "inline title"; title.textContent = it.title;
-      title.addEventListener("click", () => openDetails(it));
+      title.type = "button"; title.className = "inline title"; title.textContent = e.title;
+      title.addEventListener("click", () => openDetails(e.item));
     }
-    return row([title, tag, when], "list");
+    const label = document.createElement("span");
+    label.className = "timeline-label";
+    label.textContent = e.label;
+    head.append(title, label);
+    const detail = document.createElement("p");
+    detail.className = "timeline-detail muted";
+    detail.textContent = e.detail;
+    const source = document.createElement("span");
+    source.className = "timeline-app";
+    source.textContent = e.app;
+    main.append(head, detail);
+    li.append(when, dot, main, source);
+    return li;
   }));
 }
 
@@ -267,7 +341,8 @@ $("#torrent-form").addEventListener("submit", async (ev) => {
   } catch (e) { msg.textContent = e.message; }
   finally { btn.disabled = false; }
 });
-for (const id of ["#act-q", "#act-kind", "#act-sort"]) $(id).addEventListener("input", renderActivity);
+for (const id of ["#act-q", "#act-app", "#act-outcome"]) $(id).addEventListener("input", renderActivity);
+$("#act-refresh").addEventListener("click", () => load());
 
 function titleCell(m) {
   const box = document.createElement("div");
@@ -277,130 +352,98 @@ function titleCell(m) {
   return box;
 }
 
-let libItems = null;
-let libraryDownloads = [];
-let libraryProgressError = "";
-const openLibraryItems = new Set();
+/* My library: poster grid over the reconciled inventory. The server owns the
+   join between library items, import proof and cached metadata. */
+const lib = { items: [], problems: [], loading: false, error: "", filters: {}, draft: {}, view: "grid", selected: null, filtersOpen: false };
 let libraryLoading = false;
+
 async function loadLibrary() {
   if (libraryLoading) return;
   libraryLoading = true;
-  if (!libItems) { $("#lib-empty").hidden = false; $("#lib-empty").textContent = "Loading…"; }
+  lib.loading = !lib.items.length;
+  if (!lib.items.length) renderLibraryPage();
   try {
-    const r = await api("/api/browse");
-    libItems = r.items;
-    try {
-      const queue = await api("/api/downloads");
-      libraryDownloads = queue.items || [];
-      libraryProgressError = (queue.problems || []).join(" ");
-    } catch (e) { libraryDownloads = []; libraryProgressError = "Download progress unavailable: " + e.message; }
-    const problems = [...(r.problems || []), libraryProgressError].filter(Boolean);
-    $("#browse-notice").hidden = !problems.length;
-    $("#browse-notice").textContent = problems.join(" ");
-  } catch (e) { libItems = []; $("#browse-notice").hidden = false; $("#browse-notice").textContent = e.message; }
-  libraryLoading = false;
-  renderLibrary();
-}
-
-async function toggleMonitor(m, box) {
-  const note = $("#browse-notice"), requested = box.checked;
-  let reported = null;
-  box.disabled = true;
-  try {
-    await api("/api/media/monitor", { app: m.app, id: m.id, monitored: requested });
-    const current = await api("/api/media/details?" + new URLSearchParams({ app: m.app, id: m.id }));
-    reported = typeof current.monitored === "boolean" ? current.monitored : null;
-    if (reported !== requested) throw new Error(m.app + " did not confirm the monitoring change. Refresh to check its current setting.");
-    m.monitored = reported;
-    note.hidden = true;
-    renderLibrary();
+    const r = await api("/api/library");
+    lib.items = Array.isArray(r.items) ? r.items : [];
+    lib.problems = (r.problems || []).filter(Boolean);
+    lib.error = "";
   } catch (e) {
-    m.monitored = reported;
-    renderLibrary();
-    note.hidden = false;
-    note.textContent = e.message;
-  } finally { box.disabled = false; }
+    lib.error = e.message;
+  }
+  libraryLoading = false;
+  lib.loading = false;
+  renderLibraryPage();
 }
 
-function setLibraryOptions(select, options) {
-  const keep = select.value;
-  select.replaceChildren(...options.map(({ value, label }) => {
-    const option = document.createElement("option");
-    option.value = value; option.textContent = label;
-    return option;
+window.libraryReloadLibrary = () => loadLibrary();
+
+function renderLibraryPage() {
+  if (!current) return;
+  const host = $("#library-host");
+  const focused = document.activeElement;
+  const searchFocus = focused?.id === "lib-q" ? focused.selectionStart : null;
+  const rowFocus = focused?.closest?.("[data-key]")?.dataset.key || null;
+  const wasFilters = focused?.classList?.contains("libgrid-filters-toggle") || false;
+  $("#browse-lede").textContent = lib.items.length
+    ? lib.items.length + (lib.items.length === 1 ? " item" : " items") + " across Sonarr, Radarr and Lidarr. Status and proof come from import records."
+    : "Everything Sonarr, Radarr and Lidarr look after.";
+  const notice = $("#browse-notice");
+  notice.hidden = !lib.problems.length;
+  notice.textContent = lib.problems.join(" ");
+  const selected = lib.items.find((item) => libraryGridKey(item) === lib.selected) || null;
+  host.replaceChildren(libraryGridPage({
+    items: lib.items,
+    filters: lib.filters,
+    draft: { ...lib.filters, ...lib.draft },
+    view: lib.view,
+    selected: lib.selected,
+    count: libraryGridCount(libraryGridFilter(lib.items, lib.filters).length, lib.items.length),
+    loading: lib.loading,
+    error: lib.error,
+    problems: [],
+    filtersOpen: lib.filtersOpen,
+    posterURL: (item) => item.posterPath ? "/api/poster?path=" + encodeURIComponent(item.posterPath) : "",
+    handlers: {
+      onSearch: (value) => { lib.filters = { ...lib.filters, query: value }; renderLibraryPage(); },
+      onFilterChange: (next) => { const { query, ...rest } = next || {}; lib.draft = rest; renderLibraryPage(); },
+      onToggleFilters: () => { lib.filtersOpen = !lib.filtersOpen; renderLibraryPage(); },
+      onApply: () => { lib.filters = { ...lib.filters, ...lib.draft }; lib.draft = {}; lib.filtersOpen = false; renderLibraryPage(); },
+      onReset: () => { lib.filters = {}; lib.draft = {}; renderLibraryPage(); },
+      onView: (view) => { lib.view = view === "list" ? "list" : "grid"; renderLibraryPage(); },
+      onSelect: (key) => { lib.selected = key; renderLibraryPage(); },
+      onRetry: () => loadLibrary(),
+      onFindAndAdd: () => show("find"),
+    },
   }));
-  select.value = options.some((o) => o.value === keep) ? keep : "";
+  const openDetails = $("#lib-open-details");
+  openDetails.hidden = !selected;
+  openDetails.onclick = selected
+    ? () => openMediaDetails({ app: selected.app, id: Number(selected.mediaId || selected.id), title: selected.title })
+    : null;
+  if (searchFocus !== null) {
+    const search = $("#lib-q");
+    search?.focus();
+    search?.setSelectionRange?.(searchFocus, searchFocus);
+  } else if (rowFocus) {
+    host.querySelector('[data-key="' + CSS.escape(rowFocus) + '"]')?.focus();
+  } else if (wasFilters) {
+    host.querySelector(".libgrid-filters-toggle")?.focus();
+  }
 }
 
-function fillLibraryOptions(items) {
-  const genre = $("#lib-genre"), year = $("#lib-year");
-  // Rebuild only when the reported metadata set changes, so a chosen filter survives refreshes.
-  const key = libraryGenres(items).join("\u0001") + "|" + libraryYears(items).join(",");
-  if (genre.dataset.metadataKey === key) return;
-  setLibraryOptions(genre, libraryGenreOptions(items));
-  setLibraryOptions(year, libraryYearOptions(items));
-  genre.dataset.metadataKey = key;
-}
 
-function renderLibrary() {
-  if (!libItems) return;
-  fillLibraryOptions(libItems);
-  const q = $("#lib-q").value, type = $("#lib-type").value, sort = $("#lib-sort").value;
-  const language = $("#lib-language").value, genre = $("#lib-genre").value, year = $("#lib-year").value;
-  const monitoring = $("#lib-monitoring").value;
-  const items = librarySort(libraryFilter(libItems, { query: q, type, language, genre, year, monitoring }), sort);
-  $("#browse-lede").textContent = libItems.length + (libItems.length === 1 ? " item" : " items") + " looked after by Sonarr, Radarr and Lidarr.";
-  $("#lib-empty").hidden = items.length > 0;
-  $("#lib-empty").textContent = libItems.length ? "Nothing matches." : "Nothing in the library yet. Use Find & add.";
-  $("#lib").hidden = items.length === 0;
-  $("#lib").replaceChildren(...items.map((m) => {
-    const key = m.app + ":" + m.id, details = mediaNode("details", null, "library-item");
-    details.open = openLibraryItems.has(key);
-    let extrasLoaded = false;
-    const extras = m.app === "Radarr" ? mediaNode("div") : null;
-    const loadExtras = () => {
-      if (!details.open || !extras || extrasLoaded || !details.isConnected) return;
-      extrasLoaded = true;
-      loadMovieExtras(m, extras);
-    };
-    details.addEventListener("toggle", () => {
-      if (details.open) { openLibraryItems.add(key); loadExtras(); }
-      else openLibraryItems.delete(key);
-    });
-    if (details.open) queueMicrotask(loadExtras);
-    const summary = mediaNode("summary", null, "download-summary");
-    summary.append(mediaNode("span", m.title + (m.year ? " (" + m.year + ")" : ""), "download-title"));
-    summary.append(mediaNode("span", (TYPE[m.app] || m.app) + " · " + (m.haveFiles ? "Files available" : "Waiting for files") + " · " + libraryMonitoringLabel(m), "download-status"));
-    const matches = libraryDownloads.filter(t => t.app === m.app && (t.mediaIds || []).includes(m.id));
-    if (matches.length) {
-      const active = downloadRows(matches, "", "downloading", "queue")[0] || downloadRows(matches, "", "all", "queue").find(t => Number.isFinite(t.progress) && t.progress < 1);
-      summary.append(mediaNode("span", matches.length + (matches.length === 1 ? " matched download" : " matched downloads") + (active ? " · " + dlLabel(active.state) + " transfer" : ""), "muted"));
-      if (active) summary.append(progressBlock(active));
-    } else summary.append(mediaNode("span", libraryProgressError ? "Download progress unavailable" : "No matched downloads in the current queue", "muted"));
-    const body = mediaNode("div", null, "library-detail");
-    if (m.overview) body.append(mediaNode("p", m.overview, "library-overview"));
-    body.append(mediaNode("p", "Original language: " + (m.originalLanguage || "Not reported") + ". Downloaded audio and subtitles may differ.", "muted"));
-    body.append(mediaNode("p", "Genres: " + (m.genres && m.genres.length ? m.genres.join(", ") : "Not reported") + ".", "muted"));
-    if (m.added) body.append(mediaNode("p", "Added " + day(m.added), "muted"));
-    if (typeof m.monitored === "boolean") {
-      const label = mediaNode("label", null, "check media-monitor"), monitor = document.createElement("input");
-      monitor.type = "checkbox"; monitor.checked = m.monitored;
-      monitor.setAttribute("aria-label", "Monitor " + m.title);
-      monitor.addEventListener("change", () => toggleMonitor(m, monitor));
-      label.append(monitor, mediaNode("span", "Monitor for releases")); body.append(label);
-    }
-    if (matches.length) {
-      const list = mediaNode("ul", null, "source-list");
-      for (const t of matches) list.append(mediaNode("li", t.name + " · " + dlLabel(t.state) + " · " + downloadProgressText(t.progress)));
-      body.append(list);
-    }
-    const open = mediaNode("button", "Open " + (m.app === "Sonarr" ? "series" : m.app === "Radarr" ? "film" : "artist") + " details", "small");
-    open.type = "button"; open.addEventListener("click", () => openMediaDetails(m)); body.append(open);
-    if (extras) body.append(extras);
-    details.append(summary, body); return details;
-  }));
-}
-for (const id of ["#lib-q", "#lib-type", "#lib-genre", "#lib-year", "#lib-sort", "#lib-language", "#lib-monitoring"]) $(id).addEventListener("input", renderLibrary);
+// Arrow keys move focus through the poster grid; Enter opens the focused card.
+$("#library-host").addEventListener("keydown", (ev) => {
+  if (!["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(ev.key) || ev.altKey || ev.metaKey || ev.ctrlKey) return;
+  const cards = [...document.querySelectorAll("#library-host .libgrid-card, #library-host .libgrid-row")];
+  const index = cards.indexOf(document.activeElement);
+  if (index < 0) return;
+  const grid = document.querySelector("#library-host .libgrid-grid");
+  const columns = grid ? Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(" ").length) : 1;
+  const step = ev.key === "ArrowRight" ? 1 : ev.key === "ArrowLeft" ? -1 : ev.key === "ArrowDown" ? columns : -columns;
+  const next = cards[index + step];
+  if (next) { ev.preventDefault(); next.focus(); }
+});
 
 $("#find-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -524,7 +567,7 @@ $("#add-form").addEventListener("submit", async (ev) => {
   btn.disabled = true; btn.textContent = "Adding…";
   try {
     const r = await api("/api/media/add", body);
-    libItems = null;
+    if (typeof lib !== "undefined") lib.items = [];
     $("#add-dialog").close();
     if (done) done();
     const fm = $("#find-msg");
@@ -646,140 +689,112 @@ async function load() {
   catch (e) { $("#summary").textContent = e.message; }
 }
 
-/* Downloads: pause and resume only. No delete action exists here. */
-const DL_STATES = {
-  downloading: "Downloading", forcedDL: "Downloading", stalledDL: "Stalled", metaDL: "Fetching metadata",
-  queuedDL: "Queued", checkingDL: "Checking", pausedDL: "Paused", stoppedDL: "Paused",
-  uploading: "Seeding", forcedUP: "Seeding", stalledUP: "Seeding, stalled", queuedUP: "Queued to seed",
-  checkingUP: "Checking", pausedUP: "Paused", stoppedUP: "Paused",
-  moving: "Moving", allocating: "Allocating", error: "Error", missingFiles: "Missing files", unknown: "Unknown",
-};
-const dlLabel = (s) => DL_STATES[s] || s || "Unknown";
-const dlApp = app => ({ Unmatched: "qBittorrent · unmatched", Unknown: "App not verified" }[app] || app || "App not verified");
-const dlPaused = (s) => /^(paused|stopped)/i.test(s || "");
-let downloads = null;
-let dlError = "";
-const selected = new Set();
-
-const openDownloads = new Set();
-function progressBlock(t) {
-  const box = mediaNode("div", null, "download-progress");
-  const progress = document.createElement("progress"); progress.max = 1;
-  progress.setAttribute("aria-label", "Download progress");
-  const known = Number.isFinite(t.progress) && t.progress >= 0 && t.progress <= 1;
-  if (known) progress.value = t.progress;
-  box.append(progress, mediaNode("span", known ? downloadProgressText(t.progress) : "Not reported"));
-  return box;
-}
-function downloadCard(t) {
-  const card = mediaNode("article", null, "download-item");
-  card.dataset.hash = t.hash;
-  const select = mediaNode("label", null, "check-target");
-  const box = document.createElement("input"); box.type = "checkbox"; box.checked = selected.has(t.hash);
-  box.setAttribute("aria-label", "Select " + t.name); select.append(box);
-  box.addEventListener("change", () => { if (box.checked) selected.add(t.hash); else selected.delete(t.hash); updateDlButtons(); });
-  const details = document.createElement("details"); details.open = openDownloads.has(t.hash);
-  details.addEventListener("toggle", () => { if (details.open) openDownloads.add(t.hash); else openDownloads.delete(t.hash); });
-  const summary = mediaNode("summary", null, "download-summary");
-  summary.append(mediaNode("span", t.name, "download-title"));
-  const line = mediaNode("span", null, "download-status");
-  line.append(mediaNode("span", dlApp(t.app)), mediaNode("span", dlLabel(t.state)));
-  if (!dlPaused(t.state)) line.append(mediaNode("span", rate(t.dlspeed || 0) + " down"));
-  summary.append(line, progressBlock(t));
-  const info = mediaNode("dl", null, "facts");
-  const date = n => n > 0 ? stamp(new Date(n * 1000).toISOString()) : "Not reported";
-  facts(info, [["Queue position", t.priority == null ? "Not reported" : t.priority > 0 ? t.priority : "Not queued"],
-    ["Downloaded", bytes(t.downloaded || 0) + " of " + (t.size > 0 ? bytes(t.size) : "size not reported")],
-    ["Time remaining", t.eta >= 0 && t.eta < 8640000 ? dur(t.eta) : "Not available"],
-    ["Upload speed", rate(t.upspeed || 0)], ["Uploaded", bytes(t.uploaded || 0)],
-    ["Ratio", Number.isFinite(t.ratio) ? t.ratio.toFixed(2) : "Not reported"], ["Seeds / peers", t.num_seeds + " / " + t.num_leechs],
-    ["Category", t.category || "None"], ["Save folder", t.save_path || "Not reported"], ["Added", date(t.added_on)], ["Completed", date(t.completion_on)]]);
-  details.append(summary, info); card.append(select, details); return card;
-}
-function renderDownloads() {
-  const all = downloads || [], filter = $("#dl-state").value;
-  const status = $("#dl-state");
-  status.replaceChildren(...DOWNLOAD_FILTERS.map(([key, name]) => mediaOption(key, name + " (" + all.filter(t => downloadMatches(t, key)).length + ")")));
-  status.value = filter;
-  const app = $("#dl-app"), chosenApp = app.value;
-  app.replaceChildren(mediaOption("", "All apps"), ...[...new Set(all.map(t => t.app || "Unknown"))].sort().map(name => mediaOption(name, dlApp(name) + " (" + all.filter(t => (t.app || "Unknown") === name).length + ")")));
-  if ([...app.options].some(o => o.value === chosenApp)) app.value = chosenApp;
-  const sort = $("#dl-sort");
-  const items = downloadRows(all, $("#dl-q").value, status.value, sort.value, app.value);
-  const empty = $("#dl-empty"), list = $("#dl"), focused = document.activeElement;
-  const hadFocus = list.contains(focused), focusedHash = focused.closest?.(".download-item")?.dataset.hash;
-  list.hidden = items.length === 0; empty.hidden = items.length > 0;
-  if (!items.length) empty.textContent = dlError || (all.length ? "No downloads match these filters." : "No downloads in qBittorrent right now. Add one in Find & add.");
-  $("#dl-count").textContent = dlError && !all.length ? "Not available" : items.length + " of " + all.length + " downloads";
-  list.replaceChildren(...items.map(downloadCard));
-  // Refresh replaces cards; keep keyboard focus on the same download when it remains.
-  if (hadFocus && !list.contains(document.activeElement)) {
-    const card = [...list.children].find(c => c.dataset.hash === focusedHash);
-    const target = card?.querySelector(focused.matches("input[type=checkbox]") ? "input[type=checkbox]" : "summary");
-    (target || (items.length ? list : $("#dl-q"))).focus();
-  }
-  updateDlButtons();
-}
-for (const id of ["#dl-q", "#dl-state", "#dl-app"]) $(id).addEventListener("input", () => { selected.clear(); renderDownloads(); });
-$("#dl-sort").addEventListener("input", renderDownloads);
-
-function updateDlButtons() {
-  $("#dl-selected").textContent = selected.size ? selected.size + " selected" : "No items selected";
-  const none = selected.size === 0;
-  $("#dl-pause").disabled = none;
-  $("#dl-resume").disabled = none;
-}
-
+/* Downloads: the reconciled table. Remove takes the torrent out of qBittorrent's
+   list and never deletes its files; Reveal shows the saved folder in Finder. */
+const dl = { items: [], problems: "", filter: "all", query: "", selected: new Set(), openKey: null, loading: false };
 let downloadsLoading = false;
+
 async function loadDownloads(preserveSelection = false) {
   if (downloadsLoading) return;
   downloadsLoading = true;
-  const notice = $("#dl-notice"), empty = $("#dl-empty"), table = $("#dl");
-  notice.hidden = true;
-  if (!preserveSelection || downloads === null) {
-    empty.hidden = false;
-    empty.textContent = "Loading…";
-    table.hidden = true;
-  }
-  if (!preserveSelection) selected.clear();
-  dlError = "";
+  if (!preserveSelection) dl.selected.clear();
+  if (!dl.items.length) renderDownloadsPage();
   try {
     const r = await api("/api/downloads");
-    downloads = Array.isArray(r.items) ? r.items : [];
-    dlError = [r.error, ...(r.problems || [])].filter(Boolean).join(" ");
-    for (const hash of selected) if (!downloads.some(t => t.hash === hash)) selected.delete(hash);
-    if (dlError) { notice.hidden = false; notice.textContent = dlError; }
+    dl.items = (Array.isArray(r.items) ? r.items : []).map((t) => ({
+      ...t,
+      posterPath: t.posterPath ? "/api/poster?path=" + encodeURIComponent(t.posterPath) : "",
+    }));
+    dl.problems = [r.error, ...(r.problems || [])].filter(Boolean).join(" ");
   } catch (e) {
-    downloads = [];
-    dlError = e.message;
+    dl.items = [];
+    dl.problems = e.message;
   }
   downloadsLoading = false;
-  renderDownloads();
+  renderDownloadsPage();
 }
 
-async function dlAction(action) {
-  const hashes = [...selected];
-  if (!hashes.length) return;
+function setDownloadNotice(text) {
   const notice = $("#dl-notice");
-  notice.hidden = true;
-  $("#dl-pause").disabled = true;
-  $("#dl-resume").disabled = true;
+  notice.hidden = !text;
+  notice.textContent = text || "";
+}
+
+function renderDownloadsPage() {
+  const host = $("#dl"), detail = $("#downloads-detail");
+  const model = downloadsModel(dl.items, { filter: dl.filter, query: dl.query, selected: dl.selected });
+  // Only rows the filters currently show stay selected, so a bulk action can
+  // never touch a download the owner can't see.
+  dl.selected = new Set(model.selected);
+  const focused = document.activeElement;
+  const searchFocus = focused?.id === "dl-q" ? focused.selectionStart : null;
+  const rowFocus = focused?.closest?.("tr[data-key]")?.dataset.key || null;
+  const wasSelectAll = focused?.hasAttribute?.("data-select-all") || false;
+  const wasFilter = focused?.tagName === "SELECT" && host.contains(focused);
+  const handlers = {
+    filter: (key) => { dl.filter = key; dl.selected.clear(); renderDownloadsPage(); },
+    query: (text) => { dl.query = text; renderDownloadsPage(); },
+    select: (key, on) => { if (on) dl.selected.add(key); else dl.selected.delete(key); renderDownloadsPage(); },
+    selectAll: (on) => { for (const row of model.rows) { if (on) dl.selected.add(row.key); else dl.selected.delete(row.key); } renderDownloadsPage(); },
+    open: (row) => { dl.openKey = dl.openKey === row.key ? null : row.key; renderDownloadsPage(); },
+    action: (row, key) => { if (key === "reveal") revealDownload(row.hash); else downloadAction([row.hash], key); },
+    bulk: (key) => downloadAction([...dl.selected], key),
+    emptyAction: () => { dl.filter = "all"; dl.query = ""; renderDownloadsPage(); },
+  };
+  downloadsPanelRender(host, model, handlers);
+  $("#dl-page-status").textContent = dl.problems
+    ? "Some sources did not answer."
+    : model.countText + " · status and proof come from import records";
+  const notice = $("#dl-notice");
+  notice.hidden = !dl.problems;
+  notice.textContent = dl.problems;
+  const openRow = model.rows.find((row) => row.key === dl.openKey);
+  detail.hidden = !openRow;
+  if (openRow) downloadsDetailRender(detail, downloadsDetail(openRow.item, []));
+  else detail.replaceChildren();
+  if (searchFocus !== null) {
+    const search = $("#dl-q");
+    search?.focus();
+    search?.setSelectionRange?.(searchFocus, searchFocus);
+  } else if (rowFocus) {
+    host.querySelector('tr[data-key="' + CSS.escape(rowFocus) + '"] input[type=checkbox]')?.focus();
+  } else if (wasSelectAll) {
+    host.querySelector("[data-select-all]")?.focus();
+  } else if (wasFilter) {
+    host.querySelector("select")?.focus();
+  }
+}
+
+async function downloadAction(hashes, action) {
+  if (!hashes.length || downloadsLoading) return;
+  const words = {
+    pause: "Paused", resume: "Resumed",
+    remove: "Removed from qBittorrent. Its files were kept.",
+    clear: "Cleared from qBittorrent. Its files were kept.",
+  };
   try {
     const r = await api("/api/downloads/action", { hashes, action });
     const errs = (r.errors || r.problems || []).filter(Boolean);
-    selected.clear();
+    dl.selected.clear();
+    dl.openKey = null;
     await loadDownloads();
-    if (errs.length) { notice.hidden = false; notice.textContent = errs.join(" "); }
+    setDownloadNotice(errs.length ? errs.join(" ") : (hashes.length === 1 ? words[action] : words[action] + " (" + hashes.length + ")"));
   } catch (e) {
-    const message = e.message;
     await loadDownloads();
-    notice.hidden = false;
-    notice.textContent = message;
+    setDownloadNotice(e.message);
   }
 }
-$("#dl-pause").addEventListener("click", () => dlAction("pause"));
-$("#dl-resume").addEventListener("click", () => dlAction("resume"));
-$("#dl-refresh").addEventListener("click", () => loadDownloads());
+
+async function revealDownload(hash) {
+  if (!hash) return;
+  try {
+    await api("/api/downloads/reveal", { hash });
+    setDownloadNotice("Revealed in Finder.");
+  } catch (e) {
+    setDownloadNotice(e.message);
+  }
+}
+
 
 /* Sign-in, owner setup and sessions */
 function showGate(mode) {

@@ -15,7 +15,7 @@ func TestGatherFailedAppRemainsFailed(t *testing.T) {
 		http.Error(w, "Mock service unavailable", http.StatusServiceUnavailable)
 	}))
 	defer srv.Close()
-	s := Gather(config.Config{Sonarr: config.App{URL: srv.URL, APIKey: "fixture"}}, t.TempDir(), time.Now())
+	s := Gather(config.Config{Sonarr: config.App{URL: srv.URL, APIKey: "fixture"}}, t.TempDir(), time.Now(), nil)
 	if len(s.Apps) != 1 || s.Apps[0].Name != "Sonarr" || s.Apps[0].OK || s.Apps[0].Error == "" {
 		t.Fatalf("failed service must remain visible, got %+v", s.Apps)
 	}
@@ -26,7 +26,7 @@ func TestGatherFailedAppRemainsFailed(t *testing.T) {
 
 func TestGatherUnconfiguredAppsEncodeAsEmptyArray(t *testing.T) {
 	// A fresh host has no configured companions. The dashboard maps apps directly.
-	s := Gather(config.Config{}, t.TempDir(), time.Now())
+	s := Gather(config.Config{}, t.TempDir(), time.Now(), nil)
 	data, err := json.Marshal(s)
 	if err != nil {
 		t.Fatal(err)

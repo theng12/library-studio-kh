@@ -1,0 +1,324 @@
+/* Page modules: My Library poster grid (library-grid.js) and the Downloads panel
+   (downloads-panel.js). Loaded after layout.css; uses only its and style.css's tokens. */
+
+/* ---- Shared helpers ---- */
+.chip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; min-width: 0; }
+.empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; margin-top: 0.75rem; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Text inputs the modules emit outside a <label> (style.css only styles label inputs). */
+.libgrid-search, .dlp-tools .search {
+  min-width: 0; min-height: var(--control-h); padding: 0 0.7rem;
+  font: inherit; font-size: var(--text-sm); color: var(--ink);
+  background: var(--ground); border: 1px solid var(--line); border-radius: 8px;
+}
+.libgrid-search:focus-visible, .dlp-tools .search:focus-visible { outline-offset: 0; border-color: var(--accent); }
+
+/* Secondary and primary buttons used by the library grid. */
+.libgrid-filters-toggle, .libgrid-reset, .libgrid-close, .libgrid-state-action {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+  min-height: var(--control-h); padding: 0 0.85rem; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: var(--ink); font-size: var(--text-sm); font-weight: 600; white-space: nowrap;
+}
+.libgrid-filters-toggle:hover, .libgrid-reset:hover, .libgrid-close:hover, .libgrid-state-action:hover { border-color: var(--accent); color: var(--accent); }
+.libgrid-filters-toggle[aria-expanded="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.libgrid-apply {
+  min-height: var(--control-h); padding: 0 1.1rem; border: 0; border-radius: 8px;
+  background: var(--accent); color: var(--accent-ink); font-size: var(--text-sm); font-weight: 600;
+}
+.libgrid-apply:hover { filter: brightness(1.08); }
+.libgrid-state-action { border-color: var(--accent); color: var(--accent); }
+.libgrid-state-action:hover { background: var(--accent-soft); }
+
+/* ---- My Library: page, toolbar, filters ---- */
+.libgrid-page { display: grid; gap: var(--gap-page); min-width: 0; }
+.libgrid-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; min-width: 0; }
+.libgrid-search { flex: 1 1 16rem; }
+.libgrid-count { margin-left: auto; color: var(--muted); font-size: var(--text-sm); white-space: nowrap; }
+.libgrid-views {
+  display: inline-flex; gap: 2px; padding: 2px; flex: none;
+  background: var(--side); border: 1px solid var(--line); border-radius: 9px;
+}
+.libgrid-view {
+  min-height: calc(var(--control-h) - 6px); padding: 0 0.8rem; border: 0; border-radius: 7px;
+  background: transparent; color: var(--ink-2); font-size: var(--text-sm); font-weight: 550;
+}
+.libgrid-view:hover { color: var(--ink); background: var(--panel); }
+.libgrid-view[aria-pressed="true"] { background: var(--panel); color: var(--accent); box-shadow: var(--shadow); }
+
+.libgrid-filters {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); align-items: end;
+  gap: 0.75rem; padding: 0.8rem 0.9rem; min-width: 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-card);
+}
+.libgrid-filter { margin: 0; min-width: 0; font-size: var(--text-sm); color: var(--ink-2); }
+.libgrid-filter select { width: 100%; min-height: var(--control-h); font-size: var(--text-sm); }
+.libgrid-filter-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+
+.libgrid-problems {
+  margin: 0; padding: 0.6rem 0.9rem; border-radius: 10px; font-size: var(--text-sm);
+  background: var(--warn-bg); color: var(--warn-ink); overflow-wrap: anywhere;
+}
+.libgrid-page .is-problem:not(.libgrid-problems) { color: var(--disconnected); }
+.libgrid-page .is-muted { color: var(--muted); }
+
+/* ---- My Library: results + optional detail column ---- */
+.libgrid-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap-card); align-items: start; min-width: 0; }
+.libgrid-body:has(> .libgrid-detail) { grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem); }
+.libgrid-results { min-width: 0; }
+
+.libgrid-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: var(--gap-card); min-width: 0; }
+
+.libgrid-card {
+  display: flex; flex-direction: column; align-items: stretch; gap: 0.35rem; min-width: 0;
+  padding: 0.5rem 0.5rem 0.65rem; text-align: left; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-card);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.libgrid-card:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+.libgrid-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.libgrid-card.is-selected {
+  border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 45%, var(--panel));
+}
+.libgrid-card-title {
+  min-width: 0; font-size: var(--text-sm); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+.libgrid-meta { min-width: 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.35; overflow-wrap: anywhere; }
+
+.libgrid-poster {
+  position: relative; display: block; width: 100%; aspect-ratio: 2 / 3; flex: none;
+  overflow: hidden; border-radius: 8px; background: var(--ground);
+}
+.libgrid-poster img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.libgrid-poster-placeholder {
+  display: grid; place-items: center; width: 100%; height: 100%;
+  background: color-mix(in srgb, var(--accent-soft) 60%, var(--ground));
+  color: var(--muted); font-size: 2rem; font-weight: 650; line-height: 1;
+}
+.libgrid-poster-small { width: 2.5rem; border-radius: 5px; }
+.libgrid-poster-small .libgrid-poster-placeholder { font-size: 1rem; }
+
+/* Compact list: poster, title/meta, location, chip on one line. */
+.libgrid-list {
+  display: grid; min-width: 0; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-card);
+}
+.libgrid-row {
+  display: grid; grid-template-columns: 2.5rem minmax(0, 1fr) minmax(0, 16rem) auto;
+  align-items: center; gap: 0.75rem; min-width: 0; padding: 0.45rem 0.75rem;
+  text-align: left; color: var(--ink); background: transparent;
+  border: 0; border-bottom: 1px solid var(--line); transition: background-color 0.15s;
+}
+.libgrid-row:last-child { border-bottom: 0; }
+.libgrid-row:hover { background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel)); }
+.libgrid-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.libgrid-row.is-selected { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.libgrid-row-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.6rem; min-width: 0; }
+.libgrid-row .libgrid-card-title { display: block; -webkit-line-clamp: unset; line-clamp: none; overflow: visible; }
+.libgrid-row-location { justify-self: end; min-width: 0; text-align: right; color: var(--muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.libgrid-row .libgrid-status { white-space: nowrap; }
+
+/* Status chips: small pills in the existing tone colours. */
+.libgrid-status {
+  display: inline-flex; align-items: center; align-self: flex-start; justify-self: start; max-width: 100%;
+  padding: 0.05rem 0.5rem; border-radius: 999px; font-size: var(--text-xs); font-weight: 600; line-height: 1.45;
+  overflow-wrap: anywhere; background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--ink-2);
+}
+.libgrid-status-queued { background: color-mix(in srgb, var(--wait) 15%, transparent); color: var(--wait); }
+.libgrid-status-active { background: var(--accent-soft); color: var(--accent); }
+.libgrid-status-ok { background: color-mix(in srgb, var(--connected) 15%, transparent); color: var(--connected); }
+.libgrid-status-problem { background: color-mix(in srgb, var(--disconnected) 14%, transparent); color: var(--disconnected); }
+.libgrid-status-neutral { background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--ink-2); }
+
+/* Detail pane */
+.libgrid-detail {
+  display: grid; gap: 0.75rem; align-content: start; min-width: 0; padding: 0.9rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow);
+}
+.libgrid-detail-head { display: flex; align-items: flex-start; gap: 0.75rem; min-width: 0; }
+.libgrid-detail-title { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 1.05rem; line-height: 1.3; overflow-wrap: anywhere; }
+.libgrid-close { flex: none; min-height: 2rem; padding: 0 0.65rem; }
+.libgrid-detail > .libgrid-poster { width: min(10rem, 45%); }
+.libgrid-overview { margin: 0; color: var(--ink-2); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.libgrid-overview.is-muted { color: var(--muted); }
+.libgrid-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.35rem 1rem; margin: 0; font-size: var(--text-sm); }
+.libgrid-facts dt { color: var(--muted); font-size: var(--text-xs); padding-top: 0.1rem; }
+.libgrid-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.libgrid-history-block { display: grid; gap: 0.4rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
+.libgrid-history-block p { margin: 0; font-size: var(--text-sm); }
+.libgrid-history-title { margin: 0; font-size: 0.9rem; }
+.libgrid-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.45rem; }
+.libgrid-history li { display: grid; gap: 0.05rem; min-width: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
+.libgrid-history time { color: var(--muted); font-size: var(--text-xs); }
+
+/* Loading / error / empty / filtered: centred, calm, one action. */
+.libgrid-state {
+  display: grid; justify-items: center; gap: 0.5rem; padding: 3rem 1.5rem; text-align: center;
+  background: var(--panel); border: 1px dashed var(--line); border-radius: var(--radius-card);
+}
+.libgrid-state-loading { border-style: solid; }
+.libgrid-state-error { border-style: solid; border-color: color-mix(in srgb, var(--disconnected) 40%, var(--line)); }
+.libgrid-state-empty, .libgrid-state-filtered { border-style: dashed; }
+.libgrid-state-title { margin: 0; font-size: 1rem; }
+.libgrid-state-message { margin: 0; max-width: 48ch; color: var(--muted); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.libgrid-state-action { margin-top: 0.5rem; }
+
+@media (min-width: 901px) {
+  .libgrid-detail { max-height: calc(100vh - 2 * var(--pad-page)); overflow: auto; }
+}
+@media (min-width: 1100px) {
+  .libgrid-detail { position: sticky; top: var(--pad-page); }
+}
+@media (max-width: 900px) {
+  .libgrid-body:has(> .libgrid-detail) { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .libgrid-search, .libgrid-filters-toggle, .libgrid-view, .libgrid-apply, .libgrid-reset,
+  .libgrid-close, .libgrid-state-action, .libgrid-filter select { min-height: 44px; }
+  .libgrid-search { flex-basis: 100%; font-size: 16px; }
+  .libgrid-count { margin-left: 0; }
+  .libgrid-views { margin-left: auto; }
+  .libgrid-grid { grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); }
+  .libgrid-row { grid-template-columns: 2.5rem minmax(0, 1fr) auto; row-gap: 0.2rem; }
+  .libgrid-row > .libgrid-poster { grid-column: 1; grid-row: 1 / span 2; }
+  .libgrid-row-main { grid-column: 2; grid-row: 1; }
+  .libgrid-row > .libgrid-status { grid-column: 3; grid-row: 1; }
+  .libgrid-row-location { grid-column: 2 / -1; grid-row: 2; justify-self: start; text-align: left; }
+}
+
+/* ---- Downloads panel ---- */
+.downloads-panel {
+  display: block; min-width: 0; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-card);
+}
+/* Already inside a card or panel: no second frame. */
+:where(.card, .panel) .downloads-panel { border: 0; border-radius: 0; }
+
+.dlp-tools { align-items: center; gap: 0.5rem 0.75rem; padding: 0.6rem 0.9rem; min-width: 0; }
+.dlp-filter { display: flex; align-items: center; gap: 0.5rem; margin: 0; font-size: var(--text-sm); color: var(--ink-2); }
+.dlp-filter select { margin-top: 0; min-height: var(--control-h); font-size: var(--text-sm); }
+.dlp-tools .search { flex: 1 1 14rem; }
+.dlp-total { color: var(--muted); font-size: var(--text-sm); white-space: nowrap; }
+.dlp-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.5rem; margin-left: auto; min-width: 0; }
+.dlp-count { color: var(--muted); font-size: var(--text-sm); }
+
+.downloads-panel > .table-scroll { width: 100%; min-width: 0; overflow-x: auto; }
+.downloads-table { width: 100%; font-size: var(--text-sm); }
+.downloads-table .badge { margin-top: 0; white-space: nowrap; }
+
+.dlp-poster img, .dlp-poster-empty {
+  display: block; width: 32px; height: 48px; object-fit: cover;
+  border-radius: 4px; border: 1px solid var(--line); background: var(--ground);
+}
+.dlp-open {
+  display: inline; padding: 0; border: 0; background: none; text-align: left;
+  color: var(--ink); font-weight: 600; overflow-wrap: anywhere;
+}
+.dlp-open:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.dlp-size, .dlp-pct, .dlp-speed, .dlp-eta, .dlp-source, .dlp-status { white-space: nowrap; }
+.dlp-pct { color: var(--ink); font-weight: 600; }
+.dlp-speed, .dlp-eta { color: var(--ink-2); font-size: var(--text-xs); }
+.dlp-progress progress {
+  height: 0.5rem; border: 0; border-radius: 4px; overflow: hidden; vertical-align: middle;
+  accent-color: var(--accent); background: var(--ground);
+}
+.dlp-progress progress::-webkit-progress-bar { background: var(--ground); }
+.dlp-progress progress::-webkit-progress-value { background: var(--accent); border-radius: 4px; }
+.dlp-progress progress::-moz-progress-bar { background: var(--accent); border-radius: 4px; }
+.dlp-actions { white-space: nowrap; }
+.dlp-actions button + button { margin-left: 0.35rem; }
+
+/* Rows whose source is gone: muted, with a warning edge. */
+.dlp-missing td { color: var(--muted); background: color-mix(in srgb, var(--warn-bg) 35%, var(--panel)); }
+.dlp-missing .dlp-open { color: var(--muted); }
+.dlp-missing .dlp-poster img, .dlp-missing .dlp-poster-empty { opacity: 0.55; }
+
+/* Badge tones (the JS pairs .badge with one of these). */
+.badge.dlp-tone-ok { background: color-mix(in srgb, var(--connected) 15%, transparent); color: var(--connected); }
+.badge.dlp-tone-info { background: var(--accent-soft); color: var(--accent); }
+.badge.dlp-tone-muted { background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--ink-2); }
+.badge.dlp-tone-warn { background: var(--warn-bg); color: var(--warn-ink); }
+.badge.dlp-tone-bad { background: color-mix(in srgb, var(--disconnected) 14%, transparent); color: var(--disconnected); }
+
+.dlp-empty {
+  display: grid; justify-items: center; gap: 0.75rem; padding: 2.5rem 1.5rem;
+  text-align: center; color: var(--ink-2); font-size: var(--text-sm); border-top: 1px solid var(--line);
+}
+
+/* The first column (selection) stays pinned while the table scrolls sideways. */
+.downloads-panel .downloads-table th:first-child,
+.downloads-panel .downloads-table td:first-child {
+  position: sticky; left: 0; z-index: 1; background: var(--panel);
+}
+
+/* Detail pane: a block card by default; a right column inside .downloads-layout on wide screens. */
+.dlp-detail {
+  display: block; min-width: 0; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow);
+}
+.dlp-detail-head { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.8rem 0.9rem; border-bottom: 1px solid var(--line); }
+.dlp-detail-head img { flex: none; width: 48px; height: 72px; object-fit: cover; border-radius: 6px; background: var(--ground); }
+.dlp-detail-head h2 { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 1rem; line-height: 1.3; overflow-wrap: anywhere; }
+.dlp-detail-head .badge { flex: none; margin-top: 0.1rem; }
+.dlp-detail .facts { padding: 0.75rem 0.9rem; gap: 0.35rem 1rem; font-size: var(--text-sm); }
+.dlp-detail .facts dt { font-size: var(--text-xs); }
+.dlp-detail-section { padding: 0.75rem 0.9rem; border-top: 1px solid var(--line); min-width: 0; }
+.dlp-detail-section h3 { margin: 0 0 0.4rem; font-size: 0.88rem; }
+.dlp-detail-section .facts { padding: 0; }
+.dlp-detail-section .muted { margin: 0; }
+.dlp-history { margin: 0; padding-left: 1.1rem; color: var(--ink-2); font-size: var(--text-sm); }
+.dlp-history li { overflow-wrap: anywhere; }
+.dlp-history li + li { margin-top: 0.3rem; }
+
+.downloads-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap-card); align-items: start; min-width: 0; }
+
+@media (min-width: 761px) {
+  .downloads-table th, .downloads-table td { padding: 0.5rem 0.6rem; }
+  .downloads-table th:first-child, .downloads-table td:first-child { padding-left: 0.9rem; width: 1px; }
+  .dlp-row td { vertical-align: middle; }
+  .downloads-table td.dlp-poster { width: 32px; padding-right: 0; }
+  .downloads-table td.dlp-title { white-space: normal; min-width: 12rem; }
+  .downloads-table td.dlp-target { max-width: 16rem; overflow: hidden; text-overflow: ellipsis; }
+  .downloads-table td.dlp-progress { white-space: nowrap; }
+  .dlp-progress progress { width: 5rem; }
+  .dlp-progress > span { margin-left: 0.5rem; }
+  /* Actions stay in view when the table scrolls sideways. */
+  .downloads-table th:last-child, .downloads-table td.dlp-actions { position: sticky; right: 0; z-index: 1; background: var(--panel); }
+  .downloads-table tbody tr:hover td.dlp-actions { background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel)); }
+  .dlp-missing td.dlp-actions { background: color-mix(in srgb, var(--warn-bg) 35%, var(--panel)); }
+  .dlp-missing td:first-child { box-shadow: inset 3px 0 0 var(--wait); }
+}
+@media (min-width: 1101px) {
+  .downloads-layout:has(> .dlp-detail:not([hidden])) { grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem); }
+  .downloads-layout > .dlp-detail { position: sticky; top: var(--pad-page); max-height: calc(100vh - 2 * var(--pad-page)); overflow: auto; }
+}
+@media (min-width: 761px) and (max-width: 900px) {
+  .downloads-table td.dlp-progress { white-space: normal; min-width: 8rem; }
+  .dlp-progress progress { display: block; width: 100%; margin-bottom: 0.2rem; }
+  .dlp-progress > span { margin-left: 0; margin-right: 0.5rem; }
+}
+@media (max-width: 760px) {
+  .dlp-filter select { width: 100%; }
+  .dlp-tools .search { font-size: 16px; min-height: 44px; }
+  .dlp-bulk { grid-column: 1 / -1; margin-left: 0; }
+  .dlp-bulk button { min-height: 44px; }
+  .downloads-table td.dlp-poster { display: block; }
+  .downloads-table td.dlp-poster::before { content: none; }
+  /* Progress: label on the left, bar on top, then % · speed · ETA on one line. */
+  .downloads-table td.dlp-progress { grid-template-columns: 6rem auto auto minmax(0, 1fr); column-gap: 0.75rem; row-gap: 0.2rem; }
+  .downloads-table td.dlp-progress::before { grid-column: 1; grid-row: 1 / span 2; }
+  .dlp-progress progress { grid-column: 2 / -1; grid-row: 1; width: 100%; }
+  .downloads-table td.dlp-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; padding-top: 0.75rem; }
+  .downloads-table td.dlp-actions::before { content: none; }
+  .dlp-actions button + button { margin-left: 0; }
+  .dlp-actions button, .dlp-open { min-height: 44px; }
+  tr.dlp-missing { border-left: 3px solid var(--wait); }
+  .dlp-missing td { background: transparent; }
+  tr.dlp-missing { background: color-mix(in srgb, var(--warn-bg) 35%, var(--panel)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .libgrid-card, .libgrid-row { transition: none; }
+}

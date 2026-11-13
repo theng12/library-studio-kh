@@ -51,14 +51,11 @@ window.libraryKeyboard = (doc) => {
   function selectVisibleDownloads() {
     const list = doc.getElementById("dl");
     if (!list || list.hidden) return false;
-    const liveBoxes = () => [...list.querySelectorAll("input[type=checkbox]")].filter((b) => !b.disabled);
-    const boxes = liveBoxes();
-    if (!boxes.length) return false;
-    const hadFocus = doc.activeElement?.closest?.("#dl");
-    for (const box of boxes) { box.checked = true; box.dispatchEvent(new Event("change", { bubbles: true })); }
-    // A handler that rebuilt the cards can drop focus to the page; refocus a
-    // checkbox that is still connected after the rebuild.
-    if (hadFocus && !doc.activeElement?.closest?.("#dl")) liveBoxes()[0]?.focus?.();
+    const all = list.querySelector("[data-select-all]");
+    if (!all || all.disabled) return false;
+    // One header checkbox drives the table's own select-all; ticking every row
+    // box separately would rebuild the table between boxes.
+    if (!all.checked) { all.checked = true; all.dispatchEvent(new Event("change", { bubbles: true })); }
     return true;
   }
 

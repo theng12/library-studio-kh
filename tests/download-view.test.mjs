@@ -13,21 +13,6 @@ test("progress preserves zero and never invents a percentage for missing or inva
   for (const value of [undefined, null, "0", NaN, Infinity, -1, 1.1]) assert.equal(downloadProgressText(value), "Progress not reported");
 });
 
-test("Activity renders zero and missing progress without NaN", () => {
-  const source = readFileSync(new URL("../internal/server/web/app.js", import.meta.url), "utf8");
-  const word = source.match(/function torrentStateWord\(state\) \{[\s\S]*?\n\}/)[0];
-  const state = source.match(/function stateOf\(it, cleanupOn\) \{[\s\S]*?\n\}/)[0];
-  runInNewContext(word + "\n" + state, context);
-  assert.equal(context.stateOf({ kind: "downloading", progress: 0 }, false)[1], "0%");
-  assert.equal(context.stateOf({ kind: "downloading" }, false)[1], "Progress not reported");
-});
-
-test("queued and paused torrents are labelled honestly in Activity", () => {
-  for (const [state, label] of [["queuedDL", "Queued"], ["stoppedDL", "Paused"], ["missingFiles", "Missing files"], ["downloading", "Downloading"]]) {
-    assert.equal(context.stateOf({ kind: "downloading", progress: 0.4, state }, false)[0], label);
-  }
-});
-
 test("qBittorrent states remain distinguishable, including completed paused torrents", () => {
   for (const state of ["pausedDL", "stoppedDL", "pausedUP", "stoppedUP"]) assert.equal(downloadMatches({ state }, "paused"), true);
   for (const state of ["queuedDL", "queuedUP"]) assert.equal(downloadMatches({ state }, "queued"), true);

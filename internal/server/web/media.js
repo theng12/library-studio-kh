@@ -113,7 +113,7 @@ function mediaMonitor(checked, request, label, root) {
     const serial = mediaSerial;
     try {
       await api(root ? "/api/media/monitor" : "/api/media/tracking", { ...request, monitored: input.checked });
-      libItems = null;
+      window.libraryReloadLibrary?.();
       if (serial === mediaSerial) await refreshMediaDetails();
     } catch (e) {
       input.checked = !input.checked;

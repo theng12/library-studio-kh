@@ -5,8 +5,10 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,9 +17,12 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "127.0.0.1:7890", "address")
+	addr := flag.String("addr", "127.0.0.1:7890", "address (port 0 picks a free one)")
+	downloads := flag.String("downloads", "/Users/me/Downloads", "download folder the UI fixture torrents report")
+	nas := flag.String("library", "/Volumes/NAS/Media", "library folder the UI fixture import points into")
 	flag.Parse()
 	now := time.Now()
+	ui := uiFixture{downloads: *downloads, library: *nas, now: now}
 	ago := func(d int) string { return now.Add(-time.Duration(d) * 24 * time.Hour).Format(time.RFC3339) }
 	ahead := func(d int) string { return now.Add(time.Duration(d) * 24 * time.Hour).Format(time.RFC3339) }
 	unix := func(h float64) int64 { return now.Add(-time.Duration(h * float64(time.Hour))).Unix() }
@@ -104,11 +109,14 @@ func main() {
 			records := []map[string]any{}
 			switch app {
 			case "sonarr":
-				records = []map[string]any{{"eventType": "downloadFolderImported", "downloadId": hashOf("A4"), "date": ago(3)}}
+				records = []map[string]any{{"eventType": "downloadFolderImported", "downloadId": hashOf("A4"), "date": ago(3), "seriesId": 1,
+					"data": map[string]any{"importedPath": "/Volumes/NAS/Media/Sample Series/Season 02/Sample Series S02E03 1080p.mkv"}}, ui.sonarrHistory()}
 			case "radarr":
-				records = []map[string]any{{"eventType": "downloadFolderImported", "downloadId": hashOf("A2"), "date": ago(1)}}
+				records = []map[string]any{{"eventType": "downloadFolderImported", "downloadId": hashOf("A2"), "date": ago(1), "movieId": 1,
+					"data": map[string]any{"importedPath": "/Volumes/NAS/Media/Example Film (2024)/Example Film (2024) 2160p.mkv"}}}
 			case "lidarr":
-				records = []map[string]any{{"eventType": "downloadImported", "downloadId": hashOf("A3"), "date": ago(6)}}
+				records = []map[string]any{{"eventType": "downloadImported", "downloadId": hashOf("A3"), "date": ago(6), "artistId": 1,
+					"data": map[string]any{"importedPath": "/Volumes/NAS/Music/Demo Artist/First Album"}}}
 			}
 			json.NewEncoder(w).Encode(map[string]any{"records": records, "totalRecords": len(records)})
 			return
@@ -152,6 +160,15 @@ func main() {
 				return
 			}
 		}
+		if p == "/api/v2/torrents/files" {
+			files, ok := ui.files(r.URL.Query().Get("hash"))
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			json.NewEncoder(w).Encode(files)
+			return
+		}
 		if p == "/api/v2/torrents/info" {
 			// The one active download changes speed on every read, so the app's sampler has something to record.
 			speed := rand.Int63n(30e6)
@@ -163,7 +180,7 @@ func main() {
 				state = "stoppedDL"
 				speed = 0
 			}
-			json.NewEncoder(w).Encode([]map[string]any{
+			json.NewEncoder(w).Encode(append([]map[string]any{
 				{"hash": hashOf("a1"), "name": "Sample Series S02E04 1080p", "progress": 0.62, "state": state, "size": 2.4e9, "downloaded": 1.49e9,
 					"priority": 1, "dlspeed": speed, "upspeed": 120e3, "eta": 61, "added_on": unix(0.4), "num_seeds": 14, "num_leechs": 3, "save_path": "/Users/me/Downloads", "category": "tv-sonarr"},
 				done("a2", "Example Film (2024) 2160p", 18e9, 30, 29.2),
@@ -173,7 +190,7 @@ func main() {
 				{"hash": hashOf("a6"), "name": "Sample Series S02E05 queued", "state": "queuedDL", "progress": 0, "priority": 2, "size": 2e9},
 				{"hash": hashOf("a7"), "name": "Example Film paused", "state": "stoppedDL", "progress": 0.35, "priority": 3, "size": 4e9, "downloaded": 1.4e9},
 				{"hash": hashOf("a8"), "name": "Demo Artist missing files", "state": "missingFiles", "progress": 0.4, "priority": 4, "size": 0.8e9},
-			})
+			}, ui.torrents()...))
 			return
 		}
 		if p == "/api/v2/torrents/add" {
@@ -234,5 +251,11 @@ func main() {
 			http.NotFound(w, r)
 		}
 	})
-	log.Fatal(http.ListenAndServe(*addr, nil))
+	ln, err := net.Listen("tcp", *addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// scripts/test-ui.sh reads this exact line to learn the picked port.
+	fmt.Printf("MOCK_STOCK=http://%s\n", ln.Addr())
+	log.Fatal(http.Serve(ln, nil))
 }

@@ -11,13 +11,16 @@ import (
 	"time"
 
 	"librarystudio/internal/config"
+	"librarystudio/internal/metadata"
 	"librarystudio/internal/platform"
 	"librarystudio/internal/stock"
 )
 
 type Item struct {
+	ID       string    `json:"id,omitempty"`      // torrent hash (lowercase), or the app's media ID for library items
+	MediaID  int       `json:"mediaId,omitempty"` // Sonarr series, Radarr movie or Lidarr artist ID
 	Title    string    `json:"title"`
-	Kind     string    `json:"kind"`             // downloading | waiting | imported | unmanaged | upcoming | removed
+	Kind     string    `json:"kind"`             // downloading | waiting | imported | unmanaged | upcoming | removed | library
 	State    string    `json:"state,omitempty"`  // qBittorrent's own state, e.g. pausedDL or queuedDL
 	Status   string    `json:"status,omitempty"` // queued | downloading | importing | copied | moved | missing | on-disk | upcoming
 	App      string    `json:"app,omitempty"`
@@ -131,7 +134,10 @@ func Decide(t stock.Torrent, imported map[string]time.Time, queued map[string]bo
 	return "imported", removeAt, !now.Before(removeAt)
 }
 
-func Gather(c config.Config, home string, now time.Time) Snapshot {
+// Gather builds the dashboard snapshot. meta may be nil; Gather never fills
+// metadata itself because its titles are release names, not library titles
+// (the inventory does that, cache-only), so nothing here waits on the network.
+func Gather(c config.Config, home string, now time.Time, meta *metadata.Client) Snapshot {
 	s := Snapshot{Items: []Item{}, Apps: []AppState{}, Library: "not set"}
 	imported, queued := map[string]time.Time{}, map[string]bool{}
 	appOf := map[string]string{}
@@ -192,11 +198,15 @@ func Gather(c config.Config, home string, now time.Time) Snapshot {
 			speedMu.Lock()
 			speeds := readSpeeds(home)
 			speedMu.Unlock()
+			recs := savedRecords(home)
 			for _, t := range ts {
 				kind, at, rm := Decide(t, imported, queued, now, c.CleanupDays)
-				it := Item{Title: t.Name, Kind: kind, State: t.State, Status: itemStatus(kind, t.State), App: appOf[strings.ToUpper(t.Hash)], Progress: t.Progress, Size: t.Size, ETA: t.ETA, Speed: t.DlSpeed, SavePath: t.SavePath, SourcePath: t.SavePath, Category: t.Category, Stats: statsOf(t, speeds[t.Hash])}
+				it := Item{ID: strings.ToLower(t.Hash), Title: t.Name, Kind: kind, State: t.State, Status: itemStatus(kind, t.State), App: appOf[strings.ToUpper(t.Hash)], Progress: t.Progress, Size: t.Size, ETA: t.ETA, Speed: t.DlSpeed, SavePath: t.SavePath, SourcePath: t.SavePath, Category: t.Category, Stats: statsOf(t, speeds[t.Hash])}
 				if t.CompletionOn > 0 {
 					it.StatusAt = time.Unix(t.CompletionOn, 0)
+				}
+				if rec := recs[strings.ToUpper(t.Hash)]; rec != nil {
+					applyRecord(&it, rec)
 				}
 				if kind == "imported" {
 					it.When = at

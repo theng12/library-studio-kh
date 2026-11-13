@@ -28,3 +28,7 @@ func (s *HostService) Start(HostServiceSpec) (HostServiceStatus, error) {
 func (s *HostService) Stop() (HostServiceStatus, error) {
 	return unsupportedStatus(), errHostServiceUnsupported
 }
+
+func (s *HostService) Uninstall(string) (HostServiceStatus, error) {
+	return unsupportedStatus(), errHostServiceUnsupported
+}

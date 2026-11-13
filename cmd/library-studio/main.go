@@ -31,7 +31,15 @@ func main() {
 	hostHome := flag.String("host-home", "", "configuration home for -host-control (default: the app's config folder)")
 	serverExe := flag.String("exe", "", "trusted local server path for -host-control install (default: this executable)")
 	clientHost := flag.String("client-host", "", "use another Library host webpage URL, or clear this desktop's saved host")
+	testMode := flag.Bool("test-mode", false, "headless test server on 127.0.0.1 with the isolated KH_TEST_HOME (scripts/test-ui.sh)")
+	seed := flag.Bool("seed-fixtures", false, "write the headless UI test fixtures into KH_TEST_HOME; alone, seed and exit")
 	flag.Parse()
+
+	// Test mode decides before config.Dir so it can never touch the owner's data.
+	if *testMode || *seed {
+		runTestMode(*seed, *testMode)
+		return
+	}
 
 	home, err := config.Dir()
 	if err != nil {
@@ -185,15 +193,11 @@ func runService(home string, port int) {
 }
 
 func newServer(home, localAddress string) (*server.Server, error) {
-	store, err := config.Open(home)
+	s, err := openServer(home, localAddress)
 	if err != nil {
 		return nil, err
 	}
-	s := server.New(store, home)
-	s.LocalURL = "http://" + localAddress + "/"
-	if err := s.AccessError(); err != nil {
-		return nil, err
-	}
+	store := s.Store
 	if err := s.ConfigureRemote(); err != nil {
 		log.Printf("Tailscale: %v", err)
 	}
@@ -209,6 +213,20 @@ func newServer(home, localAddress string) (*server.Server, error) {
 			time.Sleep(library.SampleEvery)
 		}
 	}()
+	return s, nil
+}
+
+// openServer builds the dashboard server without Tailscale or background loops.
+func openServer(home, localAddress string) (*server.Server, error) {
+	store, err := config.Open(home)
+	if err != nil {
+		return nil, err
+	}
+	s := server.New(store, home)
+	s.LocalURL = "http://" + localAddress + "/"
+	if err := s.AccessError(); err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 

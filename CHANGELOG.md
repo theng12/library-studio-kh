@@ -1,5 +1,14 @@
 # What's new in Library Studio KH
 
+## 0.7.16 — 2026-11-13
+
+- Every film and show now gets a poster, overview, year, genres, runtime and rating from keyless public sources, cached on disk and shown when available; the list never waits on the network.
+- My library is a poster grid with a detail panel: status, NAS volume and path, how the copy was verified and when, plus its history. A copy never reads verified without proof.
+- Downloads shows only work still in progress, with proof, target and per-row Pause, Resume, Remove and Reveal. Imported and verified titles leave Downloads and appear in My library.
+- Activity is a timestamped timeline with app and outcome filters. Cleanup gains a proof pane, per-row actions, each copy's stage and remaining wait, and says plainly that nothing is deleted for good outside its waits.
+- Every page fills the window behind one page frame, with tables that scroll sideways and keep the first column in view.
+- Keyboard, focus, labels, and loading, empty, error and partial states are checked at phone, tablet and desktop widths.
+
 ## 0.7.15 — 2026-11-13
 
 - The Appearance choice is a tidy three-part control that fits its labels in light and dark, at window and phone widths.

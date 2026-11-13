@@ -60,25 +60,16 @@ test("app and recently added sorting keep unknown dates last", () => {
   assert.deepEqual(titles(librarySort(library, "added")), ["Beta", "Alpha", "Delta", "Gamma"]);
 });
 
-test("the library controls are wired to the shared filter and sort helper", () => {
+test("My library is wired to the poster grid page, not the old row list", () => {
   const html = readFileSync(new URL("../internal/server/web/index.html", import.meta.url), "utf8");
   const app = readFileSync(new URL("../internal/server/web/app.js", import.meta.url), "utf8");
-  for (const id of ["lib-genre", "lib-year"]) assert.match(html, new RegExp(`id="${id}"`));
-  assert.match(html, /<option value="oldest">Oldest year<\/option>/);
-  assert.match(app, /libraryFilter\(libItems/);
-  assert.match(app, /librarySort\(libraryFilter/);
-  assert.match(app, /"#lib-genre", "#lib-year"/);
-});
-
-test("a chosen filter survives a refresh that still reports it and resets when it disappears", () => {
-  const setOptions = appSource().match(/function setLibraryOptions\(select, options\) \{[\s\S]*?\n\}/)[0];
-  const ctx = { document: { createElement: () => ({}) } };
-  runInNewContext(setOptions, ctx);
-  const select = { value: "Drama", replaceChildren() {} };
-  ctx.setLibraryOptions(select, libraryGenreOptions(library));
-  assert.equal(select.value, "Drama");
-  ctx.setLibraryOptions(select, libraryGenreOptions([{ genres: ["Comedy"] }]));
-  assert.equal(select.value, "");
+  assert.match(html, /id="library-host"/);
+  assert.match(html, /<script src="library-grid\.js" defer><\/script>/);
+  assert.ok(html.indexOf("library-grid.js") < html.indexOf('<script src="app.js" defer>'), "grid module loads before app.js");
+  assert.match(app, /libraryGridPage\(\{/);
+  assert.match(app, /posterURL: \(item\) => item\.posterPath \? "\/api\/poster\?path="/);
+  assert.match(app, /onApply: \(\) => \{ lib\.filters = \{ \.\.\.lib\.filters, \.\.\.lib\.draft \}/);
+  assert.doesNotMatch(app, /function renderLibrary\(\)/);
 });
 
 function appSource() {

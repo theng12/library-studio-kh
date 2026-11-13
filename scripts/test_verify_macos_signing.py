@@ -79,7 +79,9 @@ class SigningChecks(unittest.TestCase):
                 return SimpleNamespace(returncode=0, stdout='pid = 99999\n', stderr='')
             raise AssertionError('unexpected subprocess.run command: ' + repr(command))
 
-        with tempfile.TemporaryDirectory(prefix='signing-test-', dir='/Volumes/KH-STUDIO-ATLAS/KH-Worktrees/library-studio-kh/.cache/tmp') as tmp:
+        # Worktrees and tests live on the internal disk (owner, 2026-11-10); the
+        # old ATLAS worktree path no longer exists on every build Mac.
+        with tempfile.TemporaryDirectory(prefix='signing-test-') as tmp:
             work = Path(tmp)
             app = Path('/Volumes/Fixture/Library Studio KH.app')
             with patch.object(verify, 'run', side_effect=fake_run), \

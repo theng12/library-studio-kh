@@ -82,7 +82,7 @@ function downloadsStatus(item) {
   if (/^(paused|stopped)/.test(state)) return make("paused", DOWNLOADS_STATE_LABELS[state] || "Paused", "muted", { canResume: true });
   if (state === "queuedDL" || state === "queuedUP") return make("queued", DOWNLOADS_STATE_LABELS[state], "muted", { canPause: true });
   if (/^(uploading|forcedUP|stalledUP)$/.test(state)) return make("seeding", DOWNLOADS_STATE_LABELS[state], "ok", { canPause: true });
-  if (/^(downloading|forcedDL|stalledDL|metaDL|forcedMetaDL|checkingDL|allocating)$/.test(state)) {
+  if (/^(downloading|forcedDL|stalledDL|metaDL|forcedMetaDL|checkingDL|allocating|moving)$/.test(state)) {
     return make("downloading", DOWNLOADS_STATE_LABELS[state], "info", { canPause: true });
   }
   if (status === "queued") return make("queued", "Queued", "muted", { canPause: true });
@@ -314,9 +314,11 @@ function downloadsPanelRender(root, model, handlers) {
 
   const search = document.createElement("input");
   search.type = "search";
+  search.id = "dl-q";
   search.className = "search";
   search.placeholder = "Filter downloads…";
   search.setAttribute("aria-label", "Filter downloads by title");
+  search.setAttribute("aria-keyshortcuts", "Meta+F Control+F");
   search.value = model.query;
   search.addEventListener("input", () => on("query", search.value));
 
@@ -347,6 +349,7 @@ function downloadsPanelRender(root, model, handlers) {
   selectHead.scope = "col";
   const selectAll = document.createElement("input");
   selectAll.type = "checkbox";
+  selectAll.setAttribute("data-select-all", "");
   selectAll.setAttribute("aria-label", "Select all downloads");
   selectAll.checked = model.rows.length > 0 && model.selected.size === model.rows.length;
   selectAll.disabled = model.rows.length === 0;
@@ -453,6 +456,9 @@ function downloadsRowNode(row, model, on) {
   for (const action of row.actions) {
     const button = dlpButton(action.label);
     button.dataset.action = action.key;
+    if (action.key === "remove" || action.key === "clear") button.title = "Removes it from qBittorrent. Its files are kept.";
+    if (action.key === "reveal") button.title = "Shows its folder in Finder.";
+    button.setAttribute("aria-label", action.label + " " + row.title);
     button.addEventListener("click", () => on("action", row, action.key));
     actionsCell.append(button);
   }

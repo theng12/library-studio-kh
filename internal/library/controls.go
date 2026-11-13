@@ -3,6 +3,7 @@ package library
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"librarystudio/internal/config"
 	"librarystudio/internal/stock"
@@ -31,6 +32,50 @@ func TorrentAction(c config.Config, hashes []string, action string) error {
 		return err
 	}
 	return qb.TorrentAction(hashes, action)
+}
+
+// RemoveTorrents drops only qBittorrent's bookkeeping for each hash; the files
+// always stay on disk (deleteFiles=false). It returns one message per failed
+// hash and keeps going through the rest.
+func RemoveTorrents(c config.Config, hashes []string) ([]string, error) {
+	if len(hashes) == 0 || len(hashes) > 1000 {
+		return nil, fmt.Errorf("choose between 1 and 1000 torrents")
+	}
+	qb, err := qbit(c)
+	if err != nil {
+		return nil, err
+	}
+	errs := []string{}
+	for _, h := range hashes {
+		err := qb.RemoveMetadata(h)
+		switch {
+		case err == nil:
+		case isUnreachable(err): // the wrapped network error carries the address
+			errs = append(errs, "qBittorrent could not be reached to remove "+h+": check the connection in Settings.")
+		default:
+			errs = append(errs, "qBittorrent could not remove "+h+": "+err.Error())
+		}
+	}
+	return errs, nil
+}
+
+// Torrent returns qBittorrent's current entry for one hash, so a caller only
+// acts on a download qBittorrent still lists.
+func Torrent(c config.Config, hash string) (stock.Torrent, error) {
+	qb, err := qbit(c)
+	if err != nil {
+		return stock.Torrent{}, err
+	}
+	ts, err := qb.Torrents()
+	if err != nil {
+		return stock.Torrent{}, fmt.Errorf("%s", sourceError("qBittorrent", err))
+	}
+	for _, t := range ts {
+		if hash != "" && strings.EqualFold(t.Hash, hash) {
+			return t, nil
+		}
+	}
+	return stock.Torrent{}, fmt.Errorf("qBittorrent doesn't list that download")
 }
 
 func arr(c config.Config, app string) (*stock.Arr, error) {

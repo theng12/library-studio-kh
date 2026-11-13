@@ -10,13 +10,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	librarystudio "librarystudio"
 	"librarystudio/internal/config"
 	"librarystudio/internal/library"
+	"librarystudio/internal/metadata"
 	"librarystudio/internal/setup"
 	"librarystudio/internal/update"
 )
@@ -31,13 +34,16 @@ type Server struct {
 	// LocalURL is set from the bound loopback listener before serving requests.
 	LocalURL string
 	Now      func() time.Time
+	// Meta is the metadata cache; exported so a test entry can point it elsewhere.
+	Meta *metadata.Client
 
-	mu      sync.Mutex
-	last    *lastRun
-	remote  remoteAccess
-	access  accessState
-	cleanup *library.StagedCleanup
-	setup   *setup.Manager
+	prefetching atomic.Bool // single-flight guard for background metadata fills
+	mu          sync.Mutex
+	last        *lastRun
+	remote      remoteAccess
+	access      accessState
+	cleanup     *library.StagedCleanup
+	setup       *setup.Manager
 }
 
 type lastRun struct {
@@ -48,7 +54,7 @@ type lastRun struct {
 }
 
 func New(store *config.Store, home string) *Server {
-	s := &Server{Store: store, Home: home, Now: time.Now}
+	s := &Server{Store: store, Home: home, Now: time.Now, Meta: &metadata.Client{Dir: filepath.Join(home, "metadata")}}
 	s.cleanup = library.NewStagedCleanup(store.Get, home)
 	s.setup = setup.NewManager(home, store)
 	s.initAccess()
@@ -77,6 +83,8 @@ func (s *Server) Handler() http.Handler {
 	static, _ := fs.Sub(web, "web")
 	mux.Handle("/", http.FileServerFS(static))
 	mux.HandleFunc("GET /api/state", s.state)
+	mux.HandleFunc("GET /api/library", s.inventory)
+	mux.HandleFunc("GET /api/library/detail", s.inventoryDetail)
 	mux.HandleFunc("POST /api/settings", s.saveSettings)
 	mux.HandleFunc("GET /api/browse", func(w http.ResponseWriter, r *http.Request) {
 		items, errs := library.Browse(s.Store.Get())
@@ -226,11 +234,50 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		"releases":  librarystudio.Releases(),
 		"settings":  pub,
 		"saved":     saved,
-		"snapshot":  library.Gather(c, s.Home, s.Now()),
+		"snapshot":  library.Gather(c, s.Home, s.Now(), s.Meta),
 		"lastClean": last,
 		"remote":    s.RemoteStatus(),
 		"localUrl":  s.LocalURL,
 	})
+}
+
+// inventory lists the library with cache-only metadata, then fills cache gaps in the background.
+func (s *Server) inventory(w http.ResponseWriter, r *http.Request) {
+	items, problems := library.Inventory(s.Store.Get(), s.Home, s.Meta)
+	if problems == nil {
+		problems = []string{}
+	}
+	writeJSON(w, 200, map[string]any{"items": items, "problems": problems})
+	s.prefetch(items)
+}
+
+// inventoryDetail returns one inventory item by app and media ID. Cache-only.
+func (s *Server) inventoryDetail(w http.ResponseWriter, r *http.Request) {
+	app := r.URL.Query().Get("app")
+	id, err := strconv.Atoi(r.URL.Query().Get("id"))
+	if (app != "Sonarr" && app != "Radarr" && app != "Lidarr") || err != nil || id <= 0 {
+		writeJSON(w, 400, map[string]string{"error": "Choose a show, film or artist from the library."})
+		return
+	}
+	items, _ := library.Inventory(s.Store.Get(), s.Home, s.Meta)
+	for _, it := range items {
+		if it.App == app && it.MediaID == id {
+			writeJSON(w, 200, it)
+			return
+		}
+	}
+	writeJSON(w, 404, map[string]string{"error": app + " doesn't list that item."})
+}
+
+// prefetch runs one background metadata fill at a time; overlapping polls skip.
+func (s *Server) prefetch(items []library.Item) {
+	if !s.prefetching.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer s.prefetching.Store(false)
+		library.Prefetch(items, s.Meta)
+	}()
 }
 
 // poster serves one cached poster image by file name. Only files directly in the

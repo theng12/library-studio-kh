@@ -75,11 +75,10 @@ func (c *Client) Lookup(ctx context.Context, kind, title string, year int) Info 
 	if !c.enabled() || strings.TrimSpace(title) == "" {
 		return Info{Source: "placeholder"}
 	}
-	key := cacheKey(kind, title, year)
-	if info, ok := c.readCache(key); ok {
-		info.Source = "cache"
+	if info, ok := c.Cached(kind, title, year); ok {
 		return info
 	}
+	key := cacheKey(kind, title, year)
 	info := Info{Source: "placeholder"}
 	var err error
 	if kind == "series" {
@@ -98,6 +97,19 @@ func (c *Client) Lookup(ctx context.Context, kind, title string, year int) Info 
 	}
 	c.writeCache(key, info)
 	return info
+}
+
+// Cached reads only the disk cache and never touches the network, so request
+// paths stay fast offline. A nil or unconfigured client always misses.
+func (c *Client) Cached(kind, title string, year int) (Info, bool) {
+	if !c.enabled() || strings.TrimSpace(title) == "" {
+		return Info{}, false
+	}
+	info, ok := c.readCache(cacheKey(kind, title, year))
+	if ok {
+		info.Source = "cache"
+	}
+	return info, ok
 }
 
 // Poster returns a cached file path for the remote artwork, downloading it once.
