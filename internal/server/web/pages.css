@@ -356,7 +356,7 @@
    the table. */
 .downloads-panel .downloads-table th,
 .downloads-panel .downloads-table td { padding: 0.35rem 0.45rem; }
-.downloads-panel .dlp-title { max-width: 15rem; }
+.downloads-panel .dlp-title { max-width: 12.5rem; }
 .downloads-panel .dlp-title .dlp-open { text-align: left; white-space: normal; }
 .downloads-panel .dlp-size { white-space: nowrap; }
 .downloads-panel .dlp-status { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; }
@@ -365,7 +365,7 @@
 .downloads-panel .dlp-target { max-width: 6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .downloads-panel .dlp-progress { max-width: 11rem; }
 .downloads-panel .dlp-actions { white-space: nowrap; }
-.downloads-panel .dlp-actions button { padding: 0 0.5rem; }
+.downloads-panel .dlp-actions button { padding: 0 0.45rem; }
 
 /* Cleanup: the Actions column stays on screen while the table scrolls, and the
    status facts never push the card wider than its column. */
@@ -405,7 +405,7 @@
 /* Progress: the bar on its own line, then % · speed · ETA. The cell keeps a
    real minimum width so nothing is clipped, and wraps to a second line if it must. */
 .downloads-panel .dlp-progress {
-  display: block; max-width: none; min-width: 9.5rem;
+  display: block; max-width: none; min-width: 9rem;
 }
 .downloads-panel .dlp-progress progress { display: block; width: 100%; margin-bottom: 0.15rem; }
 .downloads-panel .dlp-progress .dlp-pct,
