@@ -1,5 +1,17 @@
 # What's new in Library Studio KH
 
+## 0.7.18 — 2026-11-14
+
+- Local media gets real metadata: films and shows in your library folder that no library app imported are listed with a clean title and year from their file name, a Kodi .nfo sidecar, or embedded tags, with facts and a poster from the same keyless sources. A file already managed by Sonarr, Radarr or Lidarr stays that app's row, never a duplicate.
+- Match metadata: a local file's details let you name it once; the match is saved and used for its facts and poster. The file itself is never renamed or moved.
+- Folder fields are pickers, never typed paths: the native folder panel on the Mac, and the app's own folder browser on a phone or another computer. Paths are read-only after you choose.
+- My library: type tabs with live counts (Show all, Movies, TV, Music, remembered), multi-select filters with removable chips, equal-height poster cards with shelves for Continue, Recently added, Movies, TV and Music, a table view, and a selection bar that verifies chosen copies in one go. The detail adds Set location and Open location.
+- Find & add: a full-width search row, clear loading, result-count, no-result and error states, and torrent links checked line by line with the bad line named and a ready count.
+- Settings and Cleanup share one tabbed shell with a sticky Save; every dialog closes from its backdrop and returns focus; the appearance control is the segmented System / Light / Dark choice again.
+- Honest states everywhere: "Missing" only after a real check on this machine, "Needs proof" when nothing proves a copy, unknown download states say "Status not reported", and stalled or unproven downloads no longer read as success.
+- Pages read a cached snapshot and refresh behind you, so My library and Activity appear immediately on launch and stay quick; the page says when it last checked.
+- One page frame, spacing and type scale, phone tap targets, and measured contrast in light and dark across every page.
+
 ## 0.7.17 — 2026-11-14
 
 - My library's list shows the full storage path at desktop widths instead of shortening it while the title column has room.
