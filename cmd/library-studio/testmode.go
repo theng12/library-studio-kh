@@ -163,9 +163,13 @@ func seedFixtures(e testEnv, now time.Time) error {
 	episode := bytes.Repeat([]byte("Library Studio KH headless test episode fixture\n"), 1024)
 	film := bytes.Repeat([]byte("Library Studio KH headless test film fixture\n"), 1024)
 	for path, b := range map[string][]byte{
-		filepath.Join(e.Library, testImportedRel):    episode,
-		filepath.Join(e.Library, testFilmRel):        film,
-		filepath.Join(e.Downloads, testImportedFile): episode,
+		filepath.Join(e.Library, testImportedRel): episode,
+		filepath.Join(e.Library, testFilmRel):     film,
+		// One video no library app manages, so My library's local rows and their
+		// Match action are exercised by the headless run.
+		filepath.Join(e.Library, "Home Videos", "Example Home Film (2019).mkv"): film,
+		filepath.Join(e.Library, "Home Videos", "Example Home Film (2019).nfo"): []byte("<movie><title>Example Home Film</title><year>2019</year><plot>A home video used only by the headless UI test.</plot><genre>Documentary</genre><runtime>84</runtime><rating>7.1</rating></movie>"),
+		filepath.Join(e.Downloads, testImportedFile):                            episode,
 		// Real payloads for the moving and completed-not-imported rows, so only
 		// the deliberately missing source reads as missing.
 		filepath.Join(e.Downloads, "A Quiet Film (1998) 1080p"):   film,

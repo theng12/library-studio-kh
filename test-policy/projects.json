@@ -6,45 +6,175 @@
       "path": "..",
       "lanes": {
         "frontend": {
-          "command": ["node", "--test", "tests"],
-          "paths": ["tests", "internal/server/web", "package.json", "src-tauri/src/main.rs"],
+          "command": [
+            "node",
+            "--test",
+            "tests"
+          ],
+          "paths": [
+            "tests",
+            "internal/server/web",
+            "package.json",
+            "src-tauri/src/main.rs"
+          ],
           "timeoutMin": 5
         },
         "core": {
-          "command": ["go", "test", "./internal/config", "./internal/stock", "./internal/library", "./internal/platform", "./internal/companioninstall"],
-          "paths": ["go.mod", "internal/config", "internal/stock", "internal/library", "internal/platform", "internal/companioninstall"],
-          "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1"},
+          "command": [
+            "go",
+            "test",
+            "./internal/config",
+            "./internal/stock",
+            "./internal/library",
+            "./internal/platform",
+            "./internal/companioninstall",
+            "./internal/localmedia"
+          ],
+          "paths": [
+            "go.mod",
+            "internal/config",
+            "internal/stock",
+            "internal/library",
+            "internal/platform",
+            "internal/companioninstall",
+            "internal/localmedia"
+          ],
+          "env": {
+            "GOTOOLCHAIN": "local",
+            "GOMAXPROCS": "1",
+            "GOFLAGS": "-p=1"
+          },
           "timeoutMin": 20
         },
         "setup": {
-          "command": ["go", "test", "./internal/setup", "./internal/server", "./cmd/library-studio"],
-          "paths": ["go.mod", "*.go", "CHANGELOG.md", "internal", "cmd", "package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml"],
-          "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1"},
+          "command": [
+            "go",
+            "test",
+            "./internal/setup",
+            "./internal/server",
+            "./cmd/library-studio"
+          ],
+          "paths": [
+            "go.mod",
+            "*.go",
+            "CHANGELOG.md",
+            "internal",
+            "cmd",
+            "package.json",
+            "src-tauri/tauri.conf.json",
+            "src-tauri/Cargo.toml"
+          ],
+          "env": {
+            "GOTOOLCHAIN": "local",
+            "GOMAXPROCS": "1",
+            "GOFLAGS": "-p=1"
+          },
           "timeoutMin": 20
         },
         "version": {
-          "command": ["go", "test", "."],
-          "paths": ["go.mod", "*.go", "CHANGELOG.md", "package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml"],
-          "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1"},
+          "command": [
+            "go",
+            "test",
+            "."
+          ],
+          "paths": [
+            "go.mod",
+            "*.go",
+            "CHANGELOG.md",
+            "package.json",
+            "src-tauri/tauri.conf.json",
+            "src-tauri/Cargo.toml"
+          ],
+          "env": {
+            "GOTOOLCHAIN": "local",
+            "GOMAXPROCS": "1",
+            "GOFLAGS": "-p=1"
+          },
           "timeoutMin": 5
         },
         "fast": {
-          "commands": [["go", "vet", "./..."], ["env", "GOOS=windows", "go", "vet", "./..."], ["env", "GOOS=linux", "go", "vet", "./..."]],
-          "env": {"GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1"},
+          "commands": [
+            [
+              "go",
+              "vet",
+              "./..."
+            ],
+            [
+              "env",
+              "GOOS=windows",
+              "go",
+              "vet",
+              "./..."
+            ],
+            [
+              "env",
+              "GOOS=linux",
+              "go",
+              "vet",
+              "./..."
+            ]
+          ],
+          "env": {
+            "GOTOOLCHAIN": "local",
+            "GOMAXPROCS": "1",
+            "GOFLAGS": "-p=1"
+          },
           "timeoutMin": 20
         },
         "host": {
-          "commands": [["node", "scripts/manage-host.mjs", "--self-test"], ["python3", "-I", "scripts/test_verify_macos_signing.py"], ["python3", "-I", "scripts/test_release_dist.py"]],
-          "paths": ["scripts", "package.json", "src-tauri"],
+          "commands": [
+            [
+              "node",
+              "scripts/manage-host.mjs",
+              "--self-test"
+            ],
+            [
+              "python3",
+              "-I",
+              "scripts/test_verify_macos_signing.py"
+            ],
+            [
+              "python3",
+              "-I",
+              "scripts/test_release_dist.py"
+            ]
+          ],
+          "paths": [
+            "scripts",
+            "package.json",
+            "src-tauri"
+          ],
           "timeoutMin": 5
         },
         "package": {
-          "commands": [["npm", "ci"], ["npm", "run", "build:desktop"]],
-          "env": {"CI": "true", "GOTOOLCHAIN": "local", "GOMAXPROCS": "1", "GOFLAGS": "-p=1", "CARGO_BUILD_JOBS": "1"},
+          "commands": [
+            [
+              "npm",
+              "ci"
+            ],
+            [
+              "npm",
+              "run",
+              "build:desktop"
+            ]
+          ],
+          "env": {
+            "CI": "true",
+            "GOTOOLCHAIN": "local",
+            "GOMAXPROCS": "1",
+            "GOFLAGS": "-p=1",
+            "CARGO_BUILD_JOBS": "1"
+          },
           "timeoutMin": 90
         }
       },
-      "build": ["src-tauri/target", "src-tauri/binaries", "src-tauri/gen", ".test-receipts", ".test-tmp"]
+      "build": [
+        "src-tauri/target",
+        "src-tauri/binaries",
+        "src-tauri/gen",
+        ".test-receipts",
+        ".test-tmp"
+      ]
     }
   }
 }

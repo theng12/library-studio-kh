@@ -82,7 +82,7 @@ func (s *Server) collectPageData() dataSnapshot {
 	cfg := s.Store.Get()
 	items, problems := library.Inventory(cfg, s.Home, s.Meta)
 	local, localProblems := s.localMediaItems()
-	items = append(items, local...)
+	items = append(items, unmanagedLocal(local, items)...)
 	problems = append(problems, localProblems...)
 	snapshot := library.Gather(cfg, s.Home, s.Now(), s.Meta)
 	data := dataSnapshot{Items: items, Problems: problems, Snapshot: &snapshot, BuiltAt: s.Now()}

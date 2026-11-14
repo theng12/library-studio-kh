@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -181,6 +182,43 @@ func (s *Server) matchLocalMedia(w http.ResponseWriter, r *http.Request) {
 		s.refreshLocalMedia()
 	}()
 	writeJSON(w, 200, map[string]bool{"saved": true})
+}
+
+// unmanagedLocal removes files that sit inside a title the library apps already
+// manage, so the library folder is not listed twice. A file or folder the app
+// reported is the app's row; only the rest is local media.
+func unmanagedLocal(local, managed []library.Item) []library.Item {
+	roots := make([]string, 0, len(managed))
+	for _, item := range managed {
+		if item.App == "Local" || strings.TrimSpace(item.TargetPath) == "" {
+			continue
+		}
+		roots = append(roots, filepath.Clean(item.TargetPath))
+	}
+	if len(roots) == 0 {
+		return local
+	}
+	out := make([]library.Item, 0, len(local))
+	for _, item := range local {
+		path := filepath.Clean(item.TargetPath)
+		covered := false
+		for _, root := range roots {
+			same := path == root
+			inside := strings.HasPrefix(path, root+string(filepath.Separator))
+			if runtime.GOOS == "windows" {
+				same = strings.EqualFold(path, root)
+				inside = strings.HasPrefix(strings.ToLower(path), strings.ToLower(root)+string(filepath.Separator))
+			}
+			if same || inside {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 // localLibraryItems maps scanned files onto the shared library row so local

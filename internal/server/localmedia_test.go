@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"librarystudio/internal/library"
 	"librarystudio/internal/metadata"
 )
 
@@ -181,5 +182,25 @@ func TestInventoryIncludesLocalMedia(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("local media row missing from /api/library: %s", w.Body.String())
+	}
+}
+
+func TestLocalRowsSkipFilesTheAppsAlreadyManage(t *testing.T) {
+	root := t.TempDir()
+	folder := filepath.Join(root, "Example Film (2024)")
+	managed := []library.Item{{App: "Radarr", TargetPath: folder}}
+	local := []library.Item{
+		{App: "Local", TargetPath: filepath.Join(folder, "Example Film (2024) 2160p.mkv")},
+		{App: "Local", TargetPath: filepath.Join(root, "Loose Film.mkv")},
+		{App: "Local", TargetPath: folder + " Extra"},
+	}
+	got := unmanagedLocal(local, managed)
+	if len(got) != 2 {
+		t.Fatalf("local rows = %d (%v), want the two unmanaged ones", len(got), got)
+	}
+	for _, item := range got {
+		if item.TargetPath == filepath.Join(folder, "Example Film (2024) 2160p.mkv") {
+			t.Errorf("a managed file was listed as local media: %s", item.TargetPath)
+		}
 	}
 }
