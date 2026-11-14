@@ -942,9 +942,8 @@ document.addEventListener("settings:tab", (ev) => {
     const msg = $(id);
     if (msg) msg.textContent = "";
   }
-  // Save belongs to General, the form it submits; the other tabs have their own actions.
-  const save = $("#settings-save");
-  if (save) save.hidden = (ev?.detail?.id || "general") !== "general";
+  // One Save for the whole form; it stays available on every tab. Its badges,
+  // not tab visibility, say whether a change is pending.
   const status = $("#settings-status");
   if (status) status.textContent = "Changes apply when you save.";
   settingsCardsForPhone();
@@ -1547,6 +1546,8 @@ $("#form").addEventListener("change", (ev) => {
     const line = $(ev.target.name === "deadCleanupOn" ? "#dead-cleanup-status" : "#dead-arr-status");
     if (line) line.textContent = (ev.target.checked ? "On" : "Off") + " — not applied yet; Save to apply.";
   }
+  // The switch's own badge never says Saved while its value is pending.
+  window.librarySettingsApi?.savedFeedback?.(ev.target.name, "Unsaved", "");
   if (ev.target.name !== "appearance") return;
   const hint = $("#settings-card-appearance .card-body > p.muted");
   if (hint) {
@@ -1591,11 +1592,15 @@ $("#form").addEventListener("submit", async (ev) => {
     // A successful save clears the dirty state it just applied.
     const pageStatus = $("#settings-status");
     if (pageStatus) pageStatus.textContent = "Changes apply when you save.";
-    const settings = window.librarySettingsApi;
     for (const name of ["tailscaleOn", "bazarrOn", "whisparrOn", "deadCleanupOn", "deadArrCleanupOn"]) {
-      settings?.savedFeedback?.(name, "Saved", "saved");
+      window.librarySettingsApi?.savedFeedback?.(name, "Saved", "saved");
     }
-  } catch (e) { say("Not saved. " + e.message); }
+  } catch (e) {
+    say("Not saved. " + e.message);
+    for (const name of ["tailscaleOn", "bazarrOn", "whisparrOn", "deadCleanupOn", "deadArrCleanupOn"]) {
+      window.librarySettingsApi?.savedFeedback?.(name, "Not saved", "error");
+    }
+  }
   finally { btn.disabled = false; }
 });
 

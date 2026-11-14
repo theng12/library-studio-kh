@@ -98,8 +98,11 @@ test("the remaining review findings are wired", () => {
   // Unsaved changes are visible, and the dead helpers show the pending value.
   assert.match(app, /Unsaved changes — Save to apply\./);
   assert.match(app, /not applied yet; Save to apply\./);
-  // Save belongs to General only.
-  assert.match(app, /save\.hidden = \(ev\?\.detail\?\.id \|\| "general"\) !== "general"/);
+  // One Save stays available; the switch's own badge carries the truth.
+  assert.doesNotMatch(app, /save\.hidden = \(ev\?\.detail\?\.id/);
+  assert.match(app, /savedFeedback\?\.\(ev\.target\.name, "Unsaved", ""\)/);
+  assert.match(app, /savedFeedback\?\.\(name, "Saved", "saved"\)/);
+  assert.match(app, /savedFeedback\?\.\(name, "Not saved", "error"\)/);
   // Activity opens a real busy window and reports the filtered count politely.
   assert.match(app, /function activityFilterInput\(\)/);
   assert.match(app, /setAttribute\("aria-busy", "true"\)/);

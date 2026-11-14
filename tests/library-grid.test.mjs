@@ -366,11 +366,15 @@ test("paths stay raw, offer Copy path, and a no-file title has a next step", asy
   const page = g.libraryGridPage({ items, filters: {}, selected: "Radarr:1", handlers: {} });
   const panel = byClass(page, "libgrid-detail")[0];
   assert.doesNotMatch(text(panel), /​/);
+  const field = byTag(panel, "input")[0];
+  assert.equal(field.value, "/Volumes/NAS-1/Films/Arrival (2016)");
+  assert.equal(field.readOnly, true);
   const copy = byClass(panel, "libgrid-copy-path")[0];
   assert.equal(copy.textContent, "Copy path");
   copy.fire("click");
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.deepEqual(copied, ["/Volumes/NAS-1/Films/Arrival (2016)"]);
+  assert.equal(byClass(panel, "libgrid-path-msg")[0].textContent, "Copied.");
 
   const queuedItem = { app: "Sonarr", id: 9, title: "Waiting Show", status: "queued", localCopy: false };
   let openedDownloads = 0, openedFind = 0;
@@ -388,7 +392,7 @@ test("paths stay raw, offer Copy path, and a no-file title has a next step", asy
   assert.equal(openedFind, 1);
 
   const css = readFileSync(new URL("../internal/server/web/pages.css", import.meta.url), "utf8");
-  const shared = /grid-template-columns: 2\.5rem minmax\(15rem, 1\.35fr\) minmax\(0, 1\.4fr\) 11rem;/;
+  const shared = /grid-template-columns: 2\.5rem minmax\(15rem, 1\.35fr\) minmax\(0, 1\.4fr\) 10rem;/;
   const rowRule = css.slice(css.indexOf(".libgrid-row {"), css.indexOf(".libgrid-row {") + 200);
   const headRule = css.slice(css.indexOf(".libgrid-list-head {"), css.indexOf(".libgrid-list-head {") + 200);
   assert.match(rowRule, shared);

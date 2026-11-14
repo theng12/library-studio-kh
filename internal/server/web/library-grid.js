@@ -434,21 +434,31 @@ function libraryGridDetailPanel(detail, handlers = {}) {
     aside.append(proof);
   }
   if (detail.location.path) {
+    const box = libraryGridNode("div", null, "libgrid-path-box");
+    const field = document.createElement("input");
+    field.type = "text";
+    field.readOnly = true;
+    field.value = detail.location.path;
+    field.setAttribute("aria-label", "Full storage path (selectable)");
     const copy = libraryGridNode("button", "Copy path", "libgrid-copy-path");
     copy.type = "button";
     copy.setAttribute("aria-label", "Copy the full storage path");
+    const message = libraryGridNode("p", "", "libgrid-path-msg");
+    message.setAttribute("role", "status");
     copy.addEventListener("click", async () => {
-      const raw = detail.location.path;
+      const raw = field.value;
       try {
         await navigator.clipboard.writeText(raw);
-        copy.textContent = "Copied";
-        copy.title = raw;
-      } catch {
-        copy.textContent = "Copy unavailable — select the path";
+        message.textContent = "Copied.";
+        message.dataset.state = "ok";
+      } catch (e) {
+        message.textContent = "Could not copy: " + (e?.message || "clipboard unavailable") + ". Select the path above.";
+        message.dataset.state = "error";
+        field.select?.();
       }
-      setTimeout(() => { copy.textContent = "Copy path"; }, 2000);
     });
-    aside.append(copy);
+    box.append(field, copy, message);
+    aside.append(box);
   }
   // A title that is not checkable in the library is never a dead end.
   const nextKey = detail.status.key;
