@@ -39,6 +39,7 @@ type Server struct {
 	Meta *metadata.Client
 
 	prefetching atomic.Bool // single-flight guard for background metadata fills
+	local       *localMediaCache
 	mu          sync.Mutex
 	last        *lastRun
 	remote      remoteAccess
@@ -56,6 +57,7 @@ type lastRun struct {
 
 func New(store *config.Store, home string) *Server {
 	s := &Server{Store: store, Home: home, Now: time.Now, Meta: &metadata.Client{Dir: filepath.Join(home, "metadata")}}
+	s.local = &localMediaCache{}
 	s.cleanup = library.NewStagedCleanup(store.Get, home)
 	s.setup = setup.NewManager(home, store)
 	s.initAccess()
@@ -88,6 +90,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerSubtitles(mux)
 	s.registerCleanup(mux)
 	s.registerFolders(mux)
+	s.registerLocalMedia(mux)
 	s.registerSetup(mux)
 	s.RegisterCompanionSettings(mux)
 	mux.HandleFunc("GET /api/health", s.health)
@@ -260,6 +263,9 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 // inventory lists the library with cache-only metadata, then fills cache gaps in the background.
 func (s *Server) inventory(w http.ResponseWriter, r *http.Request) {
 	items, problems := library.Inventory(s.Store.Get(), s.Home, s.Meta)
+	local, localProblems := s.localMediaItems()
+	items = append(items, local...)
+	problems = append(problems, localProblems...)
 	if problems == nil {
 		problems = []string{}
 	}

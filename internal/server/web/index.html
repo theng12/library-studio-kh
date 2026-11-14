@@ -715,5 +715,23 @@
     </div>
   </form>
 </dialog>
+
+<dialog id="local-match-dialog" aria-labelledby="local-match-heading">
+  <header class="d-head">
+    <h2 id="local-match-heading">Match metadata</h2>
+    <button type="button" class="close" aria-label="Close">×</button>
+  </header>
+  <form id="local-match-form" class="add-form" novalidate>
+    <p id="local-match-file" class="muted"></p>
+    <label>Title <input id="local-match-name" autocomplete="off" maxlength="300" required></label>
+    <label>Year <span class="hint">· optional</span><input id="local-match-year" inputmode="numeric" autocomplete="off" maxlength="4"></label>
+    <p class="hint">The title and year are used to find facts and a poster. The file itself is never renamed or moved.</p>
+    <p id="local-match-msg" class="msg" role="alert" hidden></p>
+    <div class="actions">
+      <button type="submit" class="primary">Save match</button>
+      <button type="button" class="small" id="local-match-cancel">Cancel</button>
+    </div>
+  </form>
+</dialog>
 </body>
 </html>

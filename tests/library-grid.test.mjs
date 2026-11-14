@@ -440,3 +440,23 @@ test("torrent input validity has one reason, and the Add button follows it", () 
   assert.equal(context.torrentInputReason("magnet:?xt=urn:btih:x", 0), "");
   assert.equal(context.torrentInputReason("", 1), "");
 });
+
+test("a local file offers a metadata match and no import proof", () => {
+  const g = load();
+  const path = "/Volumes/Media/Film (2020).mkv";
+  const localItem = { app: "Local", id: path, targetPath: path, title: "Film", year: 2020, status: "on-disk" };
+  const calls = [];
+  const page = g.libraryGridPage({
+    items: [localItem], filters: {}, selected: g.libraryGridKey(localItem),
+    handlers: { onMatch: (detail) => calls.push(detail) },
+  });
+  const panel = byClass(page, "libgrid-detail")[0];
+  assert.ok(text(panel).includes("Checked on this machine — found"));
+  assert.doesNotMatch(text(panel), /Needs proof/);
+  assert.equal(byClass(panel, "libgrid-verify-msg").length, 0, "a local file has nothing to verify against an import");
+  const match = byClass(panel, "libgrid-match")[0];
+  assert.ok(match, "Match metadata is offered for a local file");
+  match.fire("click");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, path);
+});

@@ -182,6 +182,9 @@ function libraryGridDetail(item, posterURL) {
     key: libraryGridKey(item),
     title: item.title || "Untitled",
     app: item.app || "",
+    // A local file has no saved proof to show; it gets a metadata match instead.
+    local: item.app === "Local",
+    path: String(item.targetPath || item.id || ""),
     poster: libraryGridPoster(item, posterURL),
     status: libraryGridStatus(item),
     overview: String(item.overview || "").trim(),
@@ -424,11 +427,13 @@ function libraryGridDetailPanel(detail, handlers = {}) {
     const missing = detail.status.key === "missing";
     fact("File check", missing ? "Checked on this machine — not found" : "Checked on this machine — found", missing ? "is-problem" : null);
   }
-  fact("Proof", detail.verification.verified
-    ? "Verified" + (detail.verification.at ? " · " + detail.verification.at : "")
-    : "Needs proof — no verification recorded yet", detail.verification.verified ? null : "is-problem");
+  if (!detail.local) {
+    fact("Proof", detail.verification.verified
+      ? "Verified" + (detail.verification.at ? " · " + detail.verification.at : "")
+      : "Needs proof — no verification recorded yet", detail.verification.verified ? null : "is-problem");
+  }
   aside.append(facts);
-  if (detail.verification.verified || detail.verification.hash || detail.source) {
+  if (!detail.local && (detail.verification.verified || detail.verification.hash || detail.source)) {
     // Proof values are detail on demand, not banner copy.
     const proof = document.createElement("details");
     proof.className = "libgrid-proof";
@@ -442,6 +447,13 @@ function libraryGridDetailPanel(detail, handlers = {}) {
     if (detail.source) row("Source", detail.source);
     proof.append(summary, list);
     aside.append(proof);
+  }
+  if (detail.local) {
+    const match = libraryGridNode("button", "Match metadata", "libgrid-state-action libgrid-match");
+    match.type = "button";
+    match.setAttribute("aria-label", "Match metadata for " + detail.title);
+    match.addEventListener("click", () => handlers.onMatch?.(detail));
+    aside.append(match);
   }
   if (detail.location.path) {
     const box = libraryGridNode("div", null, "libgrid-path-box");
@@ -490,7 +502,7 @@ function libraryGridDetailPanel(detail, handlers = {}) {
     box.append(downloads, find);
     aside.append(box);
   }
-  if (detail.localCopy || !detail.verification.verified) {
+  if (!detail.local && (detail.localCopy || !detail.verification.verified)) {
     // A real verification of this copy — offered whenever a saved record tracks
     // it, including a re-check of an already-verified copy. Without a record the
     // control is replaced by the reason.

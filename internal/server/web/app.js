@@ -585,8 +585,11 @@ function renderLibraryPage() {
   const wasFilters = focused?.classList?.contains("libgrid-filters-toggle") || false;
   const unverified = lib.items.filter((item) =>
     /^(copied|moved)$/.test(item.status || "") && !(item.verified === "hash" || item.verified === "size")).length;
+  const localCount = lib.items.filter((item) => item.app === "Local").length;
   $("#browse-lede").textContent = (lib.items.length
-    ? lib.items.length + (lib.items.length === 1 ? " item" : " items") + " across Sonarr, Radarr and Lidarr. Status and proof come from import records."
+    ? lib.items.length + (lib.items.length === 1 ? " item" : " items") + " across Sonarr, Radarr and Lidarr"
+      + (localCount ? " and " + localCount + " in your local media folder" : "")
+      + ". Status and proof come from import records or a real file check."
     : "Everything Sonarr, Radarr and Lidarr look after.")
     + (lib.metadata ? " " + lib.metadata : "")
     + (unverified ? " " + unverified + (unverified === 1 ? " imported copy has" : " imported copies have") + " no verification proof yet — open one to see whether a local copy is tracked." : "");
@@ -628,6 +631,7 @@ function renderLibraryPage() {
       onRetry: () => loadLibrary(),
       onFindAndAdd: () => show("find"),
       onOpenDownloads: () => show("downloads"),
+      onMatch: (detail) => openLocalMatch(detail),
       onVerify: async (detail) => {
         if (!detail.downloadHash) return "No local copy is tracked for this item yet, so there is nothing to check.";
         try {
@@ -651,8 +655,10 @@ function renderLibraryPage() {
   const openDetails = $("#lib-open-details");
   // Only when the detail panel is actually on screen; a filtered-out or closed
   // selection must not open a title the owner can no longer see.
-  openDetails.hidden = !shownSelected;
-  openDetails.onclick = shownSelected
+  // A local file has no *arr record to open; its detail is the whole view.
+  const canOpenDetails = !!shownSelected && shownSelected.app !== "Local";
+  openDetails.hidden = !canOpenDetails;
+  openDetails.onclick = canOpenDetails
     ? () => openMediaDetails({ app: shownSelected.app, id: Number(shownSelected.mediaId || shownSelected.id), title: shownSelected.title })
     : null;
   if (searchFocus !== null) {
@@ -813,6 +819,52 @@ $("#add-form").addEventListener("submit", async (ev) => {
     msg.textContent = e.message;
     btn.disabled = false;
   } finally { addBusy = false; addReady(); }
+});
+
+// A local file has no *arr record, so the owner can name it once. The match is
+// saved beside the library and never renames or moves the file.
+let matchTarget = null;
+function openLocalMatch(detail) {
+  matchTarget = detail;
+  $("#local-match-file").textContent = detail.path || "";
+  $("#local-match-name").value = detail.title === "Untitled" ? "" : detail.title;
+  $("#local-match-year").value = detail.year || "";
+  $("#local-match-msg").hidden = true;
+  $("#local-match-form button.primary").disabled = false;
+  $("#local-match-dialog").addEventListener("close", () => { matchTarget = null; }, { once: true });
+  if (!$("#local-match-dialog").open) $("#local-match-dialog").showModal();
+  $("#local-match-name").focus();
+  $("#local-match-name").select?.();
+}
+$("#local-match-cancel").addEventListener("click", () => $("#local-match-dialog").close());
+$("#local-match-dialog .close").addEventListener("click", () => $("#local-match-dialog").close());
+$("#local-match-dialog").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); });
+$("#local-match-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  if (!matchTarget) return;
+  const btn = $("#local-match-form button.primary"), msg = $("#local-match-msg");
+  const title = $("#local-match-name").value.trim();
+  const year = Number($("#local-match-year").value.trim() || 0);
+  msg.hidden = true;
+  if (!title) { msg.hidden = false; msg.textContent = "Enter the title this file should use."; return; }
+  if (!Number.isInteger(year) || year < 0 || year > 3000) {
+    msg.hidden = false;
+    msg.textContent = "Enter a year between 0 and 3000, or leave it empty.";
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+  try {
+    await api("/api/localmedia/match", { path: matchTarget.path, title, year });
+    $("#local-match-dialog").close();
+    await loadLibrary();
+  } catch (e) {
+    msg.hidden = false;
+    msg.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Save match";
+  }
 });
 
 function fillForm(st) {

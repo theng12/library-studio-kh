@@ -136,3 +136,10 @@ test("torrent files are chosen, listed as removable chips, and never a raw bar",
   assert.match(app2, /addEventListener\("drop"/);
   assert.match(app2, /btn\.disabled = !!reason/);
 });
+
+test("a local file is matched in an in-app dialog, never a browser prompt", () => {
+  assert.match(html, /<dialog id="local-match-dialog"/);
+  assert.match(app, /openLocalMatch/);
+  assert.match(app, /\/api\/localmedia\/match/);
+  assert.doesNotMatch(app, /\bwindow\.(confirm|prompt|alert)\s*\(/);
+});
