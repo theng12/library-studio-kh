@@ -181,7 +181,7 @@
 @media (max-width: 760px) {
   /* Every control that a finger reaches is at least 44px tall. */
   .tab, .switch, .side .pill, .side .icon-btn { min-height: 44px; }
-  .side .pill { min-width: 44px; }
+  .side .pill, .side .icon-btn { min-width: 44px; }
   .content { padding: 1rem 1rem calc(6rem + env(safe-area-inset-bottom)); }
   .page-head h1 { font-size: 1.3rem; }
   .page-status { flex-basis: 100%; }
