@@ -84,10 +84,13 @@ window.libraryKeyboard = (doc) => {
       if (!input || input.disabled || input.closest("[hidden]")) return;
       ev.preventDefault(); input.focus(); input.select?.(); return;
     }
-    // Downloads only, and only with focus inside the list, so a hidden ancestor
-    // view, the gate or an open dialog never selects behind the scenes.
+    // Downloads and My library only, and only with focus inside the list, so a
+    // hidden ancestor view, the gate or an open dialog never selects behind the
+    // scenes.
     if (key === "a" && currentView() === "downloads" && ev.target?.closest?.("#dl")
       && selectVisibleDownloads()) ev.preventDefault();
+    if (key === "a" && currentView() === "browse" && ev.target?.closest?.("#library-host")
+      && window.librarySelectAllShown?.()) ev.preventDefault();
   }
 
   doc.addEventListener("keydown", handleKey);

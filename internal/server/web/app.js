@@ -609,6 +609,14 @@ async function loadLibrary() {
 }
 
 window.libraryReloadLibrary = () => loadLibrary();
+// Cmd/Ctrl+A inside My library selects exactly the titles its filters show.
+window.librarySelectAllShown = () => {
+  const shown = libraryGridFilter(lib.items, lib.filters);
+  if (!shown.length) return false;
+  lib.selection = shown.map((item) => libraryGridKey(item));
+  renderLibraryPage();
+  return true;
+};
 
 function renderLibraryPage() {
   if (!current) return;
@@ -681,6 +689,8 @@ function renderLibraryPage() {
           lib.notice = e.message;
           renderLibraryPage();
         }
+        // The panel was re-rendered; keep the owner's place in it.
+        document.querySelector("#library-host .libgrid-set-location")?.focus();
       },
       onOpenLocation: async (detail) => {
         if (!detail.location?.path) return;
