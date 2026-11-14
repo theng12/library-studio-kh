@@ -80,16 +80,14 @@ function libraryGridVerified(item) {
 }
 
 function libraryGridStatus(item) {
-  const known = LIBGRID_STATUS[item.status];
-  const def = known || { label: item.status || "Status not reported", tone: "neutral" };
+  const def = LIBGRID_STATUS[item.status] || { label: item.status || "Status not reported", tone: "neutral" };
   if (item.status !== "copied" && item.status !== "moved") {
     return { key: item.status || "unknown", label: def.label, tone: def.tone };
   }
-  const where = libraryVolumeLabel(item.targetVolume);
-  const base = where ? def.label + " to " + where : def.label;
+  // One short chip; the volume and the proof method live in the detail.
   return libraryGridVerified(item)
-    ? { key: item.status, label: base + " (verified)", tone: "ok" }
-    : { key: item.status, label: base + " (not verified)", tone: "problem" };
+    ? { key: "verified", label: "Verified", tone: "ok" }
+    : { key: "proof-pending", label: "Needs proof", tone: "problem" };
 }
 
 function libraryGridRuntime(minutes) {
@@ -318,6 +316,18 @@ function libraryGridCard(item, options = {}) {
   card.append(libraryGridNode("span", item.title || "Untitled", "libgrid-card-title"));
   card.append(libraryGridStatusChip(libraryGridStatus(item)));
   card.append(libraryGridNode("span", libraryGridMeta(item), "libgrid-meta"));
+  if (item.status === "downloading" || item.status === "importing" || item.status === "stalled") {
+    const progress = libraryGridNode("span", null, "libgrid-card-progress");
+    const bar = document.createElement("progress");
+    bar.max = 1;
+    if (Number.isFinite(item.progress) && item.progress >= 0 && item.progress <= 1) bar.value = item.progress;
+    bar.setAttribute("aria-label", "Progress for " + (item.title || "this item"));
+    const caption = libraryGridNode("span", item.status === "importing"
+      ? "Importing into the library"
+      : Number.isFinite(item.progress) && item.progress >= 0 ? Math.floor(item.progress * 100) + "% · next: import" : "Progress not reported");
+    progress.append(bar, caption);
+    card.append(progress);
+  }
   card.addEventListener("click", () => options.handlers?.onSelect?.(key));
   return card;
 }

@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../internal/server/web/library-grid.js", im
 // Minimal DOM: views only create elements, set text, attributes and listeners.
 function fakeDocument() {
   const make = (tagName) => ({
-    tagName, className: "", textContent: "", children: [], attributes: {}, listeners: {}, hidden: false,
+    tagName, className: "", textContent: "", children: [], attributes: {}, listeners: {}, hidden: false, dataset: {},
     append(...kids) { this.children.push(...kids); },
     replaceChildren(...kids) { this.children = kids; },
     setAttribute(k, v) { this.attributes[k] = String(v); },
@@ -163,7 +163,7 @@ test("the grid renders one card per item with poster, title, chip and meta", () 
   assert.equal(cards.length, 5);
   assert.equal(cards[0].getAttribute("data-key"), "Sonarr:2");
   assert.deepEqual(byClass(cards[0], "libgrid-card-title").map(text), ["Andor"]);
-  assert.deepEqual(byClass(cards[0], "libgrid-status").map(text), ["Moved to NAS-1 (verified)"]);
+  assert.deepEqual(byClass(cards[0], "libgrid-status").map(text), ["Verified"]);
   assert.equal(byClass(cards[0], "libgrid-poster-placeholder").length, 1, "no posterPath means a placeholder");
   assert.equal(byTag(cards[1], "img").length, 1, "a posterPath is used without a resolver");
   assert.equal(byTag(cards[1], "img")[0].src, "/cache/posters/arrival.jpg");
