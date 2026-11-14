@@ -110,9 +110,16 @@ const MEASURE = `(() => {
   const poster = [...document.querySelectorAll(".libgrid-poster")].find(visible);
   const posterBox = poster ? poster.getBoundingClientRect() : null;
   const saveBar = [...document.querySelectorAll(".save-bar")].find(visible);
+  const hitBox = (el) => {
+    if (el.tagName === "INPUT" && (el.type === "checkbox" || el.type === "radio")) {
+      const label = el.closest("label");
+      if (label) return label.getBoundingClientRect();
+    }
+    return el.getBoundingClientRect();
+  };
   const small = [...document.querySelectorAll("button, [role=button], input[type=checkbox], summary")]
     .filter(visible)
-    .filter((el) => el.getBoundingClientRect().height < 43.5);
+    .filter((el) => hitBox(el).height < 43.5);
   return {
     width: innerWidth,
     height: innerHeight,
