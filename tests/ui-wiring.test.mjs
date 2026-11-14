@@ -157,3 +157,16 @@ test("library filters and type are remembered, and location actions are wired", 
   assert.match(app, /window\.folderPicker\?\.pick\?\./);
   assert.match(picker, /async function pick\(promptText\)/);
 });
+
+test("library selection, caching and one page frame are wired", () => {
+  assert.match(app, /selection: lib\.selection/);
+  assert.match(app, /selectionActions: \[\{ id: "verify", label: "Verify selected" \}\]/);
+  assert.match(app, /onToggleSelect: \(key\) =>/);
+  assert.match(app, /onSelectAll: \(keys\) =>/);
+  assert.match(app, /onClearSelection: \(\) =>/);
+  assert.match(app, /onBulkAction: async \(id, keys\) =>/);
+  assert.match(app, /\/api\/cleanup\/verify/);
+  assert.match(app, /lib\.selection = \[\]/);
+  assert.match(app, /lib\.cachedAt = r\.cachedAt/);
+  assert.match(app, /Last checked /);
+});

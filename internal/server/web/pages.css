@@ -667,3 +667,7 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
 @media (max-width: 640px) {
   .save-bar button.primary { flex: 1 1 100%; }
 }
+
+/* One stacked page body for pages that are a column of cards; the shared
+   spacing token keeps the gap the same everywhere. */
+.page-body.stack { display: grid; gap: var(--space-4); align-content: start; }

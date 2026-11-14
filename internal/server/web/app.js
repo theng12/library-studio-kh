@@ -95,6 +95,7 @@ function render(st) {
     : "Local copies are <strong>kept</strong>. Staged cleanup is off.");
   if (s.library === "missing") parts.push("<span class=off>The NAS library folder can't be found.</span>");
   if (st.metadata) parts.push("<span class=off>" + st.metadata + "</span>");
+  if (st.cachedAt) parts.push("<span class='muted'>Last checked " + time(st.cachedAt) + ".</span>");
   $("#summary").innerHTML = parts.join(" ");
 
   $("#apps").replaceChildren(...s.apps.map((a) => {
@@ -575,11 +576,13 @@ function storeLibraryFilters(filters) {
 }
 function applyLibraryFilters(next) {
   lib.filters = next || {};
+  lib.selection = []; // a selection belongs to the list the owner was looking at
   storeLibraryFilters(lib.filters);
 }
 
-const lib = { items: [], problems: [], metadata: "", notice: "", cachedAt: "", loading: false, error: "", filters: storedLibraryFilters(), draft: {}, sort: { key: "title", dir: "asc" }, selected: null, filtersOpen: false, view: storedLibraryView() };
+const lib = { items: [], problems: [], metadata: "", notice: "", cachedAt: "", loading: false, error: "", filters: storedLibraryFilters(), draft: {}, sort: { key: "title", dir: "asc" }, selected: null, selection: [], filtersOpen: false, view: storedLibraryView() };
 let libraryLoading = false;
+let librarySearchTimer = null;
 
 async function loadLibrary() {
   if (libraryLoading) return;
@@ -593,6 +596,9 @@ async function loadLibrary() {
     lib.problems = (r.problems || []).filter(Boolean);
     lib.metadata = r.metadata || "";
     lib.cachedAt = r.cachedAt || "";
+    // A title that left the library must not stay selected.
+    const keys = new Set(lib.items.map((item) => libraryGridKey(item)));
+    lib.selection = lib.selection.filter((key) => keys.has(key));
     lib.error = "";
   } catch (e) {
     lib.error = e.message;
@@ -636,6 +642,8 @@ function renderLibraryPage() {
     view: lib.view,
     sort: lib.sort,
     selected: lib.selected,
+    selection: lib.selection,
+    selectionActions: [{ id: "verify", label: "Verify selected" }],
     count: libraryGridCount(libraryGridFilter(lib.items, lib.filters).length, lib.items.length),
     loading: lib.loading,
     error: lib.error,
@@ -643,7 +651,12 @@ function renderLibraryPage() {
     filtersOpen: lib.filtersOpen,
     posterURL: (item) => item.posterPath ? "/api/poster?path=" + encodeURIComponent(item.posterPath) : "",
     handlers: {
-      onSearch: (value) => { applyLibraryFilters({ ...lib.filters, query: value }); renderLibraryPage(); },
+      onSearch: (value) => {
+        // Typing stays light: store every keystroke, paint once after it settles.
+        applyLibraryFilters({ ...lib.filters, query: value });
+        clearTimeout(librarySearchTimer);
+        librarySearchTimer = setTimeout(renderLibraryPage, 120);
+      },
       onType: (value) => { applyLibraryFilters({ ...lib.filters, type: value || "" }); lib.draft = {}; renderLibraryPage(); },
       onFilterChange: (next) => { lib.draft = next || {}; renderLibraryPage(); },
       onToggleFilters: () => {
@@ -692,6 +705,35 @@ function renderLibraryPage() {
         renderLibraryPage();
       },
       onSelect: (key) => { lib.selected = key; renderLibraryPage(); },
+      onToggleSelect: (key) => {
+        lib.selection = lib.selection.includes(key)
+          ? lib.selection.filter((k) => k !== key)
+          : [...lib.selection, key];
+        renderLibraryPage();
+      },
+      onSelectAll: (keys) => { lib.selection = [...new Set(keys || [])]; renderLibraryPage(); },
+      onClearSelection: () => { lib.selection = []; renderLibraryPage(); },
+      onBulkAction: async (id, keys) => {
+        if (id !== "verify" || !keys?.length) return;
+        let verified = 0, untracked = 0, failed = 0;
+        for (const key of keys) {
+          const item = lib.items.find((row) => libraryGridKey(row) === key);
+          if (!item?.downloadHash) { untracked += 1; continue; }
+          try {
+            await api("/api/cleanup/verify", { hash: item.downloadHash });
+            verified += 1;
+          } catch {
+            failed += 1;
+          }
+        }
+        await loadLibrary();
+        lib.notice = "Verified " + verified + " selected "
+          + (verified === 1 ? "copy" : "copies") + "."
+          + (untracked ? " " + untracked + " had no tracked local copy." : "")
+          + (failed ? " " + failed + " could not be verified." : "");
+        lib.selection = [];
+        renderLibraryPage();
+      },
       onRetry: () => loadLibrary(),
       onFindAndAdd: () => show("find"),
       onOpenDownloads: () => show("downloads"),

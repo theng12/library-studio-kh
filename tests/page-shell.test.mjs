@@ -70,3 +70,17 @@ test("mountTabbed turns existing blocks into accessible tabs", () => {
   assert.equal(buttons[1].attributes["aria-selected"], "true");
   assert.equal(panels[1].hidden, false);
 });
+
+test("every page uses one frame and one card gap", () => {
+  for (const view of ["activity", "downloads", "browse", "media", "sources", "find", "cleanup", "settings", "help", "whatsnew", "support"]) {
+    const start = html.indexOf('id="view-' + view + '"');
+    assert.ok(start > 0, view + " view exists");
+    const block = html.slice(start, html.indexOf("<section id=\"view-", start + 10) > 0
+      ? html.indexOf("<section id=\"view-", start + 10)
+      : html.indexOf("</main>", start));
+    assert.match(block, /class="page"/, view + " uses the shared page frame");
+    assert.match(block, /class="page-head"/, view + " uses the shared page head");
+    assert.match(block, /class="page-body (stack|find-body)"/, view + " uses the shared page body");
+  }
+  assert.match(css, /\.page-body\.stack \{ display: grid; gap: var\(--space-4\); align-content: start; \}/);
+});

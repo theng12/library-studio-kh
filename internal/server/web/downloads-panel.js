@@ -548,7 +548,9 @@ function downloadsDetailRender(container, detail, onClose) {
   heading.id = "downloads-detail-title";
   head.append(heading, dlpEl("span", detail.status.label, "badge dlp-tone-" + detail.status.tone));
   if (typeof onClose === "function") {
-    const close = dlpButton("Close");
+    // One close control across every dialog: the shared × with its name.
+    const close = dlpButton("×", "close");
+    close.setAttribute("aria-label", "Close");
     close.addEventListener("click", () => onClose());
     head.append(close);
   }
