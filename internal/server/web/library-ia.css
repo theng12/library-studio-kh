@@ -47,6 +47,7 @@
 /* ---- Filters: a popover beside the toolbar on wide screens ---- */
 .libgrid-toolbar { position: relative; }
 .libgrid-filters { gap: var(--space-3); padding: var(--space-3) var(--space-4); align-items: start; }
+.libgrid-filter-options { display: contents; }
 
 .libgrid-filter-group {
   display: grid; align-content: start; gap: var(--space-1);
@@ -89,18 +90,18 @@
 @media (min-width: 761px) {
   .libgrid-filters {
     position: absolute; z-index: 30; top: calc(100% + var(--space-2)); right: 0;
-    width: min(32rem, 100%); max-height: min(70vh, 32rem);
-    display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 0;
+    width: min(32rem, 100%); max-height: min(70vh, 32rem); overflow: auto;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: var(--space-3);
     background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius-card); box-shadow: var(--shadow);
   }
-  .libgrid-filter-options {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-    gap: var(--space-3); overflow: auto; min-height: 0;
-  }
+  /* The value groups are direct grid items; only the panel scrolls. */
+  .libgrid-filter-options { display: contents; }
   .libgrid-filter-actions {
-    border-top: 1px solid var(--line); margin-top: var(--space-1);
-    padding-top: var(--space-2);
+    position: sticky; bottom: 0; z-index: 1; grid-column: 1 / -1;
+    background: var(--panel); border-top: 1px solid var(--line);
+    padding: var(--space-2) 0 var(--space-3);
   }
 }
 
@@ -108,10 +109,7 @@
 @media (max-width: 760px) {
   .libgrid-tabs { width: 100%; }
   .libgrid-tab { flex: 1 1 auto; }
-  .libgrid-filters {
-    flex-basis: 100%; width: 100%;
-  }
-  .libgrid-filter-options { grid-template-columns: minmax(0, 1fr); overflow: visible; }
+  .libgrid-filters { flex-basis: 100%; width: 100%; }
   .libgrid-filter-actions { position: sticky; bottom: calc(-1 * var(--space-3)); background: inherit; }
 }
 

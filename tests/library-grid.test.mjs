@@ -860,5 +860,6 @@ test("filter Apply and Reset stay outside the scrolling options", () => {
   assert.ok(!options.children.includes(actions), "the actions are not inside the scroll box");
   assert.deepEqual(byClass(actions, "libgrid-apply").map(text), ["Apply"]);
   assert.deepEqual(byClass(actions, "libgrid-reset").map(text), ["Reset"]);
-  assert.match(css, /\.libgrid-filter-options \{[^}]*overflow: auto/);
+  assert.match(css, /\.libgrid-filter-options \{ display: contents; \}/);
+  assert.match(css, /\.libgrid-filter-actions \{[^}]*position: sticky; bottom: 0/);
 });
