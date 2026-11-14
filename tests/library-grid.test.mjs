@@ -20,7 +20,7 @@ function fakeDocument() {
 }
 
 function load() {
-  const context = { document: fakeDocument() };
+  const context = { document: fakeDocument(), setTimeout, clearTimeout };
   runInNewContext(source, context);
   return context;
 }
@@ -353,4 +353,38 @@ test("a saved copy offers Verify even after it is verified", async () => {
   // A verified item with no saved record has nothing to re-check.
   const noCopy = g.libraryGridPage({ items, filters: {}, selected: "Radarr:1", handlers: {} });
   assert.equal(byClass(byClass(noCopy, "libgrid-detail")[0], "libgrid-state-action")[0], undefined);
+});
+
+test("paths stay raw, offer Copy path, and a no-file title has a next step", async () => {
+  const g = load();
+  const copied = [];
+  g.navigator = { clipboard: { writeText: async (text) => copied.push(text) } };
+  const page = g.libraryGridPage({ items, filters: {}, selected: "Radarr:1", handlers: {} });
+  const panel = byClass(page, "libgrid-detail")[0];
+  assert.doesNotMatch(text(panel), /​/);
+  const copy = byClass(panel, "libgrid-copy-path")[0];
+  assert.equal(copy.textContent, "Copy path");
+  copy.fire("click");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(copied, ["/Volumes/NAS-1/Films/Arrival (2016)"]);
+
+  const queuedItem = { app: "Sonarr", id: 9, title: "Waiting Show", status: "queued", localCopy: false };
+  let openedDownloads = 0, openedFind = 0;
+  const qp = g.libraryGridPage({
+    items: [queuedItem], filters: {}, selected: "Sonarr:9",
+    handlers: { onOpenDownloads: () => { openedDownloads += 1; }, onFindAndAdd: () => { openedFind += 1; } },
+  });
+  const qPanel = byClass(qp, "libgrid-detail")[0];
+  assert.match(text(qPanel), /No file yet\. Add a title, or check Downloads for its transfer\./);
+  const actions = byClass(qPanel, "libgrid-state-action");
+  assert.deepEqual(actions.map((b) => b.textContent), ["Open Downloads", "Find & add"]);
+  actions[0].fire("click");
+  actions[1].fire("click");
+  assert.equal(openedDownloads, 1);
+  assert.equal(openedFind, 1);
+
+  const css = readFileSync(new URL("../internal/server/web/pages.css", import.meta.url), "utf8");
+  assert.match(css, /\.libgrid-body:has\(> \.libgrid-detail\) \.libgrid-row \{ grid-template-columns: 2\.5rem minmax\(14rem, 1fr\)/);
+  assert.match(css, /\.tabpanel > \.card:only-of-type \{ grid-column: 1 \/ -1; \}/);
+  assert.match(css, /\.libgrid-list-head \{ display: none; \}/);
 });

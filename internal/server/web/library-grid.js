@@ -142,7 +142,7 @@ function libraryGridLocation(item) {
   const path = String(item.targetPath || "").trim();
   const disk = where ? where + (volume === "/" ? " (/)" : "") : "";
   const text = [disk, path].filter(Boolean).join(" · ") || "No storage location recorded yet";
-  return { volume, where, path, text, display: libraryGridBreakPath(text) };
+  return { volume, where, path, text, display: text };
 }
 
 function libraryGridVerification(item) {
@@ -413,6 +413,36 @@ function libraryGridDetailPanel(detail, handlers = {}) {
   if (detail.verification.hash) fact("Proof hash", detail.verification.hash);
   if (detail.source) fact("Source", detail.source);
   aside.append(facts);
+  if (detail.location.path) {
+    const copy = libraryGridNode("button", "Copy path", "libgrid-copy-path");
+    copy.type = "button";
+    copy.setAttribute("aria-label", "Copy the full storage path");
+    copy.addEventListener("click", async () => {
+      const raw = detail.location.path;
+      try {
+        await navigator.clipboard.writeText(raw);
+        copy.textContent = "Copied";
+        copy.title = raw;
+      } catch {
+        copy.textContent = "Copy unavailable — select the path";
+      }
+      setTimeout(() => { copy.textContent = "Copy path"; }, 2000);
+    });
+    aside.append(copy);
+  }
+  // 3) A title with no file is never a dead end.
+  if (!detail.location.path && detail.status.key === "queued") {
+    const box = libraryGridNode("div", null, "libgrid-next");
+    box.append(libraryGridNode("p", "No file yet. Add a title, or check Downloads for its transfer.", "is-muted"));
+    const downloads = libraryGridNode("button", "Open Downloads", "libgrid-state-action");
+    downloads.type = "button";
+    downloads.addEventListener("click", () => handlers.onOpenDownloads?.());
+    const find = libraryGridNode("button", "Find & add", "libgrid-state-action");
+    find.type = "button";
+    find.addEventListener("click", () => handlers.onFindAndAdd?.());
+    box.append(downloads, find);
+    aside.append(box);
+  }
   if (detail.localCopy || !detail.verification.verified) {
     // A real verification of this copy — offered whenever a saved record tracks
     // it, including a re-check of an already-verified copy. Without a record the

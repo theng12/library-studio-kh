@@ -255,6 +255,9 @@ function activityEntries() {
 
 function renderActivity() {
   if (!current) return;
+  // A filter change repaints this list; announce the short busy window so a
+  // keyboard or screen-reader user knows the rows are being replaced.
+  $("#timeline")?.setAttribute("aria-busy", "true");
   const s = current.snapshot, q = $("#act-q").value, app = $("#act-app").value, outcome = $("#act-outcome").value;
   const appSelect = $("#act-app"), keep = app;
   const apps = [...new Set([...(s.items || []).map((it) => it.app).filter(Boolean), ...(s.apps || []).map((a) => a.name)])].sort();
@@ -355,6 +358,7 @@ function renderActivity() {
     li.append(when, dot, main, source);
     return li;
   }));
+  $("#timeline")?.setAttribute("aria-busy", "false");
 }
 
 function dur(s) {
@@ -549,6 +553,7 @@ function renderLibraryPage() {
       onSelect: (key) => { lib.selected = key; renderLibraryPage(); },
       onRetry: () => loadLibrary(),
       onFindAndAdd: () => show("find"),
+      onOpenDownloads: () => show("downloads"),
       onVerify: async (detail) => {
         if (!detail.downloadHash) return "No local copy is tracked for this item yet, so there is nothing to check.";
         try {
@@ -858,11 +863,16 @@ document.addEventListener("click", (ev) => {
 
 // Save feedback belongs to the save that produced it, never to another tab
 // (including keyboard tab changes, which settings-view reports as an event).
-document.addEventListener("settings:tab", () => {
+document.addEventListener("settings:tab", (ev) => {
   for (const id of ["#settings-save-msg", "#form-msg"]) {
     const msg = $(id);
     if (msg) msg.textContent = "";
   }
+  // Save belongs to General, the form it submits; the other tabs have their own actions.
+  const save = $("#settings-save");
+  if (save) save.hidden = (ev?.detail?.id || "general") !== "general";
+  const status = $("#settings-status");
+  if (status) status.textContent = "Changes apply when you save.";
   settingsCardsForPhone();
 });
 
@@ -1456,8 +1466,14 @@ openUpdate.addEventListener("click", async () => {
 });
 
 $("#form").addEventListener("change", (ev) => {
+  if (ev.target.name === "appearance") applyAppearance(ev.target.value);
+  const status = $("#settings-status");
+  if (status) status.textContent = "Unsaved changes — Save to apply.";
+  if (ev.target.name === "deadCleanupOn" || ev.target.name === "deadArrCleanupOn") {
+    const line = $(ev.target.name === "deadCleanupOn" ? "#dead-cleanup-status" : "#dead-arr-status");
+    if (line) line.textContent = (ev.target.checked ? "On" : "Off") + " — not applied yet; Save to apply.";
+  }
   if (ev.target.name !== "appearance") return;
-  applyAppearance(ev.target.value);
   const hint = $("#settings-card-appearance .card-body > p.muted");
   if (hint) {
     hint.textContent = ev.target.value === "system"

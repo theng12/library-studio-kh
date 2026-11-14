@@ -250,7 +250,53 @@ async function cleanupAction(action, request = {}) {
 
 $("#cleanup-refresh").addEventListener("click", loadCleanup);
 $("#cleanup-preview").addEventListener("click", () => cleanupAction("preview"));
-$("#cleanup-run").addEventListener("click", () => cleanupAction("run"));
+
+// The policy can start time-based deletion, so it gets the same in-app summary
+// and confirmation as a Remove/Clear, never a bare button.
+function cleanupRunSummary(status) {
+  if (!status) return "The saved cleanup policy will be checked.";
+  const stages = (status.phases || [])
+    .map((phase) => CLEANUP_PHASES[phase.name] + " (" + phase.days + (phase.days === 1 ? " day" : " days") + ")")
+    .join(", ");
+  return "Library will check every tracked copy and apply any stage that is due: " + stages + ". "
+    + (status.pressureFreeGB ? "Below " + status.pressureFreeGB + " GB free it may skip the waits, oldest verified import first. " : "")
+    + "Nothing is deleted for good outside those waits.";
+}
+
+function confirmCleanupRun() {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "confirm";
+    dialog.setAttribute("aria-labelledby", "cleanup-run-title");
+    const heading = document.createElement("h2");
+    heading.id = "cleanup-run-title";
+    heading.textContent = "Run cleanup now?";
+    const text = document.createElement("p");
+    text.textContent = cleanupRunSummary(cleanupState);
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button"; cancel.className = "small"; cancel.textContent = "Cancel";
+    const go = document.createElement("button");
+    go.type = "button"; go.className = "small primary"; go.textContent = "Run cleanup";
+    actions.append(cancel, go);
+    dialog.append(heading, text, actions);
+    document.body.append(dialog);
+    const opener = document.activeElement;
+    let answer = false;
+    cancel.addEventListener("click", () => dialog.close());
+    go.addEventListener("click", () => { answer = true; dialog.close(); });
+    dialog.addEventListener("close", () => {
+      opener?.focus?.();
+      requestAnimationFrame(() => { dialog.remove(); opener?.focus?.(); setTimeout(() => { opener?.focus?.(); resolve(answer); }, 50); });
+    });
+    dialog.showModal();
+  });
+}
+
+$("#cleanup-run").addEventListener("click", async () => {
+  if (await confirmCleanupRun()) cleanupAction("run");
+});
 $("#cleanup-form").addEventListener("input", cleanupEffect);
 $("#cleanup-proof .close").addEventListener("click", () => $("#cleanup-proof").close());
 // Native restoration can land inside a dialog whose row was re-rendered; put

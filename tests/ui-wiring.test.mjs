@@ -86,6 +86,22 @@ test("Sources states a disconnect once and never fakes health", () => {
   assert.doesNotMatch(manager, /Sources can be managed once Prowlarr is connected\./);
 });
 
+test("the remaining review findings are wired", () => {
+  const app = readFileSync(new URL("../internal/server/web/app.js", import.meta.url), "utf8");
+  const cleanup = readFileSync(new URL("../internal/server/web/cleanup.js", import.meta.url), "utf8");
+  // Run cleanup asks first, naming the stages.
+  assert.match(cleanup, /function cleanupRunSummary\(status\)/);
+  assert.match(cleanup, /confirmCleanupRun\(\)/);
+  assert.match(cleanup, /if \(await confirmCleanupRun\(\)\) cleanupAction\("run"\)/);
+  // Unsaved changes are visible, and the dead helpers show the pending value.
+  assert.match(app, /Unsaved changes — Save to apply\./);
+  assert.match(app, /not applied yet; Save to apply\./);
+  // Save belongs to General only.
+  assert.match(app, /save\.hidden = \(ev\?\.detail\?\.id \|\| "general"\) !== "general"/);
+  // Activity announces its repaint.
+  assert.match(app, /setAttribute\("aria-busy", "true"\)/);
+});
+
 test("a metadata provider outage is stated on both lists", () => {
   const app = readFileSync(new URL("../internal/server/web/app.js", import.meta.url), "utf8");
   assert.match(app, /lib\.metadata = r\.metadata \|\| ""/);

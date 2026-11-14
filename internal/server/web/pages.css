@@ -566,3 +566,23 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
 /* Folder fields: the full path under the input, so download and library
    locations are distinguishable without clicking into each field. */
 .path-full { margin: 0.15rem 0 0; font-size: var(--text-xs); overflow-wrap: anywhere; }
+
+/* Detail open: the list column is narrower, so the title keeps a readable
+   minimum and the location shrinks/wraps instead of squeezing it. */
+.libgrid-body:has(> .libgrid-detail) .libgrid-row { grid-template-columns: 2.5rem minmax(14rem, 1fr) minmax(8rem, 16rem) auto; }
+
+/* Path actions and the no-file next step. */
+.libgrid-copy-path {
+  justify-self: start; min-height: 2rem; padding: 0 0.7rem; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--panel); color: var(--ink); font-size: var(--text-xs);
+}
+.libgrid-next { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.libgrid-next p { flex-basis: 100%; margin: 0 0 0.2rem; }
+
+/* A tab holding one card uses the whole content width. */
+.tabpanel > .card:only-of-type { grid-column: 1 / -1; }
+
+@media (max-width: 760px) {
+  /* Rows stack on phones; the column header would describe a layout that is not there. */
+  .libgrid-list-head { display: none; }
+}
