@@ -87,6 +87,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerSources(mux)
 	s.registerSubtitles(mux)
 	s.registerCleanup(mux)
+	s.registerFolders(mux)
 	s.registerSetup(mux)
 	s.RegisterCompanionSettings(mux)
 	mux.HandleFunc("GET /api/health", s.health)

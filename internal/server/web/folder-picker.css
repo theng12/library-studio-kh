@@ -1,0 +1,133 @@
+/* Folder picker: a path field is a read-only value plus its chooser. Loaded
+   after layout.css; uses the same tokens as style.css. */
+
+input[data-path-picker] {
+  background: var(--ground);
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.folder-picker-choose,
+.folder-picker-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-h);
+  margin-top: 0.4rem;
+  margin-right: 0.4rem;
+  padding: 0 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.folder-picker-choose {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.folder-picker-choose:hover,
+.folder-picker-clear:hover { border-color: var(--accent); }
+
+.folder-picker-clear { color: var(--ink-2); }
+
+.folder-picker-status {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* In-app directory browser (remote and unsupported platforms). */
+#folder-picker-dialog { width: min(34rem, calc(100vw - 2rem)); }
+
+.folder-picker-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.folder-picker-crumbs button {
+  min-height: var(--control-h);
+  padding: 0 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--ground);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.folder-picker-crumbs button:hover:not(:disabled),
+.folder-picker-crumbs button:focus-visible { border-color: var(--accent); color: var(--accent); }
+.folder-picker-crumbs button:disabled { opacity: 0.5; }
+.folder-picker-crumb { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-picker-up { font-weight: 600; }
+
+.folder-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  max-height: min(22rem, 50vh);
+  overflow-y: auto;
+}
+
+.folder-picker-dir {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.35rem 0.65rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-picker-dir:hover,
+.folder-picker-dir:focus-visible { background: var(--accent-soft); color: var(--accent); outline-offset: 0; }
+.folder-picker-dir[data-volume="1"]::before { content: "▣ "; color: var(--muted); }
+
+.folder-picker-msg { margin: 0; padding: 0.25rem 1.25rem; color: var(--muted); font-size: var(--text-sm); min-height: 1.4rem; }
+.folder-picker-msg.bad { color: var(--disconnected); }
+
+.folder-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.9rem 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.folder-picker-actions button {
+  min-height: var(--control-h);
+  padding: 0 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.folder-picker-actions .primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.folder-picker-actions .primary:disabled { opacity: 0.55; }

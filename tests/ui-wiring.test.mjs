@@ -66,7 +66,7 @@ test("actions, saves and empty states stay honest", () => {
   // A pause/resume that qBittorrent did not carry out is never reported as success.
   assert.match(app, /still reports " \+ \(unchanged\[0\]\.state/);
   // Saving repaints the live dead-download lines and marks the switches saved.
-  assert.match(app, /loadDeadSummary\(\);[\s\S]*?const settings = window\.librarySettingsApi/);
+  assert.match(app, /loadDeadSummary\(\);[\s\S]*?savedFeedback\?\.\(name, "Saved", "saved"\)/);
   // A successful save clears the dirty status.
   assert.match(app, /pageStatus\.textContent = "Changes apply when you save\."/);
   // Folder fields carry the full value so the two locations are distinguishable.

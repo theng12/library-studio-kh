@@ -29,8 +29,8 @@ const SETTINGS_CARDS = {
       id: "folders",
       title: "Folders",
       fields: [
-        { kind: "text", name: "downloadPath", label: "Download folder on this computer", placeholder: "Used to show free space" },
-        { kind: "text", name: "libraryPath", label: "Library folder", placeholder: "The folder your library apps import into" },
+        { kind: "path", name: "downloadPath", label: "Download folder on this computer", placeholder: "Used to show free space" },
+        { kind: "path", name: "libraryPath", label: "Library folder", placeholder: "The folder your library apps import into" },
       ],
     },
     {
@@ -155,14 +155,17 @@ function settingsBuildField(doc, field, savedSlots) {
         settingsEl(doc, "span", { text: field.label, class: "switch-label" })),
       slot)];
   }
-  if (field.kind === "text" || field.kind === "password" || field.kind === "number") {
+  if (field.kind === "text" || field.kind === "password" || field.kind === "number" || field.kind === "path") {
     return [settingsEl(doc, "label", { class: field.labelClass },
       settingsEl(doc, "span", { text: field.label }),
       settingsEl(doc, "input", {
-        id: settingsFieldId(field.name), name: field.name, type: field.kind,
+        id: settingsFieldId(field.name), name: field.name,
+        type: field.kind === "number" ? "number" : "text",
         placeholder: field.placeholder, inputmode: field.inputmode,
         autocomplete: field.kind === "password" ? "new-password" : field.autocomplete,
         "data-secret": field.secret,
+        "data-path-picker": field.kind === "path",
+        readonly: field.kind === "path",
         min: field.min, max: field.max,
       }))];
   }

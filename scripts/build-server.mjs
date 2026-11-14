@@ -9,9 +9,12 @@ if (!goos || !goarch) throw new Error("Unsupported target " + triple);
 
 mkdirSync("src-tauri/binaries", { recursive: true });
 const out = `src-tauri/binaries/library-studio-server-${triple}${goos === "windows" ? ".exe" : ""}`;
+// macOS needs cgo: the native folder panel is a small AppKit file in
+// internal/platform. Other targets keep the plain static build and use the
+// in-app directory browser instead.
 execFileSync("go", ["build", "-trimpath", "-ldflags", "-s -w", "-o", out, "./cmd/library-studio"], {
   stdio: "inherit",
-  env: { ...process.env, GOOS: goos, GOARCH: goarch, CGO_ENABLED: "0" },
+  env: { ...process.env, GOOS: goos, GOARCH: goarch, CGO_ENABLED: goos === "darwin" ? "1" : "0" },
 });
 console.log("built " + out);
 
