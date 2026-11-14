@@ -36,13 +36,12 @@ test("the ready line counts valid links and chosen files", () => {
 
 test("Find & add lays out one full-width search row and a sized type control", () => {
   assert.match(html, /class="tools find-tools"/);
-  assert.match(html, /class="page-body find-body"/);
+  assert.match(html, /class="page-body stack"/);
   assert.match(html, /<label class="find-type">Type <select id="find-type">/);
   assert.match(html, /<option value="Radarr">Movies<\/option>/);
   assert.match(html, /<p id="find-count" class="find-count" role="status" hidden><\/p>/);
   assert.match(css, /\.find-tools \.search \{ flex-basis: 100%; \}/);
   assert.match(css, /\.find-tools \.find-type \{ flex: 0 0 11rem; \}/);
-  assert.match(css, /\.find-body \{ display: grid; gap: var\(--space-4\); \}/);
 });
 
 test("Find states are loading, results, no result and error, each with next words", () => {

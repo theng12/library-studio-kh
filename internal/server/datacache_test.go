@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -93,5 +94,24 @@ func TestPageDataServesTheWarmCacheWithoutAskingAnApp(t *testing.T) {
 	}
 	if len(got.Items) != 1 || got.Items[0].Title != "Cached Show" {
 		t.Fatalf("warm rows = %+v", got.Items)
+	}
+}
+
+func TestSavingSettingsRebuildsThePageCache(t *testing.T) {
+	s := folderTestServer(t)
+	first := s.pageData()
+	body := `{"appearance":"dark"}`
+	r := httptest.NewRequest("POST", "http://127.0.0.1:7881/api/settings", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("X-Library-Request", "1")
+	r.Header.Set("X-Library-Token", s.Token)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("save settings: %d %s", w.Code, w.Body.String())
+	}
+	second := s.pageData()
+	if !second.BuiltAt.After(first.BuiltAt) {
+		t.Errorf("cache was not rebuilt after saving: %v then %v", first.BuiltAt, second.BuiltAt)
 	}
 }

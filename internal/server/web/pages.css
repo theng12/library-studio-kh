@@ -637,7 +637,6 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
 
 /* Find & add: one full-width search row, a compact type control, a measured
    gap between the two cards, and states that say what happens next. */
-.find-body { display: grid; gap: var(--space-4); }
 .find-tools .search { flex-basis: 100%; }
 .find-tools .find-type { flex: 0 0 11rem; }
 .find-tools .find-type select { width: 100%; }
