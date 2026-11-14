@@ -212,7 +212,7 @@ async function loadSources() {
     const health = mediaNode("ul", null, "source-notes");
     if (!data.configured) {
       // Never let unread health look like an all-clear.
-      health.append(mediaNode("li", "Not checked — Prowlarr isn't connected."));
+      health.append(mediaNode("li", "Not checked — connect the source app to read its health."));
     } else {
       for (const h of data.health || []) health.append(mediaNode("li", (h.type || "Message") + ": " + h.message));
       if (!health.childNodes.length) health.append(mediaNode("li", "No health messages were reported. Check any availability errors before relying on this result."));

@@ -988,8 +988,8 @@ function renderDownloadsPage() {
     selectAll: (on) => { for (const row of model.rows) { if (on) dl.selected.add(row.key); else dl.selected.delete(row.key); } renderDownloadsPage(); },
     open: (row) => { dl.openKey = dl.openKey === row.key ? null : row.key; renderDownloadsPage(); },
     action: (row, key) => {
-      const trigger = host.querySelector('tr[data-key="' + CSS.escape(row.key) + '"] button[data-action="' + key + '"]');
-      if (key === "reveal") revealDownload(row.hash); else downloadAction([row.hash], key, trigger);
+      const locate = () => host.querySelector('tr[data-key="' + CSS.escape(row.key) + '"] button[data-action="' + key + '"]');
+      if (key === "reveal") revealDownload(row.hash); else downloadAction([row.hash], key, locate(), locate);
     },
     bulk: (key) => downloadAction([...dl.selected], key),
     emptyAction: (key) => {
@@ -1094,7 +1094,7 @@ $("#downloads-detail").addEventListener("close", () => {
 // Remove and Clear change qBittorrent's list, so they ask in Library's own
 // dialog first (a native confirm is a silent no-op inside the app window).
 // Files are never deleted; Keep it leaves everything as it was.
-function confirmDownloadAction(action, hashes, trigger) {
+function confirmDownloadAction(action, hashes, trigger, locate) {
   const names = hashes.map((h) => dl.items.find((i) => i.hash === h)?.name).filter(Boolean);
   const count = names.length || hashes.length;
   const verb = action === "clear" ? "Clear" : "Remove";
@@ -1122,27 +1122,29 @@ function confirmDownloadAction(action, hashes, trigger) {
     // The clicked row button is the true opener; document.activeElement can be
     // BODY when activation came from assistive tech or a trusted pointer probe.
     const opener = trigger && trigger.isConnected ? trigger : document.activeElement;
+    // A re-render can replace the trigger while the dialog is open; re-query by
+    // row and action so focus still lands on the button that opened it.
+    const refreshOpener = () => (typeof locate === "function" ? locate() : null) || (opener && opener.isConnected ? opener : null);
     let answer = false;
     cancel.addEventListener("click", () => dialog.close());
     go.addEventListener("click", () => { answer = true; dialog.close(); });
     dialog.addEventListener("close", () => {
-      // Restore focus before the element is removed, and again next frame.
-      const back = opener && opener.isConnected ? opener : null;
-      back?.focus();
+      // Restore focus before the element is removed, again next frame, and once
+      // the dialog teardown has settled.
+      refreshOpener()?.focus();
       requestAnimationFrame(() => {
         dialog.remove();
-        if (back && back.isConnected) back.focus();
-        // Focus can be stolen by the dialog teardown; land it once more.
-        setTimeout(() => { if (back && back.isConnected) back.focus(); resolve(answer); }, 0);
+        refreshOpener()?.focus();
+        setTimeout(() => { refreshOpener()?.focus(); resolve(answer); }, 50);
       });
     });
     dialog.showModal();
   });
 }
 
-async function downloadAction(hashes, action, trigger) {
+async function downloadAction(hashes, action, trigger, locate) {
   if (!hashes.length || downloadsLoading) return;
-  if ((action === "remove" || action === "clear") && !(await confirmDownloadAction(action, hashes, trigger))) return;
+  if ((action === "remove" || action === "clear") && !(await confirmDownloadAction(action, hashes, trigger, locate))) return;
   const names = hashes.map((h) => dl.items.find((i) => i.hash === h)?.name).filter(Boolean);
   const who = names.length === 1 ? names[0] : (names.length || hashes.length) + " downloads";
   const folders = hashes.map((h) => dl.items.find((i) => i.hash === h)?.save_path).filter(Boolean);

@@ -39,8 +39,9 @@ test("posted posters go through the safe route and never a raw path", () => {
 
 test("dialog closures return focus to the control that opened them", () => {
   assert.match(app, /const opener = trigger && trigger\.isConnected \? trigger : document\.activeElement/);
-  assert.match(app, /downloadAction\(\[row\.hash\], key, trigger\)/);
-  assert.match(app, /back\?\.focus\(\)/);
+  assert.match(app, /downloadAction\(\[row\.hash\], key, locate\(\), locate\)/);
+  assert.match(app, /refreshOpener\(\)\?\.focus\(\)/);
+  assert.match(app, /const refreshOpener = \(\) =>/);
   assert.match(app, /dialog\.remove\(\)/);
 });
 
@@ -79,7 +80,7 @@ test("Activity offers Clear filters whenever a filter is active", () => {
 test("Sources states a disconnect once and never fakes health", () => {
   const media = readFileSync(new URL("../internal/server/web/media.js", import.meta.url), "utf8");
   const manager = readFileSync(new URL("../internal/server/web/source-manager.js", import.meta.url), "utf8");
-  assert.match(media, /Not checked — Prowlarr isn't connected\./);
+  assert.match(media, /Not checked — connect the source app to read its health\./);
   assert.doesNotMatch(manager, /Sources can be managed once Prowlarr is connected\./);
 });
 
