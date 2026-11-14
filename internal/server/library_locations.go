@@ -41,6 +41,8 @@ func (s *Server) setLibraryLocation(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
+	// The next page read must use the new folder, not the cached check.
+	s.invalidateData()
 	writeJSON(w, 200, map[string]string{"path": req.Path})
 }
 

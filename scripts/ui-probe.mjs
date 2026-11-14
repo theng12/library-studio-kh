@@ -107,6 +107,12 @@ const MEASURE = `(() => {
   const visible = (el) => el && el.getBoundingClientRect().width > 0;
   const grid = [...document.querySelectorAll(".libgrid-grid")].find(visible);
   const wrap = [...document.querySelectorAll(".table-wrap, .table-scroll")].find(visible);
+  const poster = [...document.querySelectorAll(".libgrid-poster")].find(visible);
+  const posterBox = poster ? poster.getBoundingClientRect() : null;
+  const saveBar = [...document.querySelectorAll(".save-bar")].find(visible);
+  const small = [...document.querySelectorAll("button, [role=button], input[type=checkbox], summary")]
+    .filter(visible)
+    .filter((el) => el.getBoundingClientRect().height < 43.5);
   return {
     width: innerWidth,
     height: innerHeight,
@@ -122,6 +128,12 @@ const MEASURE = `(() => {
     sticky: style(".page-table th", "position"),
     settingsBody: box("#view-settings .page-body")?.h || 0,
     dlDetail: box("#downloads-detail:not([hidden])")?.w || 0,
+    shelfRows: [...document.querySelectorAll(".libgrid-shelf-row")].filter(visible).length,
+    posterRatio: posterBox && posterBox.width ? Math.round((posterBox.height / posterBox.width) * 100) / 100 : 0,
+    selectionBar: box(".libgrid-selection")?.w || 0,
+    saveBar: saveBar ? getComputedStyle(saveBar).position : "",
+    smallTargets: innerWidth <= 760 ? small.length : 0,
+    smallTargetSample: innerWidth <= 760 ? small.slice(0, 6).map((el) => el.className || el.tagName) : [],
   };
 })()`;
 
@@ -214,6 +226,8 @@ async function main() {
     if (m.width < 500 && m.gridCols > 3) problems.push("phone library grid has " + m.gridCols + " columns");
     if (m.tableW && m.wrapW && m.tableW + 2 < m.wrapW && !m.wrapScrolls) problems.push("downloads table is narrower than its frame: " + m.tableW + " of " + m.wrapW);
     if (m.sticky && m.sticky !== "sticky") problems.push("first table column is " + m.sticky + ", not sticky");
+    if (m.posterRatio && (m.posterRatio < 1.4 || m.posterRatio > 1.6)) problems.push("poster frame is not 2:3 (h/w " + m.posterRatio + ")");
+    if (m.saveBar && m.saveBar !== "sticky") problems.push("save bar is " + m.saveBar + ", not sticky");
     console.log(JSON.stringify({ ...m, problems }, null, 1));
     if (problems.length) process.exitCode = 1;
     return;

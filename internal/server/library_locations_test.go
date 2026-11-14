@@ -91,3 +91,16 @@ func readFile(t *testing.T, path string) string {
 	}
 	return string(b)
 }
+
+func TestSavingALocationRebuildsThePageCache(t *testing.T) {
+	s := folderTestServer(t)
+	first := s.pageData()
+	folder := t.TempDir()
+	if w := locationPost(t, s, "/api/library/location", map[string]any{"app": "Radarr", "id": 3, "path": folder}, true); w.Code != 200 {
+		t.Fatalf("set location: %d %s", w.Code, w.Body.String())
+	}
+	second := s.pageData()
+	if !second.BuiltAt.After(first.BuiltAt) {
+		t.Errorf("cache was not rebuilt after the location change: %v then %v", first.BuiltAt, second.BuiltAt)
+	}
+}

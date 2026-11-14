@@ -175,6 +175,8 @@ func (s *Server) matchLocalMedia(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
+	// The library row must show the matched title on the next read.
+	s.invalidateData()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 		s.Meta.Lookup(ctx, "movie", req.Title, req.Year)
