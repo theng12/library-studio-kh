@@ -211,3 +211,13 @@
 @media (prefers-reduced-motion: reduce) {
   .libgrid-card, .libgrid-row, .libgrid-item, .libgrid-shelf-row { transition: none; }
 }
+
+/* Phone tap targets: this file loads after pages.css, so it must restate the
+   44px floor for its own controls. */
+@media (max-width: 760px) {
+  .libgrid-tab, .libgrid-back, .libgrid-set-location, .libgrid-open-location,
+  .libgrid-bulk, .libgrid-selection-clear, .libgrid-show-more,
+  .libgrid-selectall { min-height: 44px; }
+  .libgrid-chip-remove { min-width: 44px; min-height: 44px; }
+  .libgrid-select { width: 1.35rem; height: 1.35rem; }
+}

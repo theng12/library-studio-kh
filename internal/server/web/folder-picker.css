@@ -137,3 +137,7 @@ input[data-path-picker] {
   .folder-picker-crumb, .folder-picker-up, .folder-picker-dir,
   .folder-picker-actions button, .folder-picker-dialog .close { min-height: 44px; }
 }
+
+@media (max-width: 760px) {
+  .folder-picker-choose, .folder-picker-clear { min-height: 44px; }
+}
