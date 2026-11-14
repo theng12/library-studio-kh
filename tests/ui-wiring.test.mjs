@@ -150,12 +150,17 @@ test("library filters and type are remembered, and location actions are wired", 
   assert.match(app, /localStorage\.setItem\("library-filters"/);
   assert.match(app, /onType: \(value\) =>/);
   assert.match(app, /onRemoveFilter: \(next\) =>/);
-  assert.match(app, /onSetLocation: async \(detail\)/);
+  assert.match(app, /onSetLocation: async \(detail, opener\)/);
   assert.match(app, /onOpenLocation: async \(detail\)/);
   assert.match(app, /\/api\/library\/location/);
   assert.match(app, /\/api\/library\/open-location/);
   assert.match(app, /window\.folderPicker\?\.pick\?\./);
-  assert.match(picker, /async function pick\(promptText\)/);
+  assert.match(picker, /async function pick\(promptText, opener\)/);
+  // A synthetic click leaves focus on the body; the clicked control is recorded.
+  assert.match(picker, /pickOpener = opener \|\| \(document\.activeElement !== document\.body/);
+  assert.match(app, /matchOpener = opener \|\| \(document\.activeElement !== document\.body/);
+  assert.match(grid, /onSetLocation\?\.\(detail, ev\.currentTarget\)/);
+  assert.match(grid, /onMatch\?\.\(detail, ev\.currentTarget\)/);
 });
 
 test("library selection, caching and one page frame are wired", () => {
@@ -175,4 +180,7 @@ test("the footer checks for updates once on launch", () => {
   assert.match(app, /One quiet update check on launch/);
   assert.match(app, /const shell = \$\("#app-shell"\), gate = \$\("#gate"\);/);
   assert.match(app, /gate\?\.hidden && !\$\("#check-updates"\)\.disabled/);
+  // The Updates card's copy agrees with that launch check.
+  assert.match(app, /checks on launch and on demand/);
+  assert.doesNotMatch(app, /checks are manual/);
 });

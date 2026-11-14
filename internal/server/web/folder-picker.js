@@ -208,8 +208,9 @@ function folderPickerValidSelection(state) {
 
   // One folder, chosen either in the native panel or the in-app browser. Used by
   // actions outside a path field (for example Set location in a detail panel).
-  async function pick(promptText) {
-    pickOpener = document.activeElement;
+  async function pick(promptText, opener) {
+    // A synthetic click leaves focus on the body, so the caller's control wins.
+    pickOpener = opener || (document.activeElement !== document.body ? document.activeElement : null);
     try {
       const data = await askNative(promptText || "Choose a folder");
       if (data.path) return data.path;

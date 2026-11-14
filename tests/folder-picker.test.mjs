@@ -84,7 +84,8 @@ test("the picker loads before app and its stylesheet follows the layout", () => 
 test("the chooser returns focus to the control that opened it", () => {
   assert.match(picker, /let pickOpener = null/);
   assert.match(picker, /pickOpener = choose;/);
-  assert.match(picker, /pickOpener = document\.activeElement;/);
+  // A synthetic click leaves focus on the body, so the caller's control wins.
+  assert.match(picker, /pickOpener = opener \|\| \(document\.activeElement !== document\.body/);
   assert.match(picker, /function restoreOpener\(\)/);
   assert.match(picker, /pickOpener = null;\n    target\?\.focus\?\.\(\);/);
   const close = picker.match(/function closeDialog\(\) \{[\s\S]*?\n  \}/)[0];

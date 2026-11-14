@@ -356,6 +356,9 @@
   .dlp-tools .search { font-size: 16px; min-height: 44px; }
   .dlp-bulk { grid-column: 1 / -1; margin-left: 0; }
   .dlp-bulk button { min-height: 44px; }
+  /* The tick's label is the finger target; the box itself stays small. */
+  .dlp-select-wrap { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; }
+  .dlp-select-wrap input { width: 1.35rem; height: 1.35rem; }
   .downloads-table td.dlp-poster { display: block; }
   .downloads-table td.dlp-poster::before { content: none; }
   /* Progress: label on the left, bar on top, then % · speed · ETA on one line. */
@@ -547,14 +550,13 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
   .downloads-panel .downloads-table tr.dlp-missing { background: color-mix(in srgb, var(--warn-bg) 35%, var(--panel)); }
 }
 
-/* Settings → General: three columns with the two wide cards spanning, so the
-   five cards fit two rows and Help stays above the fold at 1440x900. */
+/* Settings → General: three columns; placement lives in the block at the end of
+   this file so the five cards fill their rows without a void. */
 @media (min-width: 1200px) {
   #settings-panel-general {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-auto-flow: dense;
   }
-  #settings-card-connections { grid-column: span 2; }
   /* Denser cards: the same content with less padding and line spacing. */
   #settings-panel-general > .settings-card > .card-head { padding: 0.5rem 0.75rem 0.4rem; }
   #settings-panel-general > .settings-card > .card-body { gap: 0.4rem; padding: 0.5rem 0.75rem 0.6rem; }
@@ -700,9 +702,13 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
     grid-column: 1 / -1;
   }
 }
-/* Settings General: place the three cards so no column is left empty. */
+/* Settings General: three balanced columns. Appearance and Help share row 1,
+   Dead downloads spans row 2, and Companion apps fills the tall third column,
+   so no card leaves a 755x246 void beside it. */
 @media (min-width: 1200px) {
-  #settings-card-appearance { grid-column: 1 / span 2; grid-row: 1; }
-  #settings-card-connections { grid-column: 3; grid-row: 1; }
-  #settings-card-folders { grid-column: 1 / -1; grid-row: 2; }
+  #settings-card-appearance { grid-column: 1; grid-row: 1; }
+  #settings-card-help { grid-column: 2; grid-row: 1; }
+  #settings-card-dead { grid-column: 1 / span 2; grid-row: 2; }
+  #settings-card-connections { grid-column: 3; grid-row: 1 / span 2; }
+  #settings-card-folders { grid-column: 1 / -1; grid-row: 3; }
 }

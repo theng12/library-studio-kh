@@ -97,6 +97,11 @@
   .libgrid-filter-options {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
     gap: var(--space-3); overflow: auto; min-height: 0;
+    /* A row cut by the scroll edge fades out instead of being sliced in half;
+       the padding keeps the last row fully visible when scrolled to the end. */
+    padding-bottom: 1.75rem;
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.75rem), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 1.75rem), transparent);
   }
   .libgrid-filter-actions {
     border-top: 1px solid var(--line); background: var(--panel);

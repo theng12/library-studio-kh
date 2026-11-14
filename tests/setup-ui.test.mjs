@@ -173,6 +173,8 @@ test("public Help strips owner setup forms before removing ids", () => {
   assert.equal(html.slice(0, ownerStart).includes('id="setup-client-form"'), true);
   assert.match(app, /querySelectorAll\("\[data-owner-only\]"\)\) node\.remove\(\)/);
   assert.match(app.slice(app.indexOf('$("#open-public-help")')), /publicHelpCopy\(\$\("#view-help"\)\)/);
+  // Public help belongs to the sign-in page and must never sit above the app shell.
+  assert.match(app, /function hideGate\(\) \{[\s\S]*?\$\("#public-help"\)\.hidden = true;/);
   assert.equal(setup.replace("window.location.assign", "").includes("location.assign"), false);
   assert.match(setup, /window\.location\.assign\(url\)/);
 });

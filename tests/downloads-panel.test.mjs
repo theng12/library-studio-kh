@@ -246,6 +246,19 @@ test("render builds the columns' header and the missing row's Clear action", () 
   assert.deepEqual(enabled.map((b) => b.disabled), [false, true, false]);
 });
 
+test("every tick is wrapped in a label so a phone gets a 44px target", () => {
+  context.document = fakeDocument();
+  const root = fakeRoot();
+  downloadsPanelRender(root, downloadsModel(items), {});
+  const wraps = findAll(root, hasClass("dlp-select-wrap"));
+  const boxes = findAll(root, (n) => n.tag === "input" && n.type === "checkbox");
+  assert.ok(boxes.length > 1, "a header tick and one tick per row");
+  assert.equal(wraps.length, boxes.length, "each checkbox sits inside its own label");
+  assert.ok(wraps.every((w) => w.tag === "label" && findAll(w, (n) => n.tag === "input").length === 1));
+  const css = readFileSync(new URL("../internal/server/web/pages.css", import.meta.url), "utf8");
+  assert.match(css, /\.dlp-select-wrap \{[^}]*min-width: 44px; min-height: 44px/);
+});
+
 test("each row shows one primary action and puts the rest in an overflow menu", () => {
   context.document = fakeDocument();
   const root = fakeRoot();

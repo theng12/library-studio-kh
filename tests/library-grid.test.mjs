@@ -869,5 +869,8 @@ test("filter Apply and Reset stay outside the scrolling options", () => {
   assert.deepEqual(byClass(actions, "libgrid-apply").map(text), ["Apply"]);
   assert.deepEqual(byClass(actions, "libgrid-reset").map(text), ["Reset"]);
   assert.match(css, /\.libgrid-filter-options \{[^}]*overflow: auto; min-height: 0/);
+  // A row cut by the scroll edge fades out instead of being sliced in half.
+  assert.match(css, /\.libgrid-filter-options \{[^}]*mask-image: linear-gradient\(to bottom, #000 calc\(100% - 1\.75rem\), transparent\)/);
+  assert.match(css, /\.libgrid-filter-options \{[^}]*padding-bottom: 1\.75rem/);
   assert.match(css, /\.libgrid-filters \{[^}]*height: min\(70vh, 32rem\); overflow: hidden/);
 });

@@ -324,6 +324,13 @@ function dlpButton(label, className) {
   return button;
 }
 
+// The label is the tap target (44px on phones), same as a library card's tick.
+function dlpSelectTick(box) {
+  const tick = dlpEl("label", null, "dlp-select-wrap");
+  tick.append(box);
+  return tick;
+}
+
 function downloadsPanelRender(root, model, handlers) {
   handlers = handlers || {};
   const on = (name, a, b) => { if (typeof handlers[name] === "function") handlers[name](a, b); };
@@ -408,7 +415,7 @@ function downloadsPanelRender(root, model, handlers) {
   selectAll.checked = model.rows.length > 0 && model.selected.size === model.rows.length;
   selectAll.disabled = model.rows.length === 0;
   selectAll.addEventListener("change", () => on("selectAll", selectAll.checked));
-  selectHead.append(selectAll);
+  selectHead.append(dlpSelectTick(selectAll));
   headRow.append(selectHead);
 
   for (const column of model.columns) {
@@ -457,7 +464,7 @@ function downloadsRowNode(row, model, on) {
   box.checked = model.selected.has(row.key);
   box.setAttribute("aria-label", "Select " + row.title);
   box.addEventListener("change", () => on("select", row.key, box.checked));
-  selectCell.append(box);
+  selectCell.append(dlpSelectTick(box));
   tr.append(selectCell);
 
   const posterCell = dlpEl("td", null, "dlp-poster");

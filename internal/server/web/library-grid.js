@@ -624,7 +624,7 @@ function libraryGridDetailPanel(detail, handlers = {}) {
   const locationActions = libraryGridNode("div", null, "libgrid-detail-actions");
   const setLocation = libraryGridNode("button", "Set location", "libgrid-set-location");
   setLocation.type = "button";
-  setLocation.addEventListener("click", () => handlers.onSetLocation?.(detail));
+  setLocation.addEventListener("click", (ev) => handlers.onSetLocation?.(detail, ev.currentTarget));
   const openLocation = libraryGridNode("button", "Open location", "libgrid-open-location");
   openLocation.type = "button";
   locationActions.append(setLocation, openLocation);
@@ -659,7 +659,7 @@ function libraryGridDetailPanel(detail, handlers = {}) {
     const match = libraryGridNode("button", "Match metadata", "libgrid-state-action libgrid-match");
     match.type = "button";
     match.setAttribute("aria-label", "Match metadata for " + detail.title);
-    match.addEventListener("click", () => handlers.onMatch?.(detail));
+    match.addEventListener("click", (ev) => handlers.onMatch?.(detail, ev.currentTarget));
     aside.append(match);
   }
   if (detail.location.path) {

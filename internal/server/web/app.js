@@ -85,7 +85,7 @@ function render(st) {
   const s = st.snapshot, cfg = st.settings;
   $("#version").textContent = st.version;
   const updatesVersion = $("#updates-version");
-  if (updatesVersion) updatesVersion.textContent = "This Mac runs Library Studio KH " + st.version + " · checks are manual, and nothing installs without you.";
+  if (updatesVersion) updatesVersion.textContent = "This Mac runs Library Studio KH " + st.version + " · checks on launch and on demand, and nothing installs without you.";
   applyAppearance(cfg.appearance || "system");
   // Setup is done once a download client and a library app are both saved.
   const configured = !!cfg.qbittorrent?.url && ["sonarr", "radarr", "lidarr"].some((a) => !!cfg[a]?.url);
@@ -684,10 +684,10 @@ function renderLibraryPage() {
       onApply: () => { applyLibraryFilters(lib.draft); lib.draft = {}; lib.filtersOpen = false; renderLibraryPage(); },
       onReset: () => { applyLibraryFilters({}); lib.draft = {}; renderLibraryPage(); },
       onRemoveFilter: (next) => { applyLibraryFilters(next); lib.draft = {}; renderLibraryPage(); },
-      onSetLocation: async (detail) => {
+      onSetLocation: async (detail, opener) => {
         const item = lib.items.find((row) => libraryGridKey(row) === detail.key);
         if (!item || item.app === "Local") return;
-        const path = await window.folderPicker?.pick?.("Choose the folder that holds " + (item.title || "this title"));
+        const path = await window.folderPicker?.pick?.("Choose the folder that holds " + (item.title || "this title"), opener);
         if (!path) return;
         try {
           await api("/api/library/location", { app: item.app, id: Number(item.mediaId || item.id), path });
@@ -756,7 +756,7 @@ function renderLibraryPage() {
       onRetry: () => loadLibrary(),
       onFindAndAdd: () => show("find"),
       onOpenDownloads: () => show("downloads"),
-      onMatch: (detail) => openLocalMatch(detail),
+      onMatch: (detail, opener) => openLocalMatch(detail, opener),
       onCheckFile: async (detail) => {
         // No saved hashes to compare: answer the one question left, and let the
         // next page read pick up the refreshed status.
@@ -981,14 +981,24 @@ $("#add-form").addEventListener("submit", async (ev) => {
 // A local file has no *arr record, so the owner can name it once. The match is
 // saved beside the library and never renames or moves the file.
 let matchTarget = null;
-function openLocalMatch(detail) {
+let matchOpener = null;
+function openLocalMatch(detail, opener) {
   matchTarget = detail;
+  // A synthetic click leaves focus on the body; the control that was clicked is
+  // the reliable place to hand it back to.
+  matchOpener = opener || (document.activeElement !== document.body ? document.activeElement : null);
   $("#local-match-file").textContent = detail.path || "";
   $("#local-match-name").value = detail.title === "Untitled" ? "" : detail.title;
   $("#local-match-year").value = detail.year || "";
   $("#local-match-msg").hidden = true;
   $("#local-match-form button.primary").disabled = false;
-  $("#local-match-dialog").addEventListener("close", () => { matchTarget = null; }, { once: true });
+  $("#local-match-dialog").addEventListener("close", () => {
+    matchTarget = null;
+    // Escape, Cancel and a backdrop click all close natively; hand focus back
+    // to the Match metadata control instead of leaving it on the page body.
+    if (matchOpener?.isConnected) matchOpener.focus();
+    matchOpener = null;
+  }, { once: true });
   if (!$("#local-match-dialog").open) $("#local-match-dialog").showModal();
   $("#local-match-name").focus();
   $("#local-match-name").select?.();
@@ -1526,6 +1536,8 @@ function showGate(mode) {
 
 function hideGate() {
   $("#gate").hidden = true;
+  // Public help is a sign-in page; it must never sit above the app shell.
+  $("#public-help").hidden = true;
   $("#app-shell").hidden = false;
   document.title = "Library Studio KH";
 }
