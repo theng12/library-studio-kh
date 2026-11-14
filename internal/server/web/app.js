@@ -275,19 +275,28 @@ function renderActivity() {
   if (!(s.apps || []).length) emptyText = "Nothing connected yet. Open Settings and add qBittorrent and at least one of Sonarr, Radarr or Lidarr.";
   else if (!all.length) emptyText = "Nothing has happened yet. Downloads and imports appear here as they run.";
   empty.textContent = emptyText;
-  if (all.length && !entries.length) {
-    const clear = document.createElement("button");
-    clear.type = "button";
-    clear.className = "inline";
-    clear.textContent = "Clear filters";
-    clear.addEventListener("click", () => {
-      $("#act-q").value = "";
-      $("#act-app").value = "";
-      $("#act-outcome").value = "";
-      renderActivity();
-      $("#act-q").focus();
-    });
-    empty.append(" ", clear);
+  // One Clear filters control whenever any search/filter is active, with or
+  // without results.
+  let clearButton = document.getElementById("act-clear");
+  if (q.trim() || app || outcome) {
+    if (!clearButton) {
+      clearButton = document.createElement("button");
+      clearButton.type = "button";
+      clearButton.id = "act-clear";
+      clearButton.className = "small";
+      clearButton.textContent = "Clear filters";
+      clearButton.addEventListener("click", () => {
+        $("#act-q").value = "";
+        $("#act-app").value = "";
+        $("#act-outcome").value = "";
+        renderActivity();
+        $("#act-q").focus();
+      });
+      document.querySelector("#view-activity .tools")?.append(clearButton);
+    }
+    clearButton.hidden = false;
+  } else if (clearButton) {
+    clearButton.hidden = true;
   }
   if (!(s.apps || []).length) {
     const openSettings = document.createElement("button");
@@ -978,7 +987,10 @@ function renderDownloadsPage() {
     select: (key, on) => { if (on) dl.selected.add(key); else dl.selected.delete(key); renderDownloadsPage(); },
     selectAll: (on) => { for (const row of model.rows) { if (on) dl.selected.add(row.key); else dl.selected.delete(row.key); } renderDownloadsPage(); },
     open: (row) => { dl.openKey = dl.openKey === row.key ? null : row.key; renderDownloadsPage(); },
-    action: (row, key) => { if (key === "reveal") revealDownload(row.hash); else downloadAction([row.hash], key); },
+    action: (row, key) => {
+      const trigger = host.querySelector('tr[data-key="' + CSS.escape(row.key) + '"] button[data-action="' + key + '"]');
+      if (key === "reveal") revealDownload(row.hash); else downloadAction([row.hash], key, trigger);
+    },
     bulk: (key) => downloadAction([...dl.selected], key),
     emptyAction: (key) => {
       if (key === "find") { show("find"); return; }
@@ -1082,7 +1094,7 @@ $("#downloads-detail").addEventListener("close", () => {
 // Remove and Clear change qBittorrent's list, so they ask in Library's own
 // dialog first (a native confirm is a silent no-op inside the app window).
 // Files are never deleted; Keep it leaves everything as it was.
-function confirmDownloadAction(action, hashes) {
+function confirmDownloadAction(action, hashes, trigger) {
   const names = hashes.map((h) => dl.items.find((i) => i.hash === h)?.name).filter(Boolean);
   const count = names.length || hashes.length;
   const verb = action === "clear" ? "Clear" : "Remove";
@@ -1107,7 +1119,9 @@ function confirmDownloadAction(action, hashes) {
     actions.append(cancel, go);
     dialog.append(heading, text, actions);
     document.body.append(dialog);
-    const opener = document.activeElement; // Escape must return here, not to BODY
+    // The clicked row button is the true opener; document.activeElement can be
+    // BODY when activation came from assistive tech or a trusted pointer probe.
+    const opener = trigger && trigger.isConnected ? trigger : document.activeElement;
     let answer = false;
     cancel.addEventListener("click", () => dialog.close());
     go.addEventListener("click", () => { answer = true; dialog.close(); });
@@ -1118,16 +1132,17 @@ function confirmDownloadAction(action, hashes) {
       requestAnimationFrame(() => {
         dialog.remove();
         if (back && back.isConnected) back.focus();
-        resolve(answer);
+        // Focus can be stolen by the dialog teardown; land it once more.
+        setTimeout(() => { if (back && back.isConnected) back.focus(); resolve(answer); }, 0);
       });
     });
     dialog.showModal();
   });
 }
 
-async function downloadAction(hashes, action) {
+async function downloadAction(hashes, action, trigger) {
   if (!hashes.length || downloadsLoading) return;
-  if ((action === "remove" || action === "clear") && !(await confirmDownloadAction(action, hashes))) return;
+  if ((action === "remove" || action === "clear") && !(await confirmDownloadAction(action, hashes, trigger))) return;
   const names = hashes.map((h) => dl.items.find((i) => i.hash === h)?.name).filter(Boolean);
   const who = names.length === 1 ? names[0] : (names.length || hashes.length) + " downloads";
   const folders = hashes.map((h) => dl.items.find((i) => i.hash === h)?.save_path).filter(Boolean);

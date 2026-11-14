@@ -137,7 +137,8 @@ async function loadConfiguredSources() {
         addButton.disabled = true;
         addButton.title = "Connect Prowlarr in Settings first.";
       }
-      body.replaceChildren(smNode("p", "Sources can be managed once Prowlarr is connected.", "empty"));
+      // The page-level message already states the disconnect; here is the step.
+      body.replaceChildren();
       const open = smButton("Open Settings", () => show("settings"));
       body.append(open);
       smStatus("");

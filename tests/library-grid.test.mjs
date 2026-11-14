@@ -317,3 +317,37 @@ test("the module stands alone: no imports and no app.js helpers", () => {
   assert.doesNotMatch(source, /app\.js|mediaNode|\$\("|libraryFilter\b|libraryGenreOptions|librarySort\b/);
   assert.match(source, /function libraryGridPage\(/);
 });
+
+test("the list shows the full location when the window has room, and shortens on a phone", () => {
+  const longPath = "/Volumes/NAS-1/Films/A Very Long Folder Name For An Arrival Film (2016)/Arrival (2016) 2160p.mkv";
+  const longItems = items.map((item) => item.title === "Arrival" ? { ...item, targetPath: longPath } : item);
+  const g = load();
+  g.window = { innerWidth: 1440 };
+  const wide = g.libraryGridPage({ items: longItems, filters: {}, view: "list", handlers: {} });
+  const wideRow = byClass(wide, "libgrid-row").find((row) => text(row).includes("Arrival"));
+  const wideLoc = byClass(wideRow, "libgrid-row-location")[0];
+  assert.match(wideLoc.textContent, /A Very Long Folder Name/);
+  assert.doesNotMatch(wideLoc.textContent, /…/);
+  g.window = { innerWidth: 375 };
+  const narrow = g.libraryGridPage({ items: longItems, filters: {}, view: "list", handlers: {} });
+  const narrowRow = byClass(narrow, "libgrid-row").find((row) => text(row).includes("Arrival"));
+  assert.match(byClass(narrowRow, "libgrid-row-location")[0].textContent, /…/);
+});
+
+test("a saved copy offers Verify even after it is verified", async () => {
+  const g = load();
+  const withCopy = items.map((item) => item.title === "Arrival" ? { ...item, localCopy: true } : item);
+  const page = g.libraryGridPage({
+    items: withCopy, filters: {}, selected: "Radarr:1",
+    handlers: { onVerify: async () => "Verified again: every saved hash matches." },
+  });
+  const panel = byClass(page, "libgrid-detail")[0];
+  const button = byClass(panel, "libgrid-state-action")[0];
+  assert.equal(button.textContent, "Verify this copy");
+  button.fire("click");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.match(text(panel), /Verified again/);
+  // A verified item with no saved record has nothing to re-check.
+  const noCopy = g.libraryGridPage({ items, filters: {}, selected: "Radarr:1", handlers: {} });
+  assert.equal(byClass(byClass(noCopy, "libgrid-detail")[0], "libgrid-state-action")[0], undefined);
+});

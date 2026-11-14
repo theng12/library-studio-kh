@@ -38,7 +38,8 @@ test("posted posters go through the safe route and never a raw path", () => {
 });
 
 test("dialog closures return focus to the control that opened them", () => {
-  assert.match(app, /const opener = document\.activeElement/);
+  assert.match(app, /const opener = trigger && trigger\.isConnected \? trigger : document\.activeElement/);
+  assert.match(app, /downloadAction\(\[row\.hash\], key, trigger\)/);
   assert.match(app, /back\?\.focus\(\)/);
   assert.match(app, /dialog\.remove\(\)/);
 });
@@ -66,7 +67,20 @@ test("actions, saves and empty states stay honest", () => {
   // Folder fields carry the full value so the two locations are distinguishable.
   assert.match(app, /Full path: " \+ input\.value/);
   // A filtered-empty Activity says what to do and offers it.
-  assert.match(app, /clear\.textContent = "Clear filters"/);
+  assert.match(app, /clearButton\.textContent = "Clear filters"/);
+});
+
+test("Activity offers Clear filters whenever a filter is active", () => {
+  const app = readFileSync(new URL("../internal/server/web/app.js", import.meta.url), "utf8");
+  assert.match(app, /clearButton\.id = "act-clear"/);
+  assert.match(app, /q\.trim\(\) \|\| app \|\| outcome/);
+});
+
+test("Sources states a disconnect once and never fakes health", () => {
+  const media = readFileSync(new URL("../internal/server/web/media.js", import.meta.url), "utf8");
+  const manager = readFileSync(new URL("../internal/server/web/source-manager.js", import.meta.url), "utf8");
+  assert.match(media, /Not checked — Prowlarr isn't connected\./);
+  assert.doesNotMatch(manager, /Sources can be managed once Prowlarr is connected\./);
 });
 
 test("a metadata provider outage is stated on both lists", () => {

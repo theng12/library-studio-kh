@@ -326,6 +326,18 @@ function downloadsPanelRender(root, model, handlers) {
   const on = (name, a, b) => { if (typeof handlers[name] === "function") handlers[name](a, b); };
   root.replaceChildren();
   root.classList.add("downloads-panel");
+  // Nothing to list: one message and the next step, no selection tools or column
+  // header implying rows that do not exist.
+  const allCount = (model.filters.find((f) => f.key === "all") || {}).count || 0;
+  if (allCount === 0) {
+    const empty = dlpEl("div", model.empty?.message || "No downloads right now.", "dlp-empty");
+    empty.setAttribute("role", "status");
+    const find = dlpButton("Find & add");
+    find.addEventListener("click", () => on("emptyAction", "find"));
+    empty.append(find);
+    root.append(empty);
+    return root;
+  }
 
   const bar = dlpEl("div", null, "tools dlp-tools");
 

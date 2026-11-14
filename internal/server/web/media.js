@@ -210,8 +210,13 @@ async function loadSources() {
     message.hidden = data.configured && !problems.length;
     message.textContent = problems.join(" "); // the server already names a missing Prowlarr once
     const health = mediaNode("ul", null, "source-notes");
-    for (const h of data.health || []) health.append(mediaNode("li", (h.type || "Message") + ": " + h.message));
-    if (!health.childNodes.length) health.append(mediaNode("li", "No health messages were reported. Check any availability errors before relying on this result."));
+    if (!data.configured) {
+      // Never let unread health look like an all-clear.
+      health.append(mediaNode("li", "Not checked — Prowlarr isn't connected."));
+    } else {
+      for (const h of data.health || []) health.append(mediaNode("li", (h.type || "Message") + ": " + h.message));
+      if (!health.childNodes.length) health.append(mediaNode("li", "No health messages were reported. Check any availability errors before relying on this result."));
+    }
     content.append(mediaPanel("Reported health", "Messages supplied by Prowlarr. Enabled sources can still report errors here.", health));
     const links = (data.links || []).map(x => row([x.name, x.syncLevel || "Not reported"]));
     content.append(mediaPanel("Application links", "A configured sync mode does not prove that the latest synchronization succeeded.", links.length ? mediaTable(["Application", "Configured sync"], links) : mediaNode("p", "No application links available.", "empty")));

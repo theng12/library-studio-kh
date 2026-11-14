@@ -1,5 +1,14 @@
 # What's new in Library Studio KH
 
+## 0.7.17 — 2026-11-14
+
+- My library's list shows the full storage path at desktop widths instead of shortening it while the title column has room.
+- Activity offers Clear filters whenever a search or filter is active, with or without results.
+- Sources states a disconnected Prowlarr once, and Reported health says "Not checked" while it is disconnected instead of reading as clean.
+- Downloads with nothing in the list show one message and a Find & add button, without selection tools or an empty table header.
+- A saved copy can be verified again from My library, not only before its first proof.
+- Closing a Remove or Clear confirmation returns focus to the button that opened it.
+
 ## 0.7.16 — 2026-11-13
 
 - Every film and show gets a poster, overview, year, genres, runtime and rating from keyless public sources, cached on disk and shown when available; a missing poster shows the title's letter, never an empty box. These views and posters appear after you update to 0.7.16.

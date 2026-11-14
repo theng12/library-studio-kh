@@ -277,3 +277,18 @@ test("render shows the empty state with its next-step action", () => {
   assert.match(blank.textContent, /No downloads right now/);
   assert.deepEqual(findAll(blank, (n) => n.tag === "button").map((b) => b.textContent), ["Find & add"]);
 });
+
+test("zero downloads shows one message and no table or bulk tools", () => {
+  context.document = fakeDocument();
+  const root = fakeRoot();
+  let emptyAction = "";
+  downloadsPanelRender(root, downloadsModel([], {}), { emptyAction: (key) => { emptyAction = key; } });
+  assert.equal(findAll(root, (n) => n.tag === "table").length, 0);
+  assert.equal(findOne(root, hasClass("dlp-bulk")), undefined);
+  const message = findOne(root, hasClass("dlp-empty"));
+  assert.match(message.textContent, /No downloads right now/);
+  const find = findOne(message, (n) => n.tag === "button");
+  assert.equal(find.textContent, "Find & add");
+  find.listeners.click();
+  assert.equal(emptyAction, "find");
+});

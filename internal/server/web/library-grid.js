@@ -332,7 +332,9 @@ function libraryGridRow(item, options = {}) {
   main.append(libraryGridNode("span", libraryGridMeta(item), "libgrid-meta"));
   row.append(main);
   const fullLocation = libraryGridLocation(item).text;
-  const location = libraryGridNode("span", libraryGridShortPath(fullLocation), "libgrid-row-location");
+  // Use the width we have: the full path at desktop sizes, shortened on smaller screens.
+  const max = (typeof window !== "undefined" && Number(window.innerWidth) >= 1200) ? 1000 : 52;
+  const location = libraryGridNode("span", libraryGridShortPath(fullLocation, max), "libgrid-row-location");
   location.title = fullLocation;
   location.setAttribute("aria-label", fullLocation);
   row.append(location);
@@ -411,9 +413,10 @@ function libraryGridDetailPanel(detail, handlers = {}) {
   if (detail.verification.hash) fact("Proof hash", detail.verification.hash);
   if (detail.source) fact("Source", detail.source);
   aside.append(facts);
-  if (!detail.verification.verified) {
-    // The next step is a real verification of this copy — but only when a local
-    // copy is tracked. Otherwise the control is disabled and says why.
+  if (detail.localCopy || !detail.verification.verified) {
+    // A real verification of this copy — offered whenever a saved record tracks
+    // it, including a re-check of an already-verified copy. Without a record the
+    // control is replaced by the reason.
     const check = libraryGridNode("button", "Verify this copy", "libgrid-state-action");
     check.type = "button";
     const result = libraryGridNode("p", "", "libgrid-verify-msg");
@@ -422,6 +425,7 @@ function libraryGridDetailPanel(detail, handlers = {}) {
       // No tracked copy: say so plainly instead of showing a control that cannot act.
       result.textContent = "No local copy is tracked — verify when a local copy is found.";
     } else {
+      if (detail.verification.verified) result.textContent = "Re-checks the saved hashes against the file on disk.";
       check.addEventListener("click", async () => {
         check.disabled = true;
         result.textContent = "Checking the saved proof…";
