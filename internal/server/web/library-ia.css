@@ -65,6 +65,14 @@
 .libgrid-check-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .libgrid-check-count { margin-left: auto; color: var(--muted); font-size: var(--type-caption); }
 .libgrid-filter-actions { grid-column: 1 / -1; padding-top: var(--space-2); }
+.libgrid-filter-options {
+  /* A row cut by the scroll edge fades out instead of being sliced; the padding
+     keeps the last row clear when scrolled to the end. The grid also rounds the
+     box to a whole row at rest, so nothing is half-shown when it opens. */
+  padding-bottom: 1.75rem;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.75rem), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.75rem), transparent);
+}
 
 /* ---- Detail: storage actions ---- */
 .libgrid-detail-actions {
@@ -89,7 +97,7 @@
 @media (min-width: 761px) {
   .libgrid-filters {
     position: absolute; z-index: 30; top: calc(100% + var(--space-2)); right: 0;
-    width: min(32rem, 100%); height: min(70vh, 32rem); overflow: hidden;
+    width: min(32rem, 100%); max-height: min(70vh, 32rem); overflow: hidden;
     display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 0; align-items: stretch;
     background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius-card); box-shadow: var(--shadow);
@@ -97,11 +105,6 @@
   .libgrid-filter-options {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
     gap: var(--space-3); overflow: auto; min-height: 0;
-    /* A row cut by the scroll edge fades out instead of being sliced in half;
-       the padding keeps the last row fully visible when scrolled to the end. */
-    padding-bottom: 1.75rem;
-    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.75rem), transparent);
-    mask-image: linear-gradient(to bottom, #000 calc(100% - 1.75rem), transparent);
   }
   .libgrid-filter-actions {
     border-top: 1px solid var(--line); background: var(--panel);
@@ -109,13 +112,22 @@
   }
 }
 
-/* Phones: tabs and the panel take the full width; buttons stay reachable. */
+/* Phones: tabs take the full width; Filters opens as a bottom sheet pinned above
+   the fixed navigation, so the choices scroll and Apply/Reset stay on screen. */
 @media (max-width: 760px) {
   .libgrid-tabs { width: 100%; }
   .libgrid-tab { flex: 1 1 auto; }
-  .libgrid-filters { flex-basis: 100%; width: 100%; height: auto; overflow: visible; grid-template-rows: none; }
-  .libgrid-filter-options { grid-template-columns: minmax(0, 1fr); overflow: visible; }
-  .libgrid-filter-actions { position: sticky; bottom: calc(-1 * var(--space-3)); background: inherit; }
+  .libgrid-filters {
+    position: fixed; z-index: 40; left: 0; right: 0;
+    bottom: calc(4.75rem + env(safe-area-inset-bottom));
+    max-height: calc(100vh - 6rem);
+    display: flex; flex-direction: column; gap: 0; align-items: stretch;
+    overflow: hidden; grid-template-rows: none;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-card) var(--radius-card) 0 0; box-shadow: var(--shadow);
+  }
+  .libgrid-filter-options { flex: 0 1 auto; grid-template-columns: minmax(0, 1fr); overflow: auto; max-height: none; min-height: 0; }
+  .libgrid-filter-actions { flex: none; position: static; background: inherit; border-top: 1px solid var(--line); }
 }
 
 @media (max-width: 420px) {

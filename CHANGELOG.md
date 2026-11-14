@@ -9,7 +9,7 @@
 - Find & add: a full-width search row, clear loading, result-count, no-result and error states, and torrent links checked line by line with the bad line named and a ready count.
 - Settings and Cleanup share one tabbed shell with a sticky Save; every dialog closes from its backdrop and returns focus; the appearance control is the segmented System / Light / Dark choice again.
 - Settings → General fills its columns: Appearance and Help on top, Dead downloads across the middle, Companion apps down the tall column, and Folders below. Updates says it checks on launch and on demand, which is what it does.
-- Setup & help closes with sign-in, so its page never stays above the app; the Filters panel fades the row cut by its scroll edge instead of slicing it, with Apply and Reset still pinned below.
+- Setup & help closes with sign-in, so its page never stays above the app. The Filters panel ends on a whole row and fades the next one instead of slicing it, with Apply and Reset pinned below; on a phone Filters opens as a sheet above the navigation so Apply and Reset stay on screen. Set location points a library app (Sonarr, Radarr, Lidarr) at a title's folder; a local file uses Match metadata and Open location instead.
 - Phone tap targets: Downloads row ticks are 44 px like library cards, and every Settings control reaches 44 px.
 - Honest states everywhere: "Missing" only after a real check on this machine, "Needs proof" when nothing proves a copy, unknown download states say "Status not reported", and stalled or unproven downloads no longer read as success.
 - Pages read a cached snapshot and refresh behind you, so My library and Activity appear immediately on launch and stay quick; the page says when it last checked.

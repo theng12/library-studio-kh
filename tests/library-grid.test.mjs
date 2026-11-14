@@ -603,6 +603,10 @@ test("a local file offers a metadata match and no import proof", () => {
   assert.equal(byClass(panel, "libgrid-verify-msg").length, 0, "a local file has nothing to verify against an import");
   const match = byClass(panel, "libgrid-match")[0];
   assert.ok(match, "Match metadata is offered for a local file");
+  // Set location tells a library app where a title lives; a scanned local file has
+  // no app location to override, so the dead-end button is not offered for it.
+  assert.equal(byClass(panel, "libgrid-set-location").length, 0, "no Set location for a local file");
+  assert.ok(byClass(panel, "libgrid-open-location")[0], "Open location is still offered");
   match.fire("click");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].path, path);
@@ -872,5 +876,13 @@ test("filter Apply and Reset stay outside the scrolling options", () => {
   // A row cut by the scroll edge fades out instead of being sliced in half.
   assert.match(css, /\.libgrid-filter-options \{[^}]*mask-image: linear-gradient\(to bottom, #000 calc\(100% - 1\.75rem\), transparent\)/);
   assert.match(css, /\.libgrid-filter-options \{[^}]*padding-bottom: 1\.75rem/);
-  assert.match(css, /\.libgrid-filters \{[^}]*height: min\(70vh, 32rem\); overflow: hidden/);
+  assert.match(css, /\.libgrid-filters \{[^}]*max-height: min\(70vh, 32rem\); overflow: hidden/);
+  // On a phone Filters is a bottom sheet pinned above the nav; the choices scroll
+  // and Apply/Reset stay on screen instead of being pushed below the fold.
+  assert.match(css, /@media \(max-width: 760px\) \{[\s\S]*?\.libgrid-filters \{[^}]*position: fixed/);
+  assert.match(css, /@media \(max-width: 760px\) \{[\s\S]*?\.libgrid-filter-options \{[^}]*overflow: auto/);
+  // The box is rounded to a whole row at rest, so no option is half-shown.
+  const grid = readFileSync(new URL("../internal/server/web/library-grid.js", import.meta.url), "utf8");
+  assert.match(grid, /End the scroll box on a whole row/);
+  assert.match(grid, /optionsBox\.style\.height = Math\.round\(end \+ padBottom\)/);
 });

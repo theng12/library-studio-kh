@@ -622,12 +622,18 @@ function libraryGridDetailPanel(detail, handlers = {}) {
   // Storage controls only report the request; the host owns the dialog and the
   // file-system work, so this module never fetches or opens anything.
   const locationActions = libraryGridNode("div", null, "libgrid-detail-actions");
-  const setLocation = libraryGridNode("button", "Set location", "libgrid-set-location");
-  setLocation.type = "button";
-  setLocation.addEventListener("click", (ev) => handlers.onSetLocation?.(detail, ev.currentTarget));
+  // Set location tells a library app where a title lives. A local file is found by
+  // scanning the library folder and has no app location to override, so it is not
+  // offered there (Match metadata and Open location cover it instead).
+  if (!detail.local) {
+    const setLocation = libraryGridNode("button", "Set location", "libgrid-set-location");
+    setLocation.type = "button";
+    setLocation.addEventListener("click", (ev) => handlers.onSetLocation?.(detail, ev.currentTarget));
+    locationActions.append(setLocation);
+  }
   const openLocation = libraryGridNode("button", "Open location", "libgrid-open-location");
   openLocation.type = "button";
-  locationActions.append(setLocation, openLocation);
+  locationActions.append(openLocation);
   if (detail.location.path) {
     openLocation.addEventListener("click", () => handlers.onOpenLocation?.(detail));
   } else {
@@ -919,6 +925,22 @@ function libraryGridFilterPanel(options) {
   reset.addEventListener("click", () => options.handlers?.onReset?.());
   actions.append(apply, reset);
   panel.append(actions);
+  // End the scroll box on a whole row so no option is sliced in half at rest.
+  // Groups carry legends between them, so snap to the lowest row bottom that fits
+  // rather than a fixed pitch. The mask still softens rows cut mid-scroll.
+  if (typeof requestAnimationFrame !== "function") return panel;
+  requestAnimationFrame(() => {
+    if (!optionsBox.isConnected) return;
+    const boxTop = optionsBox.getBoundingClientRect().top;
+    const padBottom = parseFloat(getComputedStyle(optionsBox).paddingBottom) || 0;
+    const limit = optionsBox.clientHeight - padBottom;
+    let end = 0;
+    for (const row of optionsBox.querySelectorAll(".libgrid-check")) {
+      const bottom = row.getBoundingClientRect().bottom - boxTop;
+      if (bottom <= limit + 0.5 && bottom > end) end = bottom;
+    }
+    if (end > 0) optionsBox.style.height = Math.round(end + padBottom) + "px";
+  });
   return panel;
 }
 
