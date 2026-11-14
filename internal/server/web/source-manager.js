@@ -126,7 +126,7 @@ async function loadConfiguredSources() {
     const panel = smPanel(
       "Configured sources",
       "Add, test or edit a source in Prowlarr. Enabled is the saved setting; check reported health for connection errors.",
-      rows.length ? wrap : smNode("p", "No sources are configured in Prowlarr yet.", "empty")
+      rows.length ? wrap : smNode("p", "No sources are configured in Prowlarr yet. Add one above, then refresh.", "empty")
     );
     body.replaceChildren(panel);
     if (!data.configured) {

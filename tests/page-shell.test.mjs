@@ -84,3 +84,16 @@ test("every page uses one frame and one card gap", () => {
   }
   assert.match(css, /\.page-body\.stack \{ display: grid; gap: var\(--space-4\); align-content: start; \}/);
 });
+
+test("every dialog uses the shared head and one close control", () => {
+  const dialogs = [...html.matchAll(/<dialog[^>]*>([\s\S]*?)<\/dialog>/g)].map((match) => match[1]);
+  assert.ok(dialogs.length >= 5, "the app's dialogs are present");
+  for (const body of dialogs) {
+    if (!body.trim()) continue; // the downloads dialog is built in JS
+    assert.match(body, /class="d-head"/);
+    assert.match(body, /class="close"/);
+  }
+  const panel = readFileSync(new URL("../internal/server/web/downloads-panel.js", import.meta.url), "utf8");
+  assert.match(panel, /"d-head dlp-detail-head"/);
+  assert.match(panel, /dlpButton\("×", "close"\)/);
+});

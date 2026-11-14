@@ -642,7 +642,8 @@ function renderLibraryPage() {
   notice.hidden = !notices.length;
   notice.textContent = notices.join(" ");
   const selected = lib.items.find((item) => libraryGridKey(item) === lib.selected) || null;
-  const shownSelected = libraryGridFilter(lib.items, lib.filters).find((item) => libraryGridKey(item) === lib.selected) || null;
+  const shownItems = libraryGridFilter(lib.items, lib.filters);
+  const shownSelected = shownItems.find((item) => libraryGridKey(item) === lib.selected) || null;
   host.replaceChildren(libraryGridPage({
     items: lib.items,
     filters: lib.filters,
@@ -651,8 +652,9 @@ function renderLibraryPage() {
     sort: lib.sort,
     selected: lib.selected,
     selection: lib.selection,
+    selectKeys: shownItems.map((item) => libraryGridKey(item)),
     selectionActions: [{ id: "verify", label: "Verify selected" }],
-    count: libraryGridCount(libraryGridFilter(lib.items, lib.filters).length, lib.items.length),
+    count: libraryGridCount(shownItems.length, lib.items.length),
     loading: lib.loading,
     error: lib.error,
     problems: [],

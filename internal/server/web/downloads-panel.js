@@ -537,7 +537,7 @@ function downloadsDetailRender(container, detail, onClose) {
   container.replaceChildren();
   container.classList.add("dlp-detail");
 
-  const head = dlpEl("div", null, "dlp-detail-head");
+  const head = dlpEl("div", null, "d-head dlp-detail-head");
   if (detail.poster) {
     const image = document.createElement("img");
     image.src = detail.poster;
