@@ -80,3 +80,15 @@ test("the picker loads before app and its stylesheet follows the layout", () => 
   assert.ok(html.indexOf("folder-picker.css") > html.indexOf("layout.css"), "folder-picker.css must load after layout.css");
   assert.doesNotMatch(picker, /\bimport\s|\brequire\(/, "no new JS dependency");
 });
+
+test("the chooser returns focus to the control that opened it", () => {
+  assert.match(picker, /let pickOpener = null/);
+  assert.match(picker, /pickOpener = choose;/);
+  assert.match(picker, /pickOpener = document\.activeElement;/);
+  assert.match(picker, /function restoreOpener\(\)/);
+  assert.match(picker, /pickOpener = null;\n    target\?\.focus\?\.\(\);/);
+  const close = picker.match(/function closeDialog\(\) \{[\s\S]*?\n  \}/)[0];
+  assert.match(close, /restoreOpener\(\)/);
+  const closeEvent = picker.match(/dialog\.addEventListener\("close",[\s\S]*?\n    \}\);/)[0];
+  assert.match(closeEvent, /restoreOpener\(\)/, "a backdrop close restores focus too");
+});

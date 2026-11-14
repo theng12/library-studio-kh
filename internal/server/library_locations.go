@@ -16,6 +16,7 @@ import (
 func (s *Server) registerLibraryLocations(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/library/location", s.setLibraryLocation)
 	mux.HandleFunc("POST /api/library/open-location", s.openLibraryLocation)
+	mux.HandleFunc("POST /api/library/check", s.checkLibraryFile)
 }
 
 func (s *Server) setLibraryLocation(w http.ResponseWriter, r *http.Request) {
@@ -81,4 +82,25 @@ func readFolderBody(w http.ResponseWriter, r *http.Request, out any) bool {
 		return false
 	}
 	return true
+}
+
+// checkLibraryFile re-checks one recorded path on this machine. It is the
+// "Verify" control for a title with no saved import hashes: it answers the only
+// question left — is the file there now? — and refreshes the cached status.
+func (s *Server) checkLibraryFile(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path string `json:"path"`
+	}
+	if !readFolderBody(w, r, &req) {
+		return
+	}
+	path := strings.TrimSpace(req.Path)
+	if !filepath.IsAbs(path) {
+		writeJSON(w, 400, map[string]string{"error": "There is no recorded path to check yet."})
+		return
+	}
+	_, err := os.Lstat(path)
+	found := err == nil
+	s.invalidateData()
+	writeJSON(w, 200, map[string]any{"found": found, "path": path})
 }

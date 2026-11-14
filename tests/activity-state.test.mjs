@@ -41,13 +41,13 @@ test("a verified copy names its proof and location; an unproven one says so", ()
   const verified = label({ status: "copied", verified: "hash", verifiedAt: "2026-01-02T03:04:05Z", targetPath: "/Volumes/NAS/Films/X" });
   assert.equal(verified.outcome, "verified");
   assert.match(verified.label, /Copied · verified/);
-  assert.match(verified.detail, /SHA-256 hash match/);
-  assert.match(verified.detail.replaceAll("\u200b", ""), /\/Volumes\/NAS\/Films\/X/);
+  assert.match(verified.detail, /saved proof verifies this copy/);
+  assert.doesNotMatch(verified.detail, /\/Volumes|SHA-256/);
   assert.match(label({ status: "copied", verified: "hash", targetVolume: "/Volumes/NAS" }).label, /Copied to NAS · verified/);
   assert.match(label({ status: "copied", verified: "hash", targetVolume: "/" }).label, /Copied to Startup disk · verified/);
   const size = label({ status: "moved", verified: "size" });
   assert.equal(size.outcome, "verified");
-  assert.match(size.detail, /Size and readback match/);
+  assert.match(size.detail, /saved proof verifies this copy/);
   const unproven = label({ status: "copied" });
   assert.equal(unproven.outcome, "problems");
   assert.match(unproven.label, /needs proof/);

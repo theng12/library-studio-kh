@@ -292,3 +292,15 @@ test("zero downloads shows one message and no table or bulk tools", () => {
   find.listeners.click();
   assert.equal(emptyAction, "find");
 });
+
+test("a missing row has no progress bar and unproven rows offer no Pause", () => {
+  const missing = { title: "Gone", status: "missing", sourceGone: true, progress: 0.4, state: "missingFiles", app: "Sonarr" };
+  const status = downloadsStatus(missing);
+  assert.equal(status.missing, true);
+  assert.equal(status.canPause, false, "a missing source has nothing to pause");
+  const progress = context.downloadsProgress(missing, status);
+  assert.equal(progress.known, false, "no fake progress bar");
+  assert.equal(progress.label, "—");
+  assert.equal(downloadsStatus({ status: "on-disk", state: "uploading", progress: 1 }).canPause, false);
+  assert.equal(context.downloadsRow(missing).target, "Not imported yet");
+});

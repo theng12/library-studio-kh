@@ -109,7 +109,10 @@ function folderPickerValidSelection(state) {
     const anchor = input.closest("label") || input;
     anchor.insertAdjacentElement("afterend", status);
 
-    choose.addEventListener("click", () => choosePath(input, status));
+    choose.addEventListener("click", () => {
+      pickOpener = choose;
+      choosePath(input, status);
+    });
     clear.addEventListener("click", () => {
       setPath(input, "");
       status.textContent = "Cleared. Save to apply.";
@@ -140,6 +143,7 @@ function folderPickerValidSelection(state) {
 
   let dialog = null;
   let browser = null; // { input, status, listing }
+  let pickOpener = null; // the control focus returns to when the panel closes
 
   function buildDialog() {
     dialog = document.createElement("dialog");
@@ -165,6 +169,7 @@ function folderPickerValidSelection(state) {
       const resolve = browser?.resolve;
       if (browser) browser.resolve = null;
       if (resolve) resolve(null);
+      restoreOpener();
     });
     dialog.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape") { ev.preventDefault(); closeDialog(); }
@@ -179,12 +184,18 @@ function folderPickerValidSelection(state) {
     });
   }
 
+  function restoreOpener() {
+    const target = pickOpener || browser?.input;
+    pickOpener = null;
+    target?.focus?.();
+  }
+
   function closeDialog() {
     dialog?.close();
     const resolve = browser?.resolve;
     if (browser) browser.resolve = null;
     if (resolve) resolve(null);
-    browser?.input?.focus?.();
+    restoreOpener();
   }
 
   function openBrowser(input, status, resolve) {
@@ -198,6 +209,7 @@ function folderPickerValidSelection(state) {
   // One folder, chosen either in the native panel or the in-app browser. Used by
   // actions outside a path field (for example Set location in a detail panel).
   async function pick(promptText) {
+    pickOpener = document.activeElement;
     try {
       const data = await askNative(promptText || "Choose a folder");
       if (data.path) return data.path;

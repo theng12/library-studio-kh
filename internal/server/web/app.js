@@ -183,8 +183,7 @@ function activityLabel(it) {
       return {
         outcome: "verified",
         label: done + " · verified",
-        detail: (it.verified === "hash" ? "SHA-256 hash match" : "Size and readback match")
-          + (it.targetPath ? " · " + libraryGridBreakPath(it.targetPath) : " · location not recorded"),
+        detail: "A saved proof verifies this copy." + (where ? " On " + where + "." : ""),
         at: it.verifiedAt || it.statusAt || it.when || null,
       };
     }
@@ -192,28 +191,28 @@ function activityLabel(it) {
   }
   if (status === "importing") return { outcome: "importing", label: "Importing", detail: "", at: it.statusAt || null };
   if (status === "paused" || status === "resumed") {
-    return { outcome: "downloading", label: status === "paused" ? "Paused by you" : "Resumed by you", detail: it.sourcePath || "", at: it.when || null };
+    return { outcome: "downloading", label: status === "paused" ? "Paused by you" : "Resumed by you", detail: "In your download folder.", at: it.when || null };
   }
   if (status === "download-removed") {
-    return { outcome: "removed", label: "Removed from qBittorrent · files kept", detail: it.sourcePath ? "Still on disk at " + it.sourcePath : "Its files were left on disk.", at: it.when || null };
+    return { outcome: "removed", label: "Removed from qBittorrent · files kept", detail: "Its files were left on disk.", at: it.when || null };
   }
   if (status === "download-cleared") {
     return { outcome: "removed", label: "Cleared from qBittorrent · files were already missing", detail: "", at: it.when || null };
   }
   if (status === "cleanup-restored") {
-    return { outcome: "removed", label: "Restored from Library’s _trash", detail: it.sourcePath ? "Back at " + libraryGridBreakPath(it.sourcePath) : "", at: it.when || null };
+    return { outcome: "removed", label: "Restored from Library’s _trash", detail: "Back in its original folder.", at: it.when || null };
   }
   if (status === "cleanup-moved") {
-    return { outcome: "removed", label: "Moved into Library’s _trash", detail: it.sourcePath ? "Returns to " + libraryGridBreakPath(it.sourcePath) : "", at: it.when || null };
+    return { outcome: "removed", label: "Moved into Library’s _trash", detail: "It can be restored from Library’s _trash.", at: it.when || null };
   }
   if (status === "cleanup-pass") {
-    return { outcome: "removed", label: "Cleanup pass", detail: it.sourcePath || "", at: it.when || null };
+    return { outcome: "removed", label: "Cleanup pass", detail: "See Cleanup for what each stage did.", at: it.when || null };
   }
   if (status === "download-dead-removed") {
-    return { outcome: "removed", label: "Removed torrent · files stayed", detail: it.sourcePath ? "Still on disk at " + libraryGridBreakPath(it.sourcePath) : "", at: it.when || null };
+    return { outcome: "removed", label: "Removed torrent · files stayed", detail: "Its files were left on disk.", at: it.when || null };
   }
   if (status === "download-arr-removed") {
-    return { outcome: "removed", label: "Removed from " + (it.app || "app") + " queue · files stayed", detail: it.sourcePath ? "Still on disk at " + libraryGridBreakPath(it.sourcePath) : "", at: it.when || null };
+    return { outcome: "removed", label: "Removed from " + (it.app || "app") + " queue · files stayed", detail: "Its files were left on disk.", at: it.when || null };
   }
   if (status === "downloading" || status === "queued" || status === "stalled") {
     const word = torrentStateWord(it.state);
@@ -225,7 +224,7 @@ function activityLabel(it) {
       at: it.statusAt || null,
     };
   }
-  if (status === "removed") return { outcome: "removed", label: "Local copy removed", detail: it.targetPath || "Removed after a verified import.", at: it.when || it.statusAt || null };
+  if (status === "removed") return { outcome: "removed", label: "Local copy removed", detail: "Removed after a verified import.", at: it.when || it.statusAt || null };
   if (status === "upcoming") return { outcome: "upcoming", label: "Coming up", detail: "", at: it.when || null };
   if (status === "missing") return { outcome: "problems", label: "Missing", detail: "Its source is gone; open Downloads to act on it.", at: it.statusAt || null };
   if (status === "on-disk") return { outcome: "problems", label: "On disk · needs proof", detail: "The files are there, but no verified import record explains them.", at: it.statusAt || null };
@@ -758,6 +757,14 @@ function renderLibraryPage() {
       onFindAndAdd: () => show("find"),
       onOpenDownloads: () => show("downloads"),
       onMatch: (detail) => openLocalMatch(detail),
+      onCheckFile: async (detail) => {
+        // No saved hashes to compare: answer the one question left, and let the
+        // next page read pick up the refreshed status.
+        const r = await api("/api/library/check", { path: detail.location.path });
+        return r.found
+          ? "Found on this machine at " + detail.location.path + ". No import proof is saved yet."
+          : "Not found at " + detail.location.path + ". It may have moved — Set location can point to it.";
+      },
       onVerify: async (detail) => {
         if (!detail.downloadHash) return "No local copy is tracked for this item yet, so there is nothing to check.";
         try {
@@ -1909,6 +1916,14 @@ if (window.librarySettingsView) {
 buildArrFields();
 window.libraryKeyboard(document);
 start();
+// One quiet update check on launch, so the footer never sits at "not checked"
+// forever while an action exists. It still never installs anything here.
+setTimeout(() => {
+  const shell = $("#app-shell"), gate = $("#gate");
+  if (shell && !shell.hidden && gate?.hidden && !$("#check-updates").disabled) {
+    $("#check-updates").click();
+  }
+}, 2500);
 let resizeTimer = null;
 window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);

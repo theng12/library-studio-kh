@@ -637,10 +637,13 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
 
 /* Find & add: one full-width search row, a compact type control, a measured
    gap between the two cards, and states that say what happens next. */
-.find-tools .search { flex-basis: 100%; }
-.find-tools .find-type { flex: 0 0 11rem; }
-.find-tools .find-type select { width: 100%; }
-.find-tools button.primary { margin-left: auto; }
+.find-tools {
+  display: grid; grid-template-columns: 11rem auto minmax(0, 1fr);
+  gap: var(--space-3) var(--space-4); align-items: end;
+}
+.find-tools .search { grid-column: 1 / -1; }
+.find-tools .find-type select { width: 11rem; max-width: 100%; }
+.find-tools button.primary { margin-left: 0; justify-self: start; }
 .find-count {
   margin: 0; padding: 0.7rem 1.25rem; color: var(--ink-2); font-size: var(--type-caption);
   border-bottom: 1px solid var(--line);
@@ -649,8 +652,9 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
 #find-msg[data-state="empty"] { color: var(--ink-2); }
 #find-msg[data-state="error"] { color: var(--disconnected); font-weight: 600; }
 @media (max-width: 640px) {
-  .find-tools .find-type { flex-basis: 100%; }
-  .find-tools button.primary { width: 100%; margin-left: 0; }
+  .find-tools { grid-template-columns: minmax(0, 1fr); }
+  .find-tools .find-type select { width: 100%; }
+  .find-tools button.primary { width: 100%; justify-self: stretch; }
 }
 
 /* One save bar for Settings and Cleanup: it stays reachable while a long form
@@ -679,4 +683,21 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
   dialog.confirm button, dialog .actions button { min-height: 44px; }
   .libgrid-chip-remove { min-width: 44px; }
   .row-menu-list button { min-height: 44px; }
+}
+
+/* Cleanup policy uses the page width on large screens instead of a narrow column. */
+#cleanup-form { max-width: none; }
+@media (min-width: 1000px) {
+  #cleanup-form {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-5); align-items: start;
+  }
+  #cleanup-form > h2, #cleanup-form > p, #cleanup-form > .actions, #cleanup-form > details,
+  #cleanup-form > .pair, #cleanup-form > label.switch, #cleanup-form > #cleanup-effect {
+    grid-column: 1 / -1;
+  }
+}
+/* Settings: a short Appearance card spans the row so no column is left empty. */
+@media (min-width: 1200px) {
+  #settings-card-appearance { grid-column: span 2; }
 }

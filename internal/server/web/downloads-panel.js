@@ -80,7 +80,7 @@ function downloadsStatus(item) {
   // A stopped torrent always offers Resume, whatever the row's proof state.
   if (/^(paused|stopped)/.test(state)) return make("paused", DOWNLOADS_STATE_LABELS[state] || "Paused", "muted", { canResume: true });
   // The same words Activity uses for a local copy with no import proof.
-  if (status === "on-disk") return make("problems", "Needs proof", "warn", { canPause: true });
+  if (status === "on-disk") return make("problems", "Needs proof", "warn");
   if (/^(copied|moved)$/.test(status)) return make("problems", "Needs proof", "warn");
   if (state === "error") return make("problems", "Error", "bad", { canResume: true });
   if (state === "queuedDL" || state === "queuedUP") return make("queued", DOWNLOADS_STATE_LABELS[state], "muted", { canPause: true });
@@ -159,7 +159,7 @@ function downloadsSizeText(item) {
 // A missing source is shown as missing, never as a 0% that looks like progress.
 function downloadsProgress(item, status) {
   status = status || downloadsStatus(item);
-  if (status.missing) return { known: false, value: null, label: "—", speedText: "—", etaText: "—" };
+  if (status.missing) return { known: false, value: null, label: "—", speedText: "", etaText: "" };
   const known = Number.isFinite(item.progress) && item.progress >= 0 && item.progress <= 1;
   const state = String(item.state || "");
   // Speed and time left are live download facts; a paused or seeding row has neither.
@@ -187,7 +187,7 @@ function downloadsRow(item) {
     sizeText: downloadsSizeText(item),
     progress: downloadsProgress(item, status),
     source: downloadsSourceText(item),
-    target: String(item.targetPath || "Not known yet"),
+    target: String(item.targetPath || "Not imported yet"),
     deadNote: item.deadSince
       ? (item.deadCleanupOn
         ? (item.removeEligibleAt ? "Dead source · entry removable after " + downloadsWhen(item.removeEligibleAt) : "Dead source · waiting out the grace")
@@ -284,7 +284,7 @@ function downloadsDetail(item, history) {
     // Proof and location lead: the first read answers where it is and whether
     // it is proven, not just how big it is. Each fact appears once.
     facts: [
-      ["Target", item.targetPath ? (libraryVolumeLabel(item.targetVolume) ? libraryVolumeLabel(item.targetVolume) + " · " : "") + item.targetPath : "Not known yet — nothing imported"],
+      ["Target", item.targetPath ? (libraryVolumeLabel(item.targetVolume) ? libraryVolumeLabel(item.targetVolume) + " · " : "") + item.targetPath : "Not imported yet — the library app chooses the folder"],
       ["Proof", method ? method + " · " + downloadsWhen(item.verifiedAt) : "Needs proof"],
       ["Size", downloadsSizeText(item)],
       ["Source", downloadsSourceText(item)],
@@ -486,15 +486,16 @@ function downloadsRowNode(row, model, on) {
 
   const progressCell = dlpEl("td", null, "dlp-progress");
   progressCell.dataset.label = "Progress";
-  const bar = document.createElement("progress");
-  bar.max = 1;
-  if (row.progress.known) bar.value = row.progress.value;
-  bar.setAttribute("aria-label", "Download progress for " + row.title);
-  progressCell.append(
-    bar,
-    dlpEl("span", row.progress.label, "dlp-pct"),
-    dlpEl("span", row.progress.speedText, "dlp-speed"),
-    dlpEl("span", row.progress.etaText, "dlp-eta"));
+  if (row.progress.known) {
+    const bar = document.createElement("progress");
+    bar.max = 1;
+    bar.value = row.progress.value;
+    bar.setAttribute("aria-label", "Download progress for " + row.title);
+    progressCell.append(bar);
+  }
+  progressCell.append(dlpEl("span", row.progress.label, "dlp-pct"));
+  if (row.progress.speedText) progressCell.append(dlpEl("span", row.progress.speedText, "dlp-speed"));
+  if (row.progress.etaText) progressCell.append(dlpEl("span", row.progress.etaText, "dlp-eta"));
   tr.append(progressCell);
 
   const sourceCell = dlpEl("td", row.source, "dlp-source");

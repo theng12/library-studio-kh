@@ -229,6 +229,7 @@ test("the list renders compact rows with the storage location", () => {
   const rows = byClass(page, "libgrid-row");
   assert.equal(rows.length, 5);
   assert.deepEqual(byClass(rows[1], "libgrid-row-location").map(text), ["NAS-1 · /Volumes/NAS-1/Films/Arrival (2016)"]);
+  assert.equal(byClass(rows[1], "libgrid-row-location")[0].title, "NAS-1 · /Volumes/NAS-1/Films/Arrival (2016)");
   assert.deepEqual(byClass(rows[3], "libgrid-row-location").map(text), ["No storage location recorded yet"]);
 });
 
@@ -421,19 +422,18 @@ test("an unproven copy can be verified in place and shows the result", async () 
     handlers: { onVerify: async (detail) => { calls.push(detail.title); return "Verified Dune: every saved hash matches the file on disk."; } },
   });
   const panel = byClass(page, "libgrid-detail")[0];
-  const button = byClass(panel, "libgrid-state-action")[0];
-  assert.equal(button.textContent, "Verify this copy");
+  const button = byClass(panel, "libgrid-verify")[0];
+  assert.equal(button.textContent, "Verify");
   button.fire("click");
   await new Promise((r) => setTimeout(r, 20));
   assert.deepEqual(calls, ["Dune"]);
   assert.match(text(panel), /every saved hash matches/);
   assert.equal(g.libraryVolumeLabel("/"), "Startup disk");
   assert.match(g.libraryGridShortPath("NAS · /Volumes/NAS/Music/Demo Artist/First Album/Some Long Name", 40), /…/);
-  // Without a tracked local copy no button is offered, only the reason.
+  // A title with no recorded path has nothing to check; its next-step block owns that state.
   const untracked = g.libraryGridPage({ items, filters: {}, selected: "Sonarr:5", handlers: { onVerify: async () => "should not run" } });
   const panel2 = byClass(untracked, "libgrid-detail")[0];
-  assert.equal(byClass(panel2, "libgrid-state-action")[0], undefined);
-  assert.match(text(panel2), /No local copy is tracked — verify when a local copy is found\./);
+  assert.equal(byClass(panel2, "libgrid-verify").length, 0, "nothing to check without a recorded path");
 });
 
 test("a phone detail offers Back, and rows keep the full path on the title", () => {
@@ -455,7 +455,7 @@ test("the module stands alone: no imports and no app.js helpers", () => {
   assert.match(source, /function libraryGridPage\(/);
 });
 
-test("the list row carries the full location at every width and stacks it on a phone", () => {
+test("the list row shows both ends of the location and keeps the full path on its title", () => {
   const longPath = "/Volumes/NAS-1/Films/A Very Long Folder Name For An Arrival Film (2016)/Arrival (2016) 2160p.mkv";
   const longItems = items.map((item) => item.title === "Arrival" ? { ...item, targetPath: longPath } : item);
   const g = load();
@@ -464,9 +464,11 @@ test("the list row carries the full location at every width and stacks it on a p
     const page = g.libraryGridPage({ items: longItems, filters: {}, view: "list", handlers: {} });
     const row = byClass(page, "libgrid-row").find((r) => text(r).includes("Arrival"));
     const loc = byClass(row, "libgrid-row-location")[0];
-    assert.match(loc.textContent, /A Very Long Folder Name/);
-    assert.doesNotMatch(loc.textContent, /…/);
-    assert.equal(loc.textContent, "NAS-1 · " + longPath);
+    assert.match(loc.textContent, /^NAS-1 · \/Volumes/);
+    assert.match(loc.textContent, /2160p\.mkv$/);
+    assert.match(loc.textContent, /…/, "a shortened path says it is shortened");
+    assert.equal(loc.title, "NAS-1 · " + longPath);
+    assert.equal(loc.getAttribute("aria-label"), "NAS-1 · " + longPath);
   }
   // The phone layout gives the title the width and puts the path on its own line.
   const css = readFileSync(new URL("../internal/server/web/pages.css", import.meta.url), "utf8");
@@ -482,14 +484,16 @@ test("a saved copy offers Verify even after it is verified", async () => {
     handlers: { onVerify: async () => "Verified again: every saved hash matches." },
   });
   const panel = byClass(page, "libgrid-detail")[0];
-  const button = byClass(panel, "libgrid-state-action")[0];
-  assert.equal(button.textContent, "Verify this copy");
+  const button = byClass(panel, "libgrid-verify")[0];
+  assert.equal(button.textContent, "Verify");
   button.fire("click");
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.match(text(panel), /Verified again/);
-  // A verified item with no saved record has nothing to re-check.
-  const noCopy = g.libraryGridPage({ items, filters: {}, selected: "Radarr:1", handlers: {} });
-  assert.equal(byClass(byClass(noCopy, "libgrid-detail")[0], "libgrid-state-action")[0], undefined);
+  // A verified item with no saved record still offers the on-machine file check.
+  const noCopy = g.libraryGridPage({ items, filters: {}, selected: "Radarr:1", handlers: { onCheckFile: async () => "Found on this machine." } });
+  const noCopyPanel = byClass(noCopy, "libgrid-detail")[0];
+  assert.equal(byClass(noCopyPanel, "libgrid-verify")[0].textContent, "Verify");
+  assert.match(text(noCopyPanel), /No proof is saved yet/);
 });
 
 test("paths stay raw, offer Copy path, and a no-file title has a next step", async () => {
@@ -508,6 +512,16 @@ test("paths stay raw, offer Copy path, and a no-file title has a next step", asy
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.deepEqual(copied, ["/Volumes/NAS-1/Films/Arrival (2016)"]);
   assert.equal(byClass(panel, "libgrid-path-msg")[0].textContent, "Copied.");
+
+  // A refused clipboard says why in plain words and never leaks the JS error.
+  const deniedPage = g.libraryGridPage({ items, filters: {}, selected: "Radarr:1", handlers: {} });
+  const deniedPanel = byClass(deniedPage, "libgrid-detail")[0];
+  g.navigator = { clipboard: { writeText: async () => { throw Object.assign(new Error("Write permission denied."), { name: "NotAllowedError" }); } } };
+  byClass(deniedPanel, "libgrid-copy-path")[0].fire("click");
+  await new Promise((r) => setTimeout(r, 20));
+  const deniedMsg = byClass(deniedPanel, "libgrid-path-msg")[0].textContent;
+  assert.match(deniedMsg, /^Could not copy — clipboard permission was denied\. Select the path above\.$/);
+  assert.doesNotMatch(deniedMsg, /NotAllowedError|writeText/);
 
   const queuedItem = { app: "Sonarr", id: 9, title: "Waiting Show", status: "queued", localCopy: false };
   let openedDownloads = 0, openedFind = 0;
@@ -547,7 +561,7 @@ test("a checkable missing file names the check; an uncheckable one needs proof",
   assert.match(text(panel), /Checked on this machine — not found/);
   assert.match(text(panel), /Not found at \/Volumes\/NAS-1\/Films\/Gone Film/);
   const actions = byClass(panel, "libgrid-state-action").map((b) => b.textContent);
-  assert.deepEqual(actions, ["Open Downloads", "Find & add"]);
+  assert.deepEqual(actions, ["Open Downloads", "Find & add", "Verify"]);
 
   const pending = { app: "Radarr", id: 9, title: "Pending Film", status: "proof-pending", localCopy: false };
   const pendingPage = g.libraryGridPage({ items: [pending], filters: {}, selected: "Radarr:9", handlers: {} });
@@ -832,4 +846,19 @@ test("the grid paints the first 60 cards and Show more appends the next page", (
   const shown = byClass(page, "libgrid-card").map((card) => byClass(card, "libgrid-card-title")[0].textContent);
   assert.deepEqual(shown.slice(0, 2), ["Film 000", "Film 001"], "sorting order is kept");
   assert.equal(shown[129], "Film 129");
+});
+
+test("filter Apply and Reset stay outside the scrolling options", () => {
+  const g = load();
+  const css = readFileSync(new URL("../internal/server/web/library-ia.css", import.meta.url), "utf8");
+  const page = g.libraryGridPage({ items, filters: {}, filtersOpen: true, handlers: {} });
+  const panel = byClass(page, "libgrid-filters")[0];
+  const options = byClass(panel, "libgrid-filter-options")[0];
+  const actions = byClass(panel, "libgrid-filter-actions")[0];
+  assert.ok(options, "the value groups scroll in their own box");
+  assert.ok(actions, "Apply/Reset are always present");
+  assert.ok(!options.children.includes(actions), "the actions are not inside the scroll box");
+  assert.deepEqual(byClass(actions, "libgrid-apply").map(text), ["Apply"]);
+  assert.deepEqual(byClass(actions, "libgrid-reset").map(text), ["Reset"]);
+  assert.match(css, /\.libgrid-filter-options \{[^}]*overflow: auto/);
 });

@@ -531,9 +531,9 @@ function libraryGridRow(item, options = {}) {
   main.append(libraryGridNode("span", libraryGridMeta(item), "libgrid-meta"));
   row.append(main);
   const fullLocation = libraryGridLocation(item).text;
-  // The row carries the full path; CSS wraps or stacks it. Shortening the text
-  // at build time made the visible path depend on when the row was rendered.
-  const location = libraryGridNode("span", fullLocation, "libgrid-row-location");
+  // The row shows a middle-truncated path so both the disk and the file name
+  // stay readable; the full path is on its title, aria-label and the detail.
+  const location = libraryGridNode("span", libraryGridShortPath(fullLocation, 64), "libgrid-row-location");
   location.title = fullLocation;
   location.setAttribute("aria-label", fullLocation);
   row.append(location);
@@ -678,7 +678,8 @@ function libraryGridDetailPanel(detail, handlers = {}) {
         message.textContent = "Copied.";
         message.dataset.state = "ok";
       } catch (e) {
-        message.textContent = "Could not copy: " + (e?.message || "clipboard unavailable") + ". Select the path above.";
+        const denied = /notallowed|denied|permission/i.test(String(e?.name || "") + " " + String(e?.message || ""));
+        message.textContent = "Could not copy — " + (denied ? "clipboard permission was denied" : "the clipboard is unavailable") + ". Select the path above.";
         message.dataset.state = "error";
         field.select?.();
       }
@@ -706,33 +707,31 @@ function libraryGridDetailPanel(detail, handlers = {}) {
     box.append(downloads, find);
     aside.append(box);
   }
-  if (!detail.local && (detail.localCopy || !detail.verification.verified)) {
-    // A real verification of this copy — offered whenever a saved record tracks
-    // it, including a re-check of an already-verified copy. Without a record the
-    // control is replaced by the reason.
-    const check = libraryGridNode("button", "Verify this copy", "libgrid-state-action");
+  // A real check the owner can run for any title with a recorded path: the saved
+  // hashes when a record tracks it, otherwise whether the file is on this machine.
+  if (!detail.local && (detail.localCopy || detail.location.path)) {
+    const check = libraryGridNode("button", "Verify", "libgrid-state-action libgrid-verify");
     check.type = "button";
+    check.setAttribute("aria-label",
+      detail.localCopy ? "Verify the saved hashes for " + detail.title : "Verify the file for " + detail.title + " is on this machine");
     const result = libraryGridNode("p", "", "libgrid-verify-msg");
     result.setAttribute("role", "status");
-    if (!detail.localCopy) {
-      // No tracked copy: say so plainly instead of showing a control that cannot act.
-      result.textContent = "No local copy is tracked — verify when a local copy is found.";
-    } else {
-      if (detail.verification.verified) result.textContent = "Re-checks the saved hashes against the file on disk.";
-      check.addEventListener("click", async () => {
-        check.disabled = true;
-        result.textContent = "Checking the saved proof…";
-        try {
-          result.textContent = await handlers.onVerify?.(detail) || "The check finished without a result.";
-        } catch (e) {
-          result.textContent = e.message || "The check could not run.";
-        } finally {
-          check.disabled = false;
-        }
-      });
-    }
-    if (detail.localCopy) aside.append(check, result);
-    else aside.append(result);
+    result.textContent = detail.localCopy
+      ? (detail.verification.verified ? "Re-checks the saved hashes against the file on disk." : "Checks the saved hashes for this copy.")
+      : "No proof is saved yet — Verify checks the file on this machine.";
+    check.addEventListener("click", async () => {
+      check.disabled = true;
+      result.textContent = detail.localCopy ? "Checking the saved proof…" : "Checking the file on this machine…";
+      try {
+        const answer = detail.localCopy ? handlers.onVerify?.(detail) : handlers.onCheckFile?.(detail);
+        result.textContent = await answer || "The check finished without a result.";
+      } catch (e) {
+        result.textContent = e.message || "The check could not run.";
+      } finally {
+        check.disabled = false;
+      }
+    });
+    aside.append(check, result);
   }
 
   const history = libraryGridNode("div", null, "libgrid-history-block");
@@ -901,10 +900,13 @@ function libraryGridFilterPanel(options) {
   const draft = libraryGridFilterNormalize(options.draft || {});
   const choices = libraryGridFilterOptions(options.items || []);
   const changed = (name, values) => options.handlers?.onFilterChange?.({ ...draft, [name]: values });
-  panel.append(libraryGridCheckGroup("Status", "statuses", choices.statuses, draft.statuses, (v) => changed("statuses", v)));
-  panel.append(libraryGridCheckGroup("App", "apps", choices.apps, draft.apps, (v) => changed("apps", v)));
-  panel.append(libraryGridCheckGroup("Genre", "genres", choices.genres, draft.genres, (v) => changed("genres", v)));
-  panel.append(libraryGridCheckGroup("Year", "years", choices.years, draft.years, (v) => changed("years", v)));
+  // Only the value groups scroll; Apply/Reset stay outside the scroll area.
+  const optionsBox = libraryGridNode("div", null, "libgrid-filter-options");
+  optionsBox.append(libraryGridCheckGroup("Status", "statuses", choices.statuses, draft.statuses, (v) => changed("statuses", v)));
+  optionsBox.append(libraryGridCheckGroup("App", "apps", choices.apps, draft.apps, (v) => changed("apps", v)));
+  optionsBox.append(libraryGridCheckGroup("Genre", "genres", choices.genres, draft.genres, (v) => changed("genres", v)));
+  optionsBox.append(libraryGridCheckGroup("Year", "years", choices.years, draft.years, (v) => changed("years", v)));
+  panel.append(optionsBox);
   const actions = libraryGridNode("div", null, "libgrid-filter-actions");
   const apply = libraryGridNode("button", "Apply", "libgrid-apply");
   apply.type = "button";

@@ -104,3 +104,22 @@ func TestSavingALocationRebuildsThePageCache(t *testing.T) {
 		t.Errorf("cache was not rebuilt after the location change: %v then %v", first.BuiltAt, second.BuiltAt)
 	}
 }
+
+func TestCheckLibraryFileAnswersPresentAndMissing(t *testing.T) {
+	s := folderTestServer(t)
+	file := filepath.Join(t.TempDir(), "Film.mkv")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	present := locationPost(t, s, "/api/library/check", map[string]any{"path": file}, true)
+	if present.Code != 200 || !strings.Contains(present.Body.String(), `"found":true`) {
+		t.Errorf("present file: %d %s", present.Code, present.Body.String())
+	}
+	missing := locationPost(t, s, "/api/library/check", map[string]any{"path": file + ".gone"}, true)
+	if missing.Code != 200 || !strings.Contains(missing.Body.String(), `"found":false`) {
+		t.Errorf("missing file: %d %s", missing.Code, missing.Body.String())
+	}
+	if w := locationPost(t, s, "/api/library/check", map[string]any{"path": "relative"}, true); w.Code != 400 {
+		t.Errorf("relative path: %d", w.Code)
+	}
+}

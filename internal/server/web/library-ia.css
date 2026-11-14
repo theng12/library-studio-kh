@@ -89,10 +89,18 @@
 @media (min-width: 761px) {
   .libgrid-filters {
     position: absolute; z-index: 30; top: calc(100% + var(--space-2)); right: 0;
-    width: min(32rem, 100%); max-height: min(70vh, 32rem); overflow: auto;
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    width: min(32rem, 100%); max-height: min(70vh, 32rem);
+    display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 0;
     background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius-card); box-shadow: var(--shadow);
+  }
+  .libgrid-filter-options {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: var(--space-3); overflow: auto; min-height: 0;
+  }
+  .libgrid-filter-actions {
+    border-top: 1px solid var(--line); margin-top: var(--space-1);
+    padding-top: var(--space-2);
   }
 }
 
@@ -102,8 +110,8 @@
   .libgrid-tab { flex: 1 1 auto; }
   .libgrid-filters {
     flex-basis: 100%; width: 100%;
-    grid-template-columns: minmax(0, 1fr);
   }
+  .libgrid-filter-options { grid-template-columns: minmax(0, 1fr); overflow: visible; }
   .libgrid-filter-actions { position: sticky; bottom: calc(-1 * var(--space-3)); background: inherit; }
 }
 
@@ -220,4 +228,10 @@
   .libgrid-selectall { min-height: 44px; }
   .libgrid-chip-remove { min-width: 44px; min-height: 44px; }
   .libgrid-select { width: 1.35rem; height: 1.35rem; }
+}
+
+/* Phones: four type tabs form a tidy 2x2, never a lone orphan on a second line. */
+@media (max-width: 760px) {
+  .libgrid-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .libgrid-tab { justify-content: center; }
 }

@@ -170,3 +170,9 @@ test("library selection, caching and one page frame are wired", () => {
   assert.match(app, /lib\.cachedAt = r\.cachedAt/);
   assert.match(app, /Last checked /);
 });
+
+test("the footer checks for updates once on launch", () => {
+  assert.match(app, /One quiet update check on launch/);
+  assert.match(app, /const shell = \$\("#app-shell"\), gate = \$\("#gate"\);/);
+  assert.match(app, /gate\?\.hidden && !\$\("#check-updates"\)\.disabled/);
+});
