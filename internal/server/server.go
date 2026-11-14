@@ -91,6 +91,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerCleanup(mux)
 	s.registerFolders(mux)
 	s.registerLocalMedia(mux)
+	s.registerLibraryLocations(mux)
 	s.registerSetup(mux)
 	s.RegisterCompanionSettings(mux)
 	mux.HandleFunc("GET /api/health", s.health)

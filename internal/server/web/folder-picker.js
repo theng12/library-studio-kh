@@ -175,14 +175,31 @@ function folderPickerValidSelection(state) {
 
   function closeDialog() {
     dialog?.close();
-    browser?.input.focus();
+    const resolve = browser?.resolve;
+    if (browser) browser.resolve = null;
+    if (resolve) resolve(null);
+    browser?.input?.focus?.();
   }
 
-  function openBrowser(input, status) {
+  function openBrowser(input, status, resolve) {
     if (!dialog) buildDialog();
-    browser = { input, status, listing: null };
+    browser = { input, status, resolve: resolve || null, listing: null };
     dialog.showModal();
-    load(input.value && folderPickerValidSelection({ path: input.value }) ? input.value : "");
+    const start = input && input.value && folderPickerValidSelection({ path: input.value }) ? input.value : "";
+    load(start);
+  }
+
+  // One folder, chosen either in the native panel or the in-app browser. Used by
+  // actions outside a path field (for example Set location in a detail panel).
+  async function pick(promptText) {
+    try {
+      const data = await askNative(promptText || "Choose a folder");
+      if (data.path) return data.path;
+      if (!data.remote) return null; // the owner cancelled
+    } catch {
+      // A failed panel still leaves a working chooser.
+    }
+    return new Promise((resolve) => openBrowser(null, null, resolve));
   }
 
   function setMessage(text, bad) {
@@ -250,8 +267,11 @@ function folderPickerValidSelection(state) {
   function useCurrent() {
     const path = browser?.listing?.path;
     if (!folderPickerValidSelection({ path })) return;
-    setPath(browser.input, path);
-    browser.status.textContent = "Chose " + path;
+    if (browser.input) setPath(browser.input, path);
+    if (browser.status) browser.status.textContent = "Chose " + path;
+    const resolve = browser.resolve;
+    browser.resolve = null;
+    if (resolve) resolve(path);
     closeDialog();
   }
 
@@ -279,5 +299,6 @@ function folderPickerValidSelection(state) {
     breadcrumb: folderPickerBreadcrumb,
     validSelection: folderPickerValidSelection,
     open: openBrowser,
+    pick,
   };
 })();

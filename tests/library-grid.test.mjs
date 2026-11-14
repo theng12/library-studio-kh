@@ -102,14 +102,17 @@ test("filters narrow the same list and never reorder or change the source", () =
   const before = items.map((x) => x.title);
   assert.deepEqual(titles(g.libraryGridFilter(items, {})), ["Andor", "Arrival", "Blade Runner 2049", "Coco", "Dune"]);
   assert.deepEqual(titles(g.libraryGridFilter(items, { query: "dune" })), ["Dune"]);
+  assert.deepEqual(titles(g.libraryGridFilter(items, { statuses: ["Missing"] })), ["Coco"]);
+  assert.deepEqual(titles(g.libraryGridFilter(items, { apps: ["Sonarr"] })), ["Andor", "Dune"]);
+  assert.deepEqual(titles(g.libraryGridFilter(items, { genres: ["sci-fi"] })), ["Arrival", "Blade Runner 2049"]);
+  assert.deepEqual(titles(g.libraryGridFilter(items, { years: ["2017"] })), ["Blade Runner 2049", "Coco"]);
+  assert.deepEqual(titles(g.libraryGridFilter(items, { apps: ["Radarr"], years: ["2017"] })),
+    ["Blade Runner 2049", "Coco"]);
+  assert.deepEqual(titles(g.libraryGridFilter(items, { query: "b", apps: ["Radarr"], years: ["2017"] })),
+    ["Blade Runner 2049"]);
+  // Old single-value filters still read as one-element arrays.
   assert.deepEqual(titles(g.libraryGridFilter(items, { status: "Missing" })), ["Coco"]);
   assert.deepEqual(titles(g.libraryGridFilter(items, { app: "Sonarr" })), ["Andor", "Dune"]);
-  assert.deepEqual(titles(g.libraryGridFilter(items, { genre: "sci-fi" })), ["Arrival", "Blade Runner 2049"]);
-  assert.deepEqual(titles(g.libraryGridFilter(items, { year: "2017" })), ["Blade Runner 2049", "Coco"]);
-  assert.deepEqual(titles(g.libraryGridFilter(items, { app: "Radarr", year: "2017" })),
-    ["Blade Runner 2049", "Coco"]);
-  assert.deepEqual(titles(g.libraryGridFilter(items, { query: "b", app: "Radarr", year: "2017" })),
-    ["Blade Runner 2049"]);
   assert.deepEqual(items.map((x) => x.title), before);
   assert.deepEqual(titles(g.libraryGridSort([{ title: "Zed" }, { title: "abe" }, { title: "10" }, { title: "9" }])),
     ["9", "10", "abe", "Zed"]);
@@ -123,16 +126,62 @@ test("result count and active filters read truthfully", () => {
   assert.equal(g.libraryGridCount(0, 5), "0 of 5 items");
   assert.equal(g.libraryGridActiveFilters({}), 0);
   assert.equal(g.libraryGridActiveFilters({ query: "dune" }), 0);
-  assert.equal(g.libraryGridActiveFilters({ status: "missing", year: "2017" }), 2);
+  assert.equal(g.libraryGridActiveFilters({ statuses: ["Missing", "Downloading"], years: ["2017"] }), 3);
 });
 
-test("filter options come only from the items on screen", () => {
+test("type tabs count the whole library, with Local counted as Movies", () => {
+  const g = load();
+  const localItem = { app: "Local", id: "/films/Film.mkv", title: "Film", status: "on-disk" };
+  const musicItem = { app: "Lidarr", id: 6, title: "Album", status: "copied", verified: "hash" };
+  const all = [...items, localItem, musicItem];
+  assert.deepEqual({ ...g.libraryGridTypeCounts(all) }, { "": 7, Movies: 4, TV: 2, Music: 1 });
+  assert.equal(g.libraryGridType(localItem), "Movies");
+  assert.deepEqual(titles(g.libraryGridFilter(all, { type: "TV" })), ["Andor", "Dune"]);
+  assert.deepEqual(titles(g.libraryGridFilter(all, { type: "Movies" })),
+    ["Arrival", "Blade Runner 2049", "Coco", "Film"]);
+  assert.deepEqual(titles(g.libraryGridFilter(all, { type: "Music" })), ["Album"]);
+  assert.deepEqual(Array.from(g.libraryGridTypeTabs(all, "TV"), (t) => [t.value, t.count, t.selected]), [
+    ["", 7, false], ["Movies", 4, false], ["TV", 2, true], ["Music", 1, false],
+  ]);
+});
+
+test("filter options come only from the items on screen, with counts", () => {
   const g = load();
   const options = g.libraryGridFilterOptions(items);
   assert.deepEqual(Array.from(options.statuses, (x) => x.value), ["Downloading", "Importing", "Missing", "Verified"]);
   assert.deepEqual(Array.from(options.apps, (x) => x.value), ["Radarr", "Sonarr"]);
   assert.deepEqual(Array.from(options.genres, (x) => x.value), ["Drama", "Mystery", "Sci-Fi", "Thriller"]);
   assert.deepEqual(Array.from(options.years, (x) => x.value), ["2022", "2021", "2017", "2016"]);
+  const count = (list, value) => list.find((x) => x.value === value)?.count;
+  assert.equal(count(options.statuses, "Verified"), 2);
+  assert.equal(count(options.statuses, "Missing"), 1);
+  assert.equal(count(options.apps, "Radarr"), 3);
+  assert.equal(count(options.apps, "Sonarr"), 2);
+  assert.equal(count(options.genres, "Drama"), 3);
+  assert.equal(count(options.years, "2017"), 2);
+});
+
+test("multi-select filters combine values and one value can be removed", () => {
+  const g = load();
+  // Within one field the values are OR-ed; fields are AND-ed.
+  assert.deepEqual(titles(g.libraryGridFilter(items, { statuses: ["Missing", "Downloading"] })), ["Coco", "Dune"]);
+  assert.deepEqual(titles(g.libraryGridFilter(items, { genres: ["sci-fi", "mystery"] })),
+    ["Arrival", "Blade Runner 2049"]);
+  assert.deepEqual(titles(g.libraryGridFilter(items, { apps: ["Radarr"], statuses: ["Missing", "Importing"] })),
+    ["Blade Runner 2049", "Coco"]);
+  // Removing a chip rebuilds the applied filters without that value.
+  const calls = [];
+  const page = g.libraryGridPage({
+    items,
+    filters: { statuses: ["Missing", "Downloading"] },
+    handlers: { onRemoveFilter: (next) => calls.push(next) },
+  });
+  const chips = byClass(page, "libgrid-chip");
+  assert.deepEqual(chips.map(text), ["Status: Missing ×", "Status: Downloading ×"]);
+  const remove = chips.find((chip) => text(chip).includes("Missing"));
+  byClass(remove, "libgrid-chip-remove")[0].fire("click");
+  assert.deepEqual([...calls[0].statuses], ["Downloading"]);
+  assert.equal(calls[0].type, "");
 });
 
 test("loading, empty, error and filtered states each name the next step", () => {
@@ -205,6 +254,41 @@ test("detail model carries proof, location and history newest first", () => {
   assert.equal(missing.history.length, 0);
 });
 
+test("the detail offers Set location and Open location, disabled without a path", () => {
+  const g = load();
+  const calls = [];
+  const handlers = {
+    onSetLocation: (detail) => calls.push(["set", detail.title, detail.location.path]),
+    onOpenLocation: (detail) => calls.push(["open", detail.title]),
+  };
+  const page = g.libraryGridPage({ items, filters: {}, selected: "Radarr:1", handlers });
+  const panel = byClass(page, "libgrid-detail")[0];
+  const set = byClass(panel, "libgrid-set-location")[0];
+  const open = byClass(panel, "libgrid-open-location")[0];
+  assert.equal(set.textContent, "Set location");
+  assert.equal(open.textContent, "Open location");
+  assert.equal(set.type, "button");
+  assert.equal(open.type, "button");
+  set.fire("click");
+  open.fire("click");
+  assert.deepEqual(calls, [
+    ["set", "Arrival", "/Volumes/NAS-1/Films/Arrival (2016)"],
+    ["open", "Arrival"],
+  ]);
+
+  const noPath = g.libraryGridPage({ items, filters: {}, selected: "Radarr:4", handlers });
+  const panel2 = byClass(noPath, "libgrid-detail")[0];
+  const open2 = byClass(panel2, "libgrid-open-location")[0];
+  assert.equal(open2.disabled, true, "Open location needs a path");
+  const reason = byClass(panel2, "libgrid-location-reason")[0];
+  assert.match(text(reason), /No storage location recorded yet/);
+  assert.equal(open2.getAttribute("aria-describedby"), reason.id);
+  assert.equal(open2.title, reason.textContent);
+  byClass(panel2, "libgrid-set-location")[0].fire("click");
+  assert.deepEqual(calls[2].slice(0, 2), ["set", "Coco"], "Set location is still offered");
+  assert.equal(calls.length, 3, "a disabled Open location fires nothing");
+});
+
 test("the page shows the count, the selected detail and working state actions", () => {
   const g = load();
   const calls = [];
@@ -256,12 +340,16 @@ test("search, view, selection and the Filters panel call their handlers", () => 
   byClass(page, "libgrid-card")[0].fire("click");
   assert.deepEqual(calls.shift(), ["select", "Sonarr:2"]);
 
-  const selects = byTag(page, "select");
-  assert.equal(selects.length, 4);
-  const statusSelect = selects[0];
-  statusSelect.value = "Missing";
-  statusSelect.fire("change");
-  assert.deepEqual(calls.shift(), ["change", { status: "Missing" }]);
+  const groups = byClass(page, "libgrid-filter-group");
+  assert.equal(groups.length, 4, "one checkbox group per field");
+  assert.deepEqual(groups.map((group) => text(byTag(group, "legend")[0])), ["Status", "App", "Genre", "Year"]);
+  const missingBox = byTag(page, "input").find((box) => box.type === "checkbox" && box.value === "Missing");
+  missingBox.checked = true;
+  missingBox.fire("change");
+  const change = calls.shift();
+  assert.equal(change[0], "change");
+  assert.deepEqual([...change[1].statuses], ["Missing"]);
+  assert.equal(change[1].query, "");
   byClass(page, "libgrid-apply")[0].fire("click");
   assert.deepEqual(calls.shift(), ["apply"]);
   byClass(page, "libgrid-reset")[0].fire("click");
@@ -272,11 +360,54 @@ test("the Filters panel shows a draft that differs from the applied filters", ()
   const g = load();
   const page = g.libraryGridPage({ items, filters: {}, draft: { status: "Missing" }, filtersOpen: true, handlers: {} });
   assert.equal(byClass(page, "libgrid-count").map(text)[0], "5 items", "count follows applied filters");
-  assert.equal(byTag(page, "select")[0].value, "Missing");
+  const boxes = byTag(page, "input").filter((box) => box.type === "checkbox");
+  assert.equal(boxes.find((box) => box.value === "Missing").checked, true, "the draft value is ticked");
+  assert.equal(boxes.find((box) => box.value === "Downloading").checked, false);
   assert.equal(byClass(page, "libgrid-filters-toggle")[0].textContent, "Filters", "no applied filters yet");
   const applied = g.libraryGridPage({ items, filters: { status: "Missing" }, filtersOpen: false, handlers: {} });
   assert.equal(byClass(applied, "libgrid-filters-toggle")[0].textContent, "Filters · 1");
   assert.equal(byClass(applied, "libgrid-count").map(text)[0], "1 of 5 items");
+});
+
+test("active chips and the result count reflect the applied filters", () => {
+  const g = load();
+  const calls = [];
+  const filters = { query: "coco", type: "Movies", statuses: ["Missing"], apps: ["Radarr"] };
+  const page = g.libraryGridPage({ items, filters, handlers: { onRemoveFilter: (next) => calls.push(next) } });
+  assert.equal(byClass(page, "libgrid-count").map(text)[0], "1 of 5 items");
+  const labels = byClass(page, "libgrid-chip-label").map(text);
+  assert.deepEqual(labels, ["Search: coco", "Type: Movies", "Status: Missing", "App: Radarr"]);
+  for (const remove of byClass(page, "libgrid-chip-remove")) {
+    assert.match(remove.getAttribute("aria-label"), /^Remove /);
+    assert.equal(remove.type, "button");
+  }
+  const typeChip = byClass(page, "libgrid-chip").find((chip) => text(chip).includes("Type: Movies"));
+  byClass(typeChip, "libgrid-chip-remove")[0].fire("click");
+  assert.equal(calls[0].type, "");
+  assert.deepEqual([...calls[0].statuses], ["Missing"], "other applied values are kept");
+});
+
+test("type tabs are buttons with counts, aria-selected and arrow-key movement", () => {
+  const g = load();
+  const calls = [];
+  const page = g.libraryGridPage({ items, filters: { type: "Movies" }, handlers: { onType: (v) => calls.push(v) } });
+  const tabs = byClass(page, "libgrid-tab");
+  assert.equal(tabs.length, 4);
+  assert.deepEqual(tabs.map((tab) => tab.getAttribute("role")), ["tab", "tab", "tab", "tab"]);
+  assert.deepEqual(tabs.map((tab) => tab.getAttribute("aria-label")),
+    ["Show all, 5 items", "Movies, 3 items", "TV, 2 items", "Music, 0 items"]);
+  assert.deepEqual(tabs.map((tab) => tab.getAttribute("aria-selected")), ["false", "true", "false", "false"]);
+  assert.deepEqual(tabs.map((tab) => tab.tabIndex), [-1, 0, -1, -1], "the active tab is the only stop");
+  const tablist = byTag(page, "div").find((node) => node.getAttribute("role") === "tablist");
+  assert.equal(tablist.getAttribute("aria-label"), "Library type");
+  let prevented = 0;
+  tabs[1].fire("keydown", { key: "ArrowRight", preventDefault: () => { prevented += 1; } });
+  assert.equal(prevented, 1);
+  assert.deepEqual(calls, ["TV"]);
+  tabs[0].fire("keydown", { key: "ArrowLeft", preventDefault() {} });
+  assert.deepEqual(calls, ["TV", "Music"], "arrows wrap around the row");
+  tabs[2].fire("click");
+  assert.deepEqual(calls, ["TV", "Music", "TV"]);
 });
 
 test("an unproven copy can be verified in place and shows the result", async () => {

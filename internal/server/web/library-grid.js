@@ -8,7 +8,9 @@
  *
  *   libraryGridPage({
  *     items,          // snapshot items
- *     filters,        // applied filters: { query, status, app, genre, year }
+ *     filters,        // applied filters: { query, type,
+ *                     //   statuses: [], apps: [], genres: [], years: [] }
+ *     type,           // optional override for filters.type ("" | Movies | TV | Music)
  *     draft,          // values shown in the Filters panel; defaults to filters
  *     view,           // "grid" (default) | "list"
  *     selected,       // libraryGridKey() of the item whose detail shows
@@ -16,15 +18,20 @@
  *     posterURL,      // optional item -> address, when posters are served over HTTP
  *     handlers: { onSearch(value), onFilterChange(nextDraft), onToggleFilters(),
  *                 onApply(), onReset(), onView("grid"|"list"), onSelect(key|null),
- *                 onRetry(), onFindAndAdd() },
+ *                 onType(""|"Movies"|"TV"|"Music"), onSetLocation(detail),
+ *                 onOpenLocation(detail), onRetry(), onFindAndAdd() },
  *   }) -> element
+ *
+ * Old single-value filters ({ status, app, genre, year }) are still accepted and
+ * read as one-element arrays.
  *
  * Pure model functions need no DOM: libraryGridKey, libraryGridStatus,
  * libraryGridMeta, libraryGridPoster, libraryGridLocation,
  * libraryGridVerification, libraryGridHistory, libraryGridDetail,
- * libraryGridFilter, libraryGridSort, libraryGridCount,
- * libraryGridActiveFilters, libraryGridFilterOptions, libraryGridEmpty,
- * libraryGridProblems.
+ * libraryGridType, libraryGridTypeCounts, libraryGridTypeTabs,
+ * libraryGridFilter, libraryGridFilterNormalize, libraryGridSort,
+ * libraryGridCount, libraryGridActiveFilters, libraryGridChips,
+ * libraryGridFilterOptions, libraryGridEmpty, libraryGridProblems.
  *
  * Honesty rules: a copy never reads "verified" without `verified` proof; a
  * missing location, time or metadata says so instead of going blank.
@@ -201,15 +208,73 @@ function libraryGridDetail(item, posterURL) {
   };
 }
 
+// The type tab a title belongs to. Local files live in the films/series folder,
+// and the library's own wording puts them under Movies.
+function libraryGridType(item) {
+  const app = String(item?.app || "");
+  if (app === "Radarr" || app === "Local") return "Movies";
+  if (app === "Sonarr") return "TV";
+  if (app === "Lidarr") return "Music";
+  return "";
+}
+
+// Tabs count the whole library, never the filtered subset.
+function libraryGridTypeCounts(items) {
+  const counts = { "": 0, Movies: 0, TV: 0, Music: 0 };
+  for (const item of items || []) {
+    counts[""] += 1;
+    const type = libraryGridType(item);
+    if (type) counts[type] += 1;
+  }
+  return counts;
+}
+
+function libraryGridTypeTabs(items, active = "") {
+  const counts = libraryGridTypeCounts(items);
+  return [["", "Show all"], ["Movies", "Movies"], ["TV", "TV"], ["Music", "Music"]].map(([value, label]) => ({
+    value,
+    label,
+    count: counts[value],
+    selected: value === String(active || ""),
+  }));
+}
+
+// Filters arrived as one value per field before 0.7.18; the model now holds
+// arrays. Both shapes normalise here so an old saved filter keeps working.
+function libraryGridFilterList(value) {
+  if (Array.isArray(value)) return value.map((v) => String(v)).filter(Boolean);
+  const one = String(value ?? "").trim();
+  return one ? [one] : [];
+}
+
+function libraryGridFilterNormalize(filters = {}) {
+  const merged = (plural, single) =>
+    [...new Set([...libraryGridFilterList(filters[plural]), ...libraryGridFilterList(filters[single])])];
+  return {
+    query: String(filters.query || ""),
+    type: String(filters.type || ""),
+    statuses: merged("statuses", "status"),
+    apps: merged("apps", "app"),
+    genres: merged("genres", "genre"),
+    years: merged("years", "year"),
+  };
+}
+
 function libraryGridFilter(items, filters = {}) {
-  const query = String(filters.query || "").trim().toLocaleLowerCase();
+  const f = libraryGridFilterNormalize(filters);
+  const query = f.query.trim().toLocaleLowerCase();
+  const statuses = new Set(f.statuses);
+  const apps = new Set(f.apps);
+  const genres = new Set(f.genres.map((g) => g.toLocaleLowerCase()));
+  const years = new Set(f.years);
   return (items || []).filter((item) =>
     (!query || String(item.title || "").toLocaleLowerCase().includes(query)) &&
+    (!f.type || libraryGridType(item) === f.type) &&
     // The full status text: "verified" and "not verified" are different filters.
-    (!filters.status || libraryGridStatus(item).label === filters.status) &&
-    (!filters.app || item.app === filters.app) &&
-    (!filters.genre || libraryGridGenres(item).some((g) => g.toLocaleLowerCase() === String(filters.genre).toLocaleLowerCase())) &&
-    (!filters.year || String(item.year || "") === String(filters.year)));
+    (!statuses.size || statuses.has(libraryGridStatus(item).label)) &&
+    (!apps.size || apps.has(item.app)) &&
+    (!genres.size || libraryGridGenres(item).some((g) => genres.has(g.toLocaleLowerCase()))) &&
+    (!years.size || years.has(String(item.year || ""))));
 }
 
 // Title is the default order; the list's column headers can ask for status.
@@ -227,26 +292,52 @@ function libraryGridCount(shown, total) {
 }
 
 function libraryGridActiveFilters(filters = {}) {
-  return ["status", "app", "genre", "year"].filter((key) => String(filters[key] || "").trim()).length;
+  const f = libraryGridFilterNormalize(filters);
+  return f.statuses.length + f.apps.length + f.genres.length + f.years.length;
 }
 
+// One chip per applied value, plus the query and the type. The caller removes it
+// by rebuilding the applied filter object.
+function libraryGridChips(filters = {}) {
+  const f = libraryGridFilterNormalize(filters);
+  const chips = [];
+  if (f.query.trim()) chips.push({ field: "query", value: f.query, label: "Search: " + f.query.trim() });
+  if (f.type) chips.push({ field: "type", value: f.type, label: "Type: " + f.type });
+  const group = (field, name, values) => {
+    for (const value of values) chips.push({ field, value, label: name + ": " + value });
+  };
+  group("statuses", "Status", f.statuses);
+  group("apps", "App", f.apps);
+  group("genres", "Genre", f.genres);
+  group("years", "Year", f.years);
+  return chips;
+}
+
+// Every distinct value the library actually holds, with how many items carry it.
 function libraryGridFilterOptions(items) {
-  const statuses = new Map(), apps = new Set(), genres = new Map(), years = new Set();
+  const statuses = new Map(), apps = new Map(), genres = new Map(), years = new Map();
+  const bump = (map, key) => map.set(key, (map.get(key) || 0) + 1);
   for (const item of items || []) {
-    const status = libraryGridStatus(item);
-    statuses.set(status.label, status.label); // every distinct status, exactly as shown
-    if (item.app) apps.add(item.app);
-    for (const genre of libraryGridGenres(item)) genres.set(genre.toLocaleLowerCase(), genre);
+    bump(statuses, libraryGridStatus(item).label); // every distinct status, exactly as shown
+    if (item.app) bump(apps, item.app);
+    const seen = new Set();
+    for (const genre of libraryGridGenres(item)) {
+      const key = genre.toLocaleLowerCase();
+      seen.add(key);
+      if (!genres.has(key)) genres.set(key, { label: genre, count: 0 });
+    }
+    for (const key of seen) genres.get(key).count += 1;
     const year = Number(item.year);
-    if (Number.isFinite(year) && year > 0) years.add(year);
+    if (Number.isFinite(year) && year > 0) bump(years, String(year));
   }
   const byLabel = (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base", numeric: true });
   return {
-    statuses: [...statuses].map(([value, label]) => ({ value, label })).sort(byLabel),
-    apps: [...apps].sort((a, b) => a.localeCompare(b)).map((app) => ({ value: app, label: app })),
-    genres: [...genres.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
-      .map((genre) => ({ value: genre, label: genre })),
-    years: [...years].sort((a, b) => b - a).map((year) => ({ value: String(year), label: String(year) })),
+    statuses: [...statuses].map(([value, count]) => ({ value, label: value, count })).sort(byLabel),
+    apps: [...apps].map(([value, count]) => ({ value, label: value, count }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    genres: [...genres.values()].map(({ label, count }) => ({ value: label, label, count })).sort(byLabel),
+    years: [...years].map(([value, count]) => ({ value, label: value, count }))
+      .sort((a, b) => Number(b.value) - Number(a.value)),
   };
 }
 
@@ -276,6 +367,8 @@ function libraryGridProblems(problems) {
 }
 
 // ---- DOM builders ----
+
+let libraryGridIdSeq = 0;
 
 function libraryGridNode(tag, text, className) {
   const n = document.createElement(tag);
@@ -433,6 +526,27 @@ function libraryGridDetailPanel(detail, handlers = {}) {
       : "Needs proof — no verification recorded yet", detail.verification.verified ? null : "is-problem");
   }
   aside.append(facts);
+  // Storage controls only report the request; the host owns the dialog and the
+  // file-system work, so this module never fetches or opens anything.
+  const locationActions = libraryGridNode("div", null, "libgrid-detail-actions");
+  const setLocation = libraryGridNode("button", "Set location", "libgrid-set-location");
+  setLocation.type = "button";
+  setLocation.addEventListener("click", () => handlers.onSetLocation?.(detail));
+  const openLocation = libraryGridNode("button", "Open location", "libgrid-open-location");
+  openLocation.type = "button";
+  locationActions.append(setLocation, openLocation);
+  if (detail.location.path) {
+    openLocation.addEventListener("click", () => handlers.onOpenLocation?.(detail));
+  } else {
+    // A disabled control still says why, so it is not a silent dead end.
+    openLocation.disabled = true;
+    const reason = libraryGridNode("p", "No storage location recorded yet — set one first.", "libgrid-location-reason");
+    reason.id = "libgrid-location-reason-" + (++libraryGridIdSeq);
+    openLocation.setAttribute("aria-describedby", reason.id);
+    openLocation.title = reason.textContent;
+    locationActions.append(reason);
+  }
+  aside.append(locationActions);
   if (!detail.local && (detail.verification.verified || detail.verification.hash || detail.source)) {
     // Proof values are detail on demand, not banner copy.
     const proof = document.createElement("details");
@@ -550,6 +664,41 @@ function libraryGridDetailPanel(detail, handlers = {}) {
   return aside;
 }
 
+// Type tabs count the whole library; the active tab is the only one in the Tab
+// order, and left/right arrows move between them.
+function libraryGridTabsRow(options) {
+  const row = libraryGridNode("div", null, "libgrid-tabs");
+  row.setAttribute("role", "tablist");
+  row.setAttribute("aria-label", "Library type");
+  const tabs = libraryGridTypeTabs(options.items || [], options.type);
+  const buttons = tabs.map((tab) => {
+    const button = libraryGridNode("button", null, "libgrid-tab");
+    button.type = "button";
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", tab.selected ? "true" : "false");
+    button.tabIndex = tab.selected ? 0 : -1;
+    button.setAttribute("aria-label", tab.label + ", " + tab.count + (tab.count === 1 ? " item" : " items"));
+    button.append(
+      libraryGridNode("span", tab.label, "libgrid-tab-label"),
+      libraryGridNode("span", String(tab.count), "libgrid-tab-count"),
+    );
+    button.addEventListener("click", () => options.handlers?.onType?.(tab.value));
+    row.append(button);
+    return button;
+  });
+  buttons.forEach((button, index) => {
+    button.addEventListener("keydown", (event) => {
+      const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+      if (!step) return;
+      event.preventDefault?.();
+      const next = (index + step + tabs.length) % tabs.length;
+      buttons[next].focus?.();
+      options.handlers?.onType?.(tabs[next].value);
+    });
+  });
+  return row;
+}
+
 function libraryGridToolbar(options) {
   const bar = libraryGridNode("div", null, "libgrid-toolbar");
   const search = document.createElement("input");
@@ -569,7 +718,6 @@ function libraryGridToolbar(options) {
   filters.setAttribute("aria-expanded", options.filtersOpen ? "true" : "false");
   filters.addEventListener("click", () => options.handlers?.onToggleFilters?.());
   bar.append(filters);
-  bar.append(libraryGridNode("span", options.count, "libgrid-count"));
 
   const views = libraryGridNode("div", null, "libgrid-views");
   for (const [value, label] of [["grid", "Cards"], ["list", "Table"]]) {
@@ -580,43 +728,74 @@ function libraryGridToolbar(options) {
     views.append(button);
   }
   bar.append(views);
+
+  // Result count and one removable chip per applied value, on its own line.
+  const line = libraryGridNode("div", null, "libgrid-filterline");
+  line.append(libraryGridNode("span", options.count, "libgrid-count"));
+  for (const chip of libraryGridChips(options.filters)) {
+    const el = libraryGridNode("span", null, "libgrid-chip");
+    el.append(libraryGridNode("span", chip.label, "libgrid-chip-label"));
+    const remove = libraryGridNode("button", "×", "libgrid-chip-remove");
+    remove.type = "button";
+    remove.setAttribute("aria-label", "Remove " + chip.label);
+    remove.addEventListener("click", () => {
+      const next = libraryGridFilterNormalize(options.filters);
+      if (chip.field === "query") next.query = "";
+      else if (chip.field === "type") next.type = "";
+      else next[chip.field] = next[chip.field].filter((value) => value !== chip.value);
+      options.handlers?.onRemoveFilter?.(next);
+    });
+    el.append(remove);
+    line.append(el);
+  }
+  bar.append(line);
   return bar;
 }
 
-function libraryGridSelect(labelText, name, allLabel, options, value, onChange) {
-  const label = libraryGridNode("label", labelText, "libgrid-filter");
-  const select = document.createElement("select");
-  select.setAttribute("name", name);
-  select.setAttribute("aria-label", labelText);
-  const choices = options.slice();
-  // A filter value whose item left the list still shows instead of blanking.
-  if (value && !choices.some((option) => option.value === value)) choices.push({ value, label: value });
-  const all = document.createElement("option");
-  all.value = "";
-  all.textContent = allLabel;
-  select.append(all);
-  for (const option of choices) {
-    const el = document.createElement("option");
-    el.value = option.value;
-    el.textContent = option.label;
-    if (option.value === value) el.selected = true;
-    select.append(el);
+// A checkbox group built only from values the library actually holds.
+function libraryGridCheckGroup(title, name, choices, selected, onChange) {
+  const group = document.createElement("fieldset");
+  group.className = "libgrid-filter-group";
+  const legend = document.createElement("legend");
+  legend.textContent = title;
+  group.append(legend);
+  if (!choices.length) {
+    group.append(libraryGridNode("p", "No values in this library.", "is-muted"));
+    return group;
   }
-  select.value = value || "";
-  select.addEventListener("change", () => onChange(select.value));
-  label.append(select);
-  return label;
+  for (const choice of choices) {
+    const label = libraryGridNode("label", null, "libgrid-check");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.name = name;
+    box.value = choice.value;
+    box.checked = selected.includes(choice.value);
+    box.addEventListener("change", () => {
+      const next = box.checked
+        ? [...selected, choice.value]
+        : selected.filter((value) => value !== choice.value);
+      onChange(next);
+    });
+    label.append(box, libraryGridNode("span", choice.label, "libgrid-check-label"));
+    if (Number.isFinite(choice.count)) {
+      label.append(libraryGridNode("span", String(choice.count), "libgrid-check-count"));
+    }
+    group.append(label);
+  }
+  return group;
 }
 
 function libraryGridFilterPanel(options) {
   const panel = libraryGridNode("div", null, "libgrid-filters");
-  const draft = options.draft || {};
+  panel.setAttribute("role", "group");
+  panel.setAttribute("aria-label", "Filters");
+  const draft = libraryGridFilterNormalize(options.draft || {});
   const choices = libraryGridFilterOptions(options.items || []);
-  const changed = (name, value) => options.handlers?.onFilterChange?.({ ...draft, [name]: value });
-  panel.append(libraryGridSelect("Status", "status", "All statuses", choices.statuses, draft.status || "", (v) => changed("status", v)));
-  panel.append(libraryGridSelect("App", "app", "All apps", choices.apps, draft.app || "", (v) => changed("app", v)));
-  panel.append(libraryGridSelect("Genre", "genre", "All genres", choices.genres, draft.genre || "", (v) => changed("genre", v)));
-  panel.append(libraryGridSelect("Year", "year", "All years", choices.years, draft.year || "", (v) => changed("year", v)));
+  const changed = (name, values) => options.handlers?.onFilterChange?.({ ...draft, [name]: values });
+  panel.append(libraryGridCheckGroup("Status", "statuses", choices.statuses, draft.statuses, (v) => changed("statuses", v)));
+  panel.append(libraryGridCheckGroup("App", "apps", choices.apps, draft.apps, (v) => changed("apps", v)));
+  panel.append(libraryGridCheckGroup("Genre", "genres", choices.genres, draft.genres, (v) => changed("genres", v)));
+  panel.append(libraryGridCheckGroup("Year", "years", choices.years, draft.years, (v) => changed("years", v)));
   const actions = libraryGridNode("div", null, "libgrid-filter-actions");
   const apply = libraryGridNode("button", "Apply", "libgrid-apply");
   apply.type = "button";
@@ -648,20 +827,30 @@ function libraryGridStateBlock(state, handlers = {}) {
 
 function libraryGridPage(options = {}) {
   const items = Array.isArray(options.items) ? options.items : [];
-  const filters = options.filters || {};
+  const filters = libraryGridFilterNormalize(options.filters || {});
+  if (options.type != null) filters.type = String(options.type || "");
   const handlers = options.handlers || {};
   const view = options.view === "list" ? "list" : "grid";
   const shown = libraryGridSort(libraryGridFilter(items, filters), options.sort);
 
   const page = libraryGridNode("div", null, "libgrid-page");
-  page.append(libraryGridToolbar({
+  page.append(libraryGridTabsRow({ items, type: filters.type, handlers }));
+  const toolbar = libraryGridToolbar({
     filters,
     count: libraryGridCount(shown.length, items.length),
     view,
     filtersOpen: options.filtersOpen,
     handlers,
-  }));
-  if (options.filtersOpen) page.append(libraryGridFilterPanel({ items, draft: options.draft || filters, handlers }));
+  });
+  // The panel lives inside the toolbar so it can pop over it on wide screens.
+  if (options.filtersOpen) {
+    toolbar.append(libraryGridFilterPanel({
+      items,
+      draft: options.draft ? libraryGridFilterNormalize(options.draft) : filters,
+      handlers,
+    }));
+  }
+  page.append(toolbar);
 
   const problems = libraryGridProblems(options.problems);
   if (problems) page.append(libraryGridNode("p", problems, "libgrid-problems is-problem"));

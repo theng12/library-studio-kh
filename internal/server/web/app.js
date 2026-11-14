@@ -148,7 +148,7 @@ function groupMessages(list) {
 }
 
 const has = (title, q) => title.toLowerCase().includes(q.trim().toLowerCase());
-const TYPE = { Sonarr: "TV", Radarr: "Film", Lidarr: "Music" };
+const TYPE = { Sonarr: "TV", Radarr: "Movies", Lidarr: "Music" };
 
 // One line per real event, newest first. Events come from the same snapshot the
 // other pages use, so Activity can never claim something the item record denies.
@@ -446,20 +446,30 @@ $("#details").addEventListener("click", (ev) => { if (ev.target === ev.currentTa
 // Torrent files are chosen by picker or drop, listed as named chips, and the
 // Add button stays disabled with its reason until the input is valid.
 const torrentFiles = [];
+// One plain reason, checked line by line; a wrong line is named, never skipped.
 function torrentInputReason(links, count) {
-  if (count > 0) return "";
-  if (String(links || "").trim()) return "";
+  const lines = String(links || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^magnet:\?/i.test(lines[i]) && !/^https?:\/\/\S+$/i.test(lines[i])) {
+      return "Line " + (i + 1) + " isn’t a magnet or web link.";
+    }
+  }
+  if (lines.length || count > 0) return "";
   return "Paste a link or choose at least one .torrent file.";
+}
+function torrentReadyText(links, count) {
+  const n = String(links || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length;
+  const parts = [
+    n ? n + (n === 1 ? " link" : " links") : "",
+    count ? count + (count === 1 ? " file" : " files") : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" and ") + " ready." : "";
 }
 function torrentReady() {
   const links = $("#t-links").value, btn = $("#torrent-form button[type=submit]"), line = $("#t-reason");
   const reason = torrentInputReason(links, torrentFiles.length);
   if (btn) { btn.disabled = !!reason; btn.title = reason; }
-  if (line) {
-    line.textContent = reason || (torrentFiles.length
-      ? torrentFiles.length + (torrentFiles.length === 1 ? " file chosen" : " files chosen")
-      : "Links ready.");
-  }
+  if (line) line.textContent = reason || torrentReadyText(links, torrentFiles.length);
 }
 function renderTorrentChips() {
   const box = $("#t-chips");
@@ -552,12 +562,29 @@ function storeLibraryView(view) {
   try { localStorage.setItem("library-view", view === "list" ? "table" : "cards"); } catch {}
 }
 
-const lib = { items: [], problems: [], metadata: "", loading: false, error: "", filters: {}, draft: {}, sort: { key: "title", dir: "asc" }, selected: null, filtersOpen: false, view: storedLibraryView() };
+// Filters and the type tab are remembered across launches; a damaged saved
+// value falls back to showing everything.
+function storedLibraryFilters() {
+  try {
+    const raw = JSON.parse(localStorage.getItem("library-filters") || "{}");
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  } catch { return {}; }
+}
+function storeLibraryFilters(filters) {
+  try { localStorage.setItem("library-filters", JSON.stringify(filters || {})); } catch {}
+}
+function applyLibraryFilters(next) {
+  lib.filters = next || {};
+  storeLibraryFilters(lib.filters);
+}
+
+const lib = { items: [], problems: [], metadata: "", notice: "", loading: false, error: "", filters: storedLibraryFilters(), draft: {}, sort: { key: "title", dir: "asc" }, selected: null, filtersOpen: false, view: storedLibraryView() };
 let libraryLoading = false;
 
 async function loadLibrary() {
   if (libraryLoading) return;
   libraryLoading = true;
+  lib.notice = "";
   lib.loading = !lib.items.length;
   if (!lib.items.length) renderLibraryPage();
   try {
@@ -583,6 +610,7 @@ function renderLibraryPage() {
   const searchFocus = focused?.id === "lib-q" ? focused.selectionStart : null;
   const rowFocus = focused?.closest?.("[data-key]")?.dataset.key || null;
   const wasFilters = focused?.classList?.contains("libgrid-filters-toggle") || false;
+  const wasTab = focused?.classList?.contains("libgrid-tab") || false;
   const unverified = lib.items.filter((item) =>
     /^(copied|moved)$/.test(item.status || "") && !(item.verified === "hash" || item.verified === "size")).length;
   const localCount = lib.items.filter((item) => item.app === "Local").length;
@@ -594,15 +622,15 @@ function renderLibraryPage() {
     + (lib.metadata ? " " + lib.metadata : "")
     + (unverified ? " " + unverified + (unverified === 1 ? " imported copy has" : " imported copies have") + " no verification proof yet — open one to see whether a local copy is tracked." : "");
   const notice = $("#browse-notice");
-  const groupedProblems = groupMessages(lib.problems);
-  notice.hidden = !groupedProblems.length;
-  notice.textContent = groupedProblems.join(" ");
+  const notices = [lib.notice, ...groupMessages(lib.problems)].filter(Boolean);
+  notice.hidden = !notices.length;
+  notice.textContent = notices.join(" ");
   const selected = lib.items.find((item) => libraryGridKey(item) === lib.selected) || null;
   const shownSelected = libraryGridFilter(lib.items, lib.filters).find((item) => libraryGridKey(item) === lib.selected) || null;
   host.replaceChildren(libraryGridPage({
     items: lib.items,
     filters: lib.filters,
-    draft: { ...lib.filters, ...lib.draft },
+    draft: lib.filtersOpen ? lib.draft : lib.filters,
     view: lib.view,
     sort: lib.sort,
     selected: lib.selected,
@@ -613,11 +641,45 @@ function renderLibraryPage() {
     filtersOpen: lib.filtersOpen,
     posterURL: (item) => item.posterPath ? "/api/poster?path=" + encodeURIComponent(item.posterPath) : "",
     handlers: {
-      onSearch: (value) => { lib.filters = { ...lib.filters, query: value }; renderLibraryPage(); },
-      onFilterChange: (next) => { const { query, ...rest } = next || {}; lib.draft = rest; renderLibraryPage(); },
-      onToggleFilters: () => { lib.filtersOpen = !lib.filtersOpen; renderLibraryPage(); },
-      onApply: () => { lib.filters = { ...lib.filters, ...lib.draft }; lib.draft = {}; lib.filtersOpen = false; renderLibraryPage(); },
-      onReset: () => { lib.filters = {}; lib.draft = {}; renderLibraryPage(); },
+      onSearch: (value) => { applyLibraryFilters({ ...lib.filters, query: value }); renderLibraryPage(); },
+      onType: (value) => { applyLibraryFilters({ ...lib.filters, type: value || "" }); lib.draft = {}; renderLibraryPage(); },
+      onFilterChange: (next) => { lib.draft = next || {}; renderLibraryPage(); },
+      onToggleFilters: () => {
+        lib.filtersOpen = !lib.filtersOpen;
+        if (lib.filtersOpen) lib.draft = { ...lib.filters };
+        renderLibraryPage();
+      },
+      onApply: () => { applyLibraryFilters(lib.draft); lib.draft = {}; lib.filtersOpen = false; renderLibraryPage(); },
+      onReset: () => { applyLibraryFilters({}); lib.draft = {}; renderLibraryPage(); },
+      onRemoveFilter: (next) => { applyLibraryFilters(next); lib.draft = {}; renderLibraryPage(); },
+      onSetLocation: async (detail) => {
+        const item = lib.items.find((row) => libraryGridKey(row) === detail.key);
+        if (!item || item.app === "Local") return;
+        const path = await window.folderPicker?.pick?.("Choose the folder that holds " + (item.title || "this title"));
+        if (!path) return;
+        try {
+          await api("/api/library/location", { app: item.app, id: Number(item.mediaId || item.id), path });
+          await loadLibrary();
+          lib.notice = "Location saved for " + (item.title || "this title") + ". The file check now uses that folder.";
+          renderLibraryPage();
+        } catch (e) {
+          lib.notice = e.message;
+          renderLibraryPage();
+        }
+      },
+      onOpenLocation: async (detail) => {
+        if (!detail.location?.path) return;
+        try {
+          const r = await api("/api/library/open-location", { path: detail.location.path });
+          if (r.remote) {
+            lib.notice = "Open the folder on the Mac that holds your library; this page is on another device.";
+            renderLibraryPage();
+          }
+        } catch (e) {
+          lib.notice = e.message;
+          renderLibraryPage();
+        }
+      },
       onView: (view) => {
         lib.view = view === "list" ? "list" : "grid";
         storeLibraryView(lib.view);
@@ -669,6 +731,8 @@ function renderLibraryPage() {
     host.querySelector('[data-key="' + CSS.escape(rowFocus) + '"]')?.focus();
   } else if (wasFilters) {
     host.querySelector(".libgrid-filters-toggle")?.focus();
+  } else if (wasTab) {
+    host.querySelector('.libgrid-tab[aria-selected="true"]')?.focus();
   }
 }
 
@@ -688,14 +752,31 @@ $("#library-host").addEventListener("keydown", (ev) => {
 
 $("#find-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const q = $("#find-q").value.trim(), type = $("#find-type").value, msg = $("#find-msg");
+  const q = $("#find-q").value.trim(), type = $("#find-type").value, msg = $("#find-msg"), count = $("#find-count");
   if (!q) { $("#find-q").focus(); return; }
-  msg.hidden = false; msg.textContent = "Searching…"; $("#found").hidden = true;
+  msg.hidden = false;
+  msg.dataset.state = "loading";
+  msg.textContent = "Searching Sonarr, Radarr and Lidarr for “" + q + "”…";
+  count.hidden = true;
+  $("#found").hidden = true;
   try {
     const r = await api("/api/find?q=" + encodeURIComponent(q));
     const items = r.items.filter((m) => !type || m.app === type);
-    msg.textContent = (items.length ? "" : "Nothing found for “" + q + "”. ") + (r.problems || []).join(" ");
-    msg.hidden = !msg.textContent;
+    const problems = (r.problems || []).filter(Boolean);
+    const where = type ? " in " + (TYPE[type] || type) : "";
+    if (items.length) {
+      msg.hidden = true;
+      msg.dataset.state = "";
+      count.hidden = false;
+      count.textContent = items.length + (items.length === 1 ? " result" : " results") + " for “" + q + "”" + where + "."
+        + (problems.length ? " Some sources didn’t answer: " + problems.join(" ") : "");
+    } else {
+      count.hidden = true;
+      msg.hidden = false;
+      msg.dataset.state = "empty";
+      msg.textContent = "No result for “" + q + "”" + where + ". Try a different title, or add a magnet link below."
+        + (problems.length ? " " + problems.join(" ") : "");
+    }
     $("#found").hidden = items.length === 0;
     $("#found tbody").replaceChildren(...items.map((m) => {
       let action = "In your library";
@@ -710,7 +791,12 @@ $("#find-form").addEventListener("submit", async (ev) => {
       }
       return row([titleCell(m), TYPE[m.app] || m.app, action], "found");
     }));
-  } catch (e) { msg.textContent = e.message; }
+  } catch (e) {
+    count.hidden = true;
+    msg.hidden = false;
+    msg.dataset.state = "error";
+    msg.textContent = "The search didn’t finish: " + e.message + " Try again.";
+  }
 });
 
 let pendingAdd = null;

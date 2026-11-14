@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="layout.css">
 <link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="library-ia.css">
 <link rel="stylesheet" href="folder-picker.css">
 <link rel="stylesheet" href="media.css">
 <link rel="stylesheet" href="movie-extras.css">
@@ -266,15 +267,16 @@
         <h1>Find &amp; add</h1>
         <p class="page-status">Sonarr, Radarr and Lidarr watch for it, or qBittorrent takes a link or torrent file directly.</p>
       </header>
-      <div class="page-body">
+      <div class="page-body find-body">
       <div class="panel">
         <div class="panel-head"><h2>Search</h2></div>
-        <form id="find-form" class="tools" role="search">
-          <label class="search">Title <input type="search" id="find-q" required maxlength="200" placeholder="e.g. a show, film or artist" aria-keyshortcuts="Meta+F Control+F"></label>
-          <label>Type <select id="find-type"><option value="">All</option><option value="Sonarr">TV</option><option value="Radarr">Films</option><option value="Lidarr">Music</option></select></label>
+        <form id="find-form" class="tools find-tools" role="search">
+          <label class="search">Title <input type="search" id="find-q" required maxlength="200" placeholder="e.g. a show, movie or artist" aria-keyshortcuts="Meta+F Control+F"></label>
+          <label class="find-type">Type <select id="find-type"><option value="">All</option><option value="Sonarr">TV</option><option value="Radarr">Movies</option><option value="Lidarr">Music</option></select></label>
           <button type="submit" class="primary">Find</button>
         </form>
-        <p id="find-msg" class="empty" role="status">Results show here.</p>
+        <p id="find-count" class="find-count" role="status" hidden></p>
+        <p id="find-msg" class="empty" role="status">Search Sonarr, Radarr and Lidarr by title. Results show here with one Add button each.</p>
         <table id="found" class="list" hidden>
           <thead><tr><th scope="col">Title</th><th scope="col">Type</th><th scope="col"><span class="sr">Action</span></th></tr></thead>
           <tbody></tbody>
@@ -317,7 +319,12 @@
         </div>
       </header>
       <div class="page-body">
-      <section class="card">
+      <div class="save-bar">
+        <button type="submit" form="cleanup-form" class="primary" id="cleanup-save">Save cleanup policy</button>
+        <p id="cleanup-save-msg" class="msg" role="status"></p>
+      </div>
+      <div id="cleanup-tabs">
+      <section class="card" id="cleanup-status-card">
         <div class="card-head"><h2>Cleanup status</h2><p>Preview verifies files and shows the next proposed action without changing them.</p></div>
         <div class="card-body">
           <p id="cleanup-msg" role="status"></p>
@@ -347,7 +354,6 @@
           <p class="muted">Must stay on this computer. The current resolved folder is shown in the status.</p>
         </details>
         <p id="cleanup-effect" class="cleanup-effect" role="status">A verified copy leaves the download folder after 3 days, Library’s _trash after 3 more, and the system Trash after 30.</p>
-        <div class="actions"><button type="submit" class="primary" id="cleanup-save">Save cleanup policy</button><p id="cleanup-save-msg" class="msg" role="status"></p></div>
       </form>
       <details class="card cleanup-companions" id="cleanup-companions">
         <summary>Companion app settings</summary>
@@ -361,9 +367,13 @@
       <div class="page">
         <header class="page-head">
           <div><h1>Settings</h1><p class="page-status" id="settings-status">Appearance previews at once; everything else applies when you save.</p></div>
-          <div class="page-actions"><span id="settings-save-msg" class="msg" role="status"></span><button type="submit" form="form" class="primary" id="settings-save">Save</button></div>
         </header>
         <div class="page-body">
+          <div class="save-bar">
+            <button type="submit" form="form" class="primary" id="settings-save">Save</button>
+            <span id="settings-save-msg" class="msg" role="status"></span>
+            <p class="save-bar-hint muted">One Save applies every tab; each switch says whether it is saved.</p>
+          </div>
           <form id="form" novalidate>
             <div id="settings-tabs"></div>
             <p id="form-msg" class="msg" role="status" hidden></p>

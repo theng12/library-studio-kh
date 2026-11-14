@@ -36,10 +36,11 @@ type Item struct {
 	SourcePath     string    `json:"sourcePath,omitempty"`
 	TargetVolume   string    `json:"targetVolume,omitempty"`
 	TargetPath     string    `json:"targetPath,omitempty"`
-	Verified       string    `json:"verified,omitempty"`     // hash | size | none
-	ProofHash      string    `json:"proofHash,omitempty"`    // first saved SHA-256, so the owner can compare it
-	DownloadHash   string    `json:"downloadHash,omitempty"` // the tracked download this proof belongs to
-	LocalCopy      bool      `json:"localCopy,omitempty"`    // a saved cleanup record tracks a local copy to verify
+	Verified       string    `json:"verified,omitempty"`       // hash | size | none
+	ProofHash      string    `json:"proofHash,omitempty"`      // first saved SHA-256, so the owner can compare it
+	DownloadHash   string    `json:"downloadHash,omitempty"`   // the tracked download this proof belongs to
+	LocalCopy      bool      `json:"localCopy,omitempty"`      // a saved cleanup record tracks a local copy to verify
+	LocationManual bool      `json:"locationManual,omitempty"` // the owner chose this folder, not the library app
 	VerifiedAt     time.Time `json:"verifiedAt,omitempty"`
 	PosterPath     string    `json:"posterPath,omitempty"`
 	Overview       string    `json:"overview,omitempty"`

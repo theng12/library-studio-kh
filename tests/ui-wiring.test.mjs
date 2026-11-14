@@ -143,3 +143,17 @@ test("a local file is matched in an in-app dialog, never a browser prompt", () =
   assert.match(app, /\/api\/localmedia\/match/);
   assert.doesNotMatch(app, /\bwindow\.(confirm|prompt|alert)\s*\(/);
 });
+
+test("library filters and type are remembered, and location actions are wired", () => {
+  const picker = readFileSync(new URL("../internal/server/web/folder-picker.js", import.meta.url), "utf8");
+  assert.match(app, /localStorage\.getItem\("library-filters"\)/);
+  assert.match(app, /localStorage\.setItem\("library-filters"/);
+  assert.match(app, /onType: \(value\) =>/);
+  assert.match(app, /onRemoveFilter: \(next\) =>/);
+  assert.match(app, /onSetLocation: async \(detail\)/);
+  assert.match(app, /onOpenLocation: async \(detail\)/);
+  assert.match(app, /\/api\/library\/location/);
+  assert.match(app, /\/api\/library\/open-location/);
+  assert.match(app, /window\.folderPicker\?\.pick\?\./);
+  assert.match(picker, /async function pick\(promptText\)/);
+});

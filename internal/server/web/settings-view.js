@@ -276,6 +276,55 @@ function mountSettingsTabs(host, doc = globalThis.document) {
   return { root, selectTab, savedFeedback };
 }
 
+// Mount existing blocks as tabs, so another page can share the Settings shell
+// without copying its card builder. Same markup, roles and arrow-key behaviour.
+function mountTabbed(host, tabs, label, doc = globalThis.document) {
+  if (!host || !tabs || !tabs.length) return null;
+  const tablist = settingsEl(doc, "div", { class: "tabs", role: "tablist", "aria-label": label });
+  const root = settingsEl(doc, "div", { class: "settings" }, tablist);
+  const buttons = new Map();
+  const panels = new Map();
+  function selectTab(id, focus) {
+    for (const [tabId, button] of buttons) {
+      const on = tabId === id;
+      button.setAttribute("aria-selected", on ? "true" : "false");
+      button.setAttribute("tabindex", on ? "0" : "-1");
+      panels.get(tabId).hidden = !on;
+      if (on && focus) button.focus();
+    }
+  }
+  for (const tab of tabs) {
+    const button = settingsEl(doc, "button", {
+      type: "button", class: "tab", role: "tab", id: "tab-" + tab.id,
+      "aria-controls": "panel-" + tab.id, "aria-selected": "false", tabindex: "-1", text: tab.label,
+    });
+    const panel = settingsEl(doc, "section", {
+      class: "tabpanel", role: "tabpanel", id: "panel-" + tab.id,
+      "aria-labelledby": "tab-" + tab.id, hidden: true,
+    });
+    panel.append(tab.node);
+    button.addEventListener("click", () => selectTab(tab.id));
+    button.addEventListener("keydown", (ev) => {
+      const index = tabs.findIndex((t) => t.id === tab.id);
+      let next = null;
+      if (ev.key === "ArrowRight") next = tabs[(index + 1) % tabs.length].id;
+      else if (ev.key === "ArrowLeft") next = tabs[(index - 1 + tabs.length) % tabs.length].id;
+      else if (ev.key === "Home") next = tabs[0].id;
+      else if (ev.key === "End") next = tabs[tabs.length - 1].id;
+      if (!next) return;
+      if (ev.preventDefault) ev.preventDefault();
+      selectTab(next, true);
+    });
+    tablist.append(button);
+    root.append(panel);
+    buttons.set(tab.id, button);
+    panels.set(tab.id, panel);
+  }
+  host.append(root);
+  selectTab(tabs[0].id);
+  return { root, selectTab };
+}
+
 if (typeof window !== "undefined") {
-  window.librarySettingsView = { SETTINGS_TABS, SETTINGS_CARDS, mountSettingsTabs };
+  window.librarySettingsView = { SETTINGS_TABS, SETTINGS_CARDS, mountSettingsTabs, mountTabbed };
 }

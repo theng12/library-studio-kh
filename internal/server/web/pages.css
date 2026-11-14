@@ -612,3 +612,58 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
 }
 .libgrid-path-msg { flex-basis: 100%; margin: 0; font-size: var(--text-xs); color: var(--muted); }
 .libgrid-path-msg[data-state="error"] { color: var(--disconnected); }
+
+/* Card system: one poster frame, one designed placeholder, fixed text lines and
+   one status chip; active transfers add a progress line with its next step. */
+.libgrid-grid { grid-auto-rows: 1fr; align-items: stretch; }
+.libgrid-card { height: 100%; }
+.libgrid-card-title {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  overflow: hidden; min-height: 2.4em; line-height: 1.2; overflow-wrap: anywhere;
+}
+.libgrid-meta {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1;
+  overflow: hidden; min-height: 1.3em;
+}
+.libgrid-poster-placeholder {
+  background:
+    radial-gradient(circle at 70% 20%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%),
+    color-mix(in srgb, var(--accent-soft) 55%, var(--ground));
+  color: var(--muted); font-size: 2.6rem; font-weight: 650; line-height: 1;
+}
+.libgrid-card-progress { display: grid; gap: 0.15rem; margin-top: 0.15rem; }
+.libgrid-card-progress progress { width: 100%; height: 0.35rem; }
+.libgrid-card-progress span { font-size: var(--type-caption); color: var(--muted); }
+
+/* Find & add: one full-width search row, a compact type control, a measured
+   gap between the two cards, and states that say what happens next. */
+.find-body { display: grid; gap: var(--space-4); }
+.find-tools .search { flex-basis: 100%; }
+.find-tools .find-type { flex: 0 0 11rem; }
+.find-tools .find-type select { width: 100%; }
+.find-tools button.primary { margin-left: auto; }
+.find-count {
+  margin: 0; padding: 0.7rem 1.25rem; color: var(--ink-2); font-size: var(--type-caption);
+  border-bottom: 1px solid var(--line);
+}
+#find-msg[data-state="loading"] { color: var(--muted); }
+#find-msg[data-state="empty"] { color: var(--ink-2); }
+#find-msg[data-state="error"] { color: var(--disconnected); font-weight: 600; }
+@media (max-width: 640px) {
+  .find-tools .find-type { flex-basis: 100%; }
+  .find-tools button.primary { width: 100%; margin-left: 0; }
+}
+
+/* One save bar for Settings and Cleanup: it stays reachable while a long form
+   scrolls, and it says what one Save applies. */
+.save-bar {
+  position: sticky; top: 0; z-index: 3;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem 1rem;
+  padding: 0.6rem 0.9rem; background: var(--ground);
+  border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
+}
+.save-bar .msg { margin: 0; }
+.save-bar-hint { margin: 0; flex: 1 1 12rem; font-size: var(--type-caption); }
+@media (max-width: 640px) {
+  .save-bar button.primary { flex: 1 1 100%; }
+}

@@ -330,3 +330,12 @@ $("#cleanup-form").addEventListener("submit", async (ev) => {
   finally { cleanupBusy = false; cleanupButtons(); }
   await loadCleanup();
 });
+
+// One shell with Settings: the same tab row and panel pattern on this page.
+if (window.librarySettingsView?.mountTabbed) {
+  window.librarySettingsView.mountTabbed($("#cleanup-tabs"), [
+    { id: "policy", label: "Policy", node: $("#cleanup-form") },
+    { id: "status", label: "Status & preview", node: $("#cleanup-status-card") },
+    { id: "companions", label: "Companion apps", node: $("#cleanup-companions") },
+  ], "Cleanup sections");
+}

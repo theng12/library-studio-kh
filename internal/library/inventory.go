@@ -100,6 +100,7 @@ func proofKey(app string, id int) string { return app + "|" + strconv.Itoa(id) }
 func Inventory(c config.Config, home string, meta *metadata.Client) ([]Item, []string) {
 	media, problems := Browse(c)
 	recs := savedRecords(home)
+	locations := savedLocations(home)
 	proofs := map[string]stock.ImportProof{}
 	read := map[string]bool{} // apps whose import history was fully read
 	for _, a := range arrs(c) {
@@ -160,6 +161,10 @@ func Inventory(c config.Config, home string, meta *metadata.Client) ([]Item, []s
 		checked := strings.TrimSpace(m.Path)
 		if checked == "" {
 			checked = strings.TrimSpace(it.TargetPath)
+		}
+		// A folder the owner chose wins over the app's own path, and says so.
+		if chosen := locations[proofKey(m.App, m.ID)]; chosen != "" {
+			checked, it.LocationManual = chosen, true
 		}
 		fileFound := false
 		if checked != "" {

@@ -1,0 +1,113 @@
+/* My Library IA: type tabs, result chips and the multi-select Filters panel.
+   Loaded after pages.css; uses only layout.css and style.css tokens. */
+
+/* ---- Type tabs: whole-library counts, one active tab ---- */
+.libgrid-tabs {
+  display: flex; flex-wrap: wrap; gap: var(--space-1); width: max-content; max-width: 100%;
+  min-width: 0; padding: var(--space-1);
+  background: var(--side); border: 1px solid var(--line); border-radius: 9px;
+}
+.libgrid-tab {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  min-height: calc(var(--control-h) - 6px); padding: 0 var(--space-3);
+  border: 0; border-radius: 7px; background: transparent; color: var(--ink-2);
+  font-size: var(--text-sm); font-weight: 550;
+}
+.libgrid-tab:hover { color: var(--ink); background: var(--panel); }
+.libgrid-tab[aria-selected="true"] { background: var(--panel); color: var(--accent); box-shadow: var(--shadow); }
+.libgrid-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.libgrid-tab-count {
+  min-width: 1.4rem; padding: 0 var(--space-1); border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 14%, transparent);
+  color: var(--ink-2); font-size: var(--type-caption); font-weight: 600; text-align: center;
+}
+.libgrid-tab[aria-selected="true"] .libgrid-tab-count { color: var(--accent); }
+
+/* ---- Result count and removable filter chips ---- */
+.libgrid-filterline {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+  flex-basis: 100%; min-width: 0;
+}
+.libgrid-filterline .libgrid-count { margin-left: 0; }
+.libgrid-chip {
+  display: inline-flex; align-items: center; gap: var(--space-1); max-width: 100%;
+  min-width: 0; padding: 0.15rem 0.15rem 0.15rem 0.55rem;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--panel); color: var(--ink-2); font-size: var(--text-xs);
+}
+.libgrid-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.libgrid-chip-remove {
+  flex: none; width: 1.35rem; height: 1.35rem; padding: 0; border: 0; border-radius: 999px;
+  background: transparent; color: var(--muted); font-size: var(--type-body); line-height: 1;
+  cursor: pointer;
+}
+.libgrid-chip-remove:hover { background: var(--accent-soft); color: var(--accent); }
+.libgrid-chip-remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---- Filters: a popover beside the toolbar on wide screens ---- */
+.libgrid-toolbar { position: relative; }
+.libgrid-filters { gap: var(--space-3); padding: var(--space-3) var(--space-4); align-items: start; }
+
+.libgrid-filter-group {
+  display: grid; align-content: start; gap: var(--space-1);
+  min-width: 0; margin: 0; padding: 0; border: 0;
+}
+.libgrid-filter-group legend {
+  padding: 0 0 var(--space-1); color: var(--muted);
+  font-size: var(--type-caption); font-weight: 650; letter-spacing: 0.03em; text-transform: uppercase;
+}
+.libgrid-filter-group > p { margin: 0; font-size: var(--text-xs); }
+.libgrid-check {
+  display: flex; align-items: center; gap: var(--space-2); min-width: 0;
+  padding: 0.2rem 0; color: var(--ink); font-size: var(--text-sm); cursor: pointer;
+}
+.libgrid-check input { flex: none; margin: 0; accent-color: var(--accent); }
+.libgrid-check-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.libgrid-check-count { margin-left: auto; color: var(--muted); font-size: var(--type-caption); }
+.libgrid-filter-actions { grid-column: 1 / -1; padding-top: var(--space-2); }
+
+/* ---- Detail: storage actions ---- */
+.libgrid-detail-actions {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0;
+}
+.libgrid-set-location, .libgrid-open-location {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: var(--control-h); padding: 0 0.85rem;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: var(--ink); font-size: var(--text-sm); font-weight: 600;
+}
+.libgrid-set-location { border-color: var(--accent); color: var(--accent); }
+.libgrid-set-location:hover { background: var(--accent-soft); }
+.libgrid-open-location:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.libgrid-open-location:disabled { opacity: 0.55; cursor: not-allowed; }
+.libgrid-set-location:focus-visible, .libgrid-open-location:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+.libgrid-location-reason { flex-basis: 100%; margin: 0; color: var(--muted); font-size: var(--type-caption); }
+
+/* Tablet and up: the panel floats over the results instead of pushing them down. */
+@media (min-width: 761px) {
+  .libgrid-filters {
+    position: absolute; z-index: 30; top: calc(100% + var(--space-2)); right: 0;
+    width: min(32rem, 100%); max-height: min(70vh, 32rem); overflow: auto;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-card); box-shadow: var(--shadow);
+  }
+}
+
+/* Phones: tabs and the panel take the full width; buttons stay reachable. */
+@media (max-width: 760px) {
+  .libgrid-tabs { width: 100%; }
+  .libgrid-tab { flex: 1 1 auto; }
+  .libgrid-filters {
+    flex-basis: 100%; width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .libgrid-filter-actions { position: sticky; bottom: calc(-1 * var(--space-3)); background: inherit; }
+}
+
+@media (max-width: 420px) {
+  .libgrid-detail-actions > button { flex: 1 1 auto; }
+  .libgrid-chip { max-width: 100%; }
+}
