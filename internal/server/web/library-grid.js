@@ -332,9 +332,9 @@ function libraryGridRow(item, options = {}) {
   main.append(libraryGridNode("span", libraryGridMeta(item), "libgrid-meta"));
   row.append(main);
   const fullLocation = libraryGridLocation(item).text;
-  // Use the width we have: the full path at desktop sizes, shortened on smaller screens.
-  const max = (typeof window !== "undefined" && Number(window.innerWidth) >= 1200) ? 1000 : 52;
-  const location = libraryGridNode("span", libraryGridShortPath(fullLocation, max), "libgrid-row-location");
+  // The row carries the full path; CSS wraps or stacks it. Shortening the text
+  // at build time made the visible path depend on when the row was rendered.
+  const location = libraryGridNode("span", fullLocation, "libgrid-row-location");
   location.title = fullLocation;
   location.setAttribute("aria-label", fullLocation);
   row.append(location);

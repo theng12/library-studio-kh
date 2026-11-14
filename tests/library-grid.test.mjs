@@ -318,20 +318,23 @@ test("the module stands alone: no imports and no app.js helpers", () => {
   assert.match(source, /function libraryGridPage\(/);
 });
 
-test("the list shows the full location when the window has room, and shortens on a phone", () => {
+test("the list row carries the full location at every width and stacks it on a phone", () => {
   const longPath = "/Volumes/NAS-1/Films/A Very Long Folder Name For An Arrival Film (2016)/Arrival (2016) 2160p.mkv";
   const longItems = items.map((item) => item.title === "Arrival" ? { ...item, targetPath: longPath } : item);
   const g = load();
-  g.window = { innerWidth: 1440 };
-  const wide = g.libraryGridPage({ items: longItems, filters: {}, view: "list", handlers: {} });
-  const wideRow = byClass(wide, "libgrid-row").find((row) => text(row).includes("Arrival"));
-  const wideLoc = byClass(wideRow, "libgrid-row-location")[0];
-  assert.match(wideLoc.textContent, /A Very Long Folder Name/);
-  assert.doesNotMatch(wideLoc.textContent, /…/);
-  g.window = { innerWidth: 375 };
-  const narrow = g.libraryGridPage({ items: longItems, filters: {}, view: "list", handlers: {} });
-  const narrowRow = byClass(narrow, "libgrid-row").find((row) => text(row).includes("Arrival"));
-  assert.match(byClass(narrowRow, "libgrid-row-location")[0].textContent, /…/);
+  for (const width of [1440, 375]) {
+    g.window = { innerWidth: width };
+    const page = g.libraryGridPage({ items: longItems, filters: {}, view: "list", handlers: {} });
+    const row = byClass(page, "libgrid-row").find((r) => text(r).includes("Arrival"));
+    const loc = byClass(row, "libgrid-row-location")[0];
+    assert.match(loc.textContent, /A Very Long Folder Name/);
+    assert.doesNotMatch(loc.textContent, /…/);
+    assert.equal(loc.textContent, "NAS-1 · " + longPath);
+  }
+  // The phone layout gives the title the width and puts the path on its own line.
+  const css = readFileSync(new URL("../internal/server/web/pages.css", import.meta.url), "utf8");
+  assert.match(css, /\.libgrid-row \{ grid-template-columns: 2\.5rem minmax\(0, 1fr\); row-gap: 0\.2rem; \}/);
+  assert.match(css, /\.libgrid-row-location \{ grid-column: 2; grid-row: 3;/);
 });
 
 test("a saved copy offers Verify even after it is verified", async () => {

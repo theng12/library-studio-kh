@@ -1084,10 +1084,15 @@ $("#downloads-detail").addEventListener("close", () => {
   const key = dl.openKey;
   dl.openKey = null;
   renderDownloadsPage();
-  // After the dialog's own focus restoration settles, land on the row.
+  // After the dialog's own focus restoration settles, land on the title button
+  // that opened it, and again once the teardown has finished.
   requestAnimationFrame(() => {
     const back = document.querySelector('#dl tr[data-key="' + CSS.escape(key) + '"] .dlp-open');
     (back || $("#dl-q"))?.focus();
+    setTimeout(() => {
+      const again = document.querySelector('#dl tr[data-key="' + CSS.escape(key) + '"] .dlp-open');
+      (again || $("#dl-q"))?.focus();
+    }, 50);
   });
 });
 

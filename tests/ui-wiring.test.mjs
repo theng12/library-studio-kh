@@ -42,6 +42,8 @@ test("dialog closures return focus to the control that opened them", () => {
   assert.match(app, /downloadAction\(\[row\.hash\], key, locate\(\), locate\)/);
   assert.match(app, /refreshOpener\(\)\?\.focus\(\)/);
   assert.match(app, /const refreshOpener = \(\) =>/);
+  // The Downloads detail lands focus on the title button again after teardown.
+  assert.match(app, /const again = document\.querySelector\('#dl tr\[data-key="' \+ CSS\.escape\(key\) \+ '"\] \.dlp-open'\)/);
   assert.match(app, /dialog\.remove\(\)/);
 });
 
