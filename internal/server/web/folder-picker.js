@@ -160,6 +160,12 @@ function folderPickerValidSelection(state) {
     for (const node of dialog.querySelectorAll("[data-picker-cancel]")) node.addEventListener("click", closeDialog);
     dialog.querySelector("[data-picker-use]").addEventListener("click", useCurrent);
     dialog.addEventListener("cancel", (ev) => { ev.preventDefault(); closeDialog(); });
+    // A backdrop click closes the element directly; the promise still settles.
+    dialog.addEventListener("close", () => {
+      const resolve = browser?.resolve;
+      if (browser) browser.resolve = null;
+      if (resolve) resolve(null);
+    });
     dialog.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape") { ev.preventDefault(); closeDialog(); }
     });

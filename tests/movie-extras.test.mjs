@@ -12,7 +12,7 @@ function extras(initial = {}) {
 test("library state never treats isExisting as a file", () => {
   const m = extras();
   assert.equal(m.movieExtrasLibraryState({ haveFile: true, inLibrary: true }), "Owned");
-  assert.equal(m.movieExtrasLibraryState({ haveFile: false, inLibrary: true }), "In library · no file");
+  assert.equal(m.movieExtrasLibraryState({ haveFile: false, inLibrary: true }), "In library · no file yet");
   assert.equal(m.movieExtrasLibraryState({ haveFile: false, inLibrary: false }), "Missing");
   assert.equal(m.movieExtrasLibraryState({ haveFile: null, inLibrary: false, isExisting: true }), "Status unknown");
   assert.equal(m.movieExtrasLibraryState({}), "Status unknown");

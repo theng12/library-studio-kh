@@ -7,7 +7,7 @@ const js = readFileSync(new URL("../internal/server/web/app.js", import.meta.url
 
 test("the sidebar has one ordering and two standing group headers", () => {
   const nav = html.match(/<nav class="side"[\s\S]*?<\/nav>/)?.[0] || "";
-  const views = ["activity", "downloads", "browse", "find", "sources", "cleanup", "settings", "help", "support", "whatsnew"];
+  const views = ["activity", "browse", "find", "downloads", "sources", "cleanup", "settings", "help", "support", "whatsnew"];
   const at = views.map((v) => nav.indexOf('data-view="' + v + '"'));
   assert.ok(at.every((i) => i > 0), "a sidebar destination is missing");
   assert.deepEqual([...at].sort((a, b) => a - b), at, "sidebar destinations are out of order");

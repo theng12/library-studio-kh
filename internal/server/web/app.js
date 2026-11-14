@@ -57,8 +57,11 @@ function torrentStateWord(state) {
   if (word.startsWith("queued")) return "Queued";
   if (word.startsWith("stalled")) return "Stalled";
   if (word.startsWith("checking") || word === "moving") return word === "moving" ? "Moving" : "Checking";
-  if (word === "missingfiles") return "Missing files";
-  return "Downloading";
+  if (word === "missingfiles") return "Missing";
+  if (word === "uploading" || word === "forcedup") return "Seeding";
+  if (["downloading", "forceddl", "metadl", "forcedmetadl", "allocating"].includes(word)) return "Downloading";
+  if (word === "error") return "Error";
+  return "Status not reported";
 }
 
 function row(cells, tableID) {
@@ -122,7 +125,12 @@ function render(st) {
   if (st.metadata) lede.push("<span class=off>" + st.metadata + "</span>");
   $("#cleanup-lede").innerHTML = lede.join(" ");
 
-  $("#releases").replaceChildren(...st.releases.map((r) => {
+  if (!st.releases.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "No release notes are available in this build.";
+    $("#releases").replaceChildren(empty);
+  } else $("#releases").replaceChildren(...st.releases.map((r) => {
     const box = document.createElement("div");
     box.className = "panel";
     const h = document.createElement("h2");
@@ -180,7 +188,7 @@ function activityLabel(it) {
         at: it.verifiedAt || it.statusAt || it.when || null,
       };
     }
-    return { outcome: "problems", label: done + " · not verified yet", detail: "The library app recorded the import, but no verification proof is saved yet. Cleanup’s Preview checks the copy.", at: it.statusAt || it.when || null };
+    return { outcome: "problems", label: done + " · needs proof", detail: "The library app recorded the import, but no verification proof is saved yet. Cleanup’s Preview checks the copy.", at: it.statusAt || it.when || null };
   }
   if (status === "importing") return { outcome: "importing", label: "Importing", detail: "", at: it.statusAt || null };
   if (status === "paused" || status === "resumed") {
@@ -212,15 +220,15 @@ function activityLabel(it) {
     const broken = word === "Missing files" || /error/i.test(it.state || "");
     return {
       outcome: broken ? "problems" : "downloading",
-      label: broken ? (word === "Missing files" ? word : "Error") : word || (status === "queued" ? "Queued" : "Downloading"),
+      label: broken ? (word === "Missing" ? word : "Error") : word || (status === "queued" ? "Queued" : "Downloading"),
       detail: downloadProgressText(it.progress) + (it.speed ? " · " + rate(it.speed) : ""),
       at: it.statusAt || null,
     };
   }
   if (status === "removed") return { outcome: "removed", label: "Local copy removed", detail: it.targetPath || "Removed after a verified import.", at: it.when || it.statusAt || null };
   if (status === "upcoming") return { outcome: "upcoming", label: "Coming up", detail: "", at: it.when || null };
-  if (status === "missing") return { outcome: "problems", label: "Files missing", detail: "Its source is gone; open Downloads to act on it.", at: it.statusAt || null };
-  if (status === "on-disk") return { outcome: "problems", label: "On disk · no import proof", detail: "The files are there, but no verified import record explains them.", at: it.statusAt || null };
+  if (status === "missing") return { outcome: "problems", label: "Missing", detail: "Its source is gone; open Downloads to act on it.", at: it.statusAt || null };
+  if (status === "on-disk") return { outcome: "problems", label: "On disk · needs proof", detail: "The files are there, but no verified import record explains them.", at: it.statusAt || null };
   return { outcome: "problems", label: it.kind || "Recorded", detail: "", at: it.statusAt || null };
 }
 
@@ -1188,7 +1196,10 @@ function show(view) {
   window.scrollTo(0, 0);
 }
 document.addEventListener("click", (ev) => {
-  const b = ev.target.closest("[data-view]");
+  // A click whose target is the dialog itself landed on its backdrop.
+  const dialog = ev.target;
+  if (dialog?.tagName === "DIALOG" && dialog.open) { dialog.close(); return; }
+  const b = ev.target.closest?.("[data-view]");
   if (b) show(b.dataset.view);
 });
 
@@ -1207,6 +1218,8 @@ async function loadDownloads(preserveSelection = false) {
   if (downloadsLoading) return;
   downloadsLoading = true;
   if (!preserveSelection) dl.selected.clear();
+  dl.loading = !dl.items.length;
+  dl.error = "";
   if (!dl.items.length) renderDownloadsPage();
   try {
     const r = await api("/api/downloads");
@@ -1225,8 +1238,10 @@ async function loadDownloads(preserveSelection = false) {
     });
   } catch (e) {
     dl.items = [];
+    dl.error = e.message;
     dl.problems = e.message;
   }
+  dl.loading = false;
   downloadsLoading = false;
   renderDownloadsPage();
 }
@@ -1249,7 +1264,7 @@ function renderDownloadNotice() {
 
 function renderDownloadsPage() {
   const host = $("#dl"), detail = $("#downloads-detail");
-  const model = downloadsModel(dl.items, { filter: dl.filter, query: dl.query, selected: dl.selected });
+  const model = downloadsModel(dl.items, { filter: dl.filter, query: dl.query, selected: dl.selected, loading: dl.loading, error: dl.error });
   // Only rows the filters currently show stay selected, so a bulk action can
   // never touch a download the owner can't see.
   dl.selected = new Set(model.selected);
@@ -1271,14 +1286,17 @@ function renderDownloadsPage() {
     bulk: (key) => downloadAction([...dl.selected], key),
     emptyAction: (key) => {
       if (key === "find") { show("find"); return; }
+      if (key === "retry") { loadDownloads(); return; }
       dl.filter = "all"; dl.query = ""; renderDownloadsPage();
     },
   };
   downloadsPanelRender(host, model, handlers);
   // Say so only when the table really needs sideways scrolling, after layout settles.
-  const baseStatus = dl.problems
-    ? "Some sources did not answer."
-    : "Status and proof come from import records" + (dl.metadata ? " · " + dl.metadata : "");
+  const baseStatus = dl.loading
+    ? "Loading downloads…"
+    : dl.problems
+      ? "Some sources did not answer."
+      : "Status and proof come from import records" + (dl.metadata ? " · " + dl.metadata : "");
   $("#dl-page-status").textContent = baseStatus;
   const scrollBox = host.querySelector(".table-scroll");
   if (scrollBox) {
@@ -1388,6 +1406,13 @@ function confirmDownloadAction(action, hashes, trigger, locate) {
     const heading = document.createElement("h2");
     heading.id = "confirm-title";
     heading.textContent = verb + " " + who + " from qBittorrent?";
+    const head = document.createElement("div");
+    head.className = "d-head";
+    const headClose = document.createElement("button");
+    headClose.type = "button"; headClose.className = "close"; headClose.setAttribute("aria-label", "Close");
+    headClose.textContent = "×";
+    headClose.addEventListener("click", () => dialog.close());
+    head.append(heading, headClose);
     const text = document.createElement("p");
     text.textContent = action === "clear"
       ? "Its files are already missing. This only removes the entry from qBittorrent’s list."
@@ -1399,7 +1424,7 @@ function confirmDownloadAction(action, hashes, trigger, locate) {
     const go = document.createElement("button");
     go.type = "button"; go.className = "small primary"; go.textContent = verb;
     actions.append(cancel, go);
-    dialog.append(heading, text, actions);
+    dialog.append(head, text, actions);
     document.body.append(dialog);
     // The clicked row button is the true opener; document.activeElement can be
     // BODY when activation came from assistive tech or a trusted pointer probe.

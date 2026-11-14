@@ -92,7 +92,7 @@ function movieExtrasRelease(member) {
 
 function movieExtrasLibraryState(member) {
   if (member.haveFile === true) return "Owned";
-  if (member.haveFile === false) return member.inLibrary ? "In library · no file" : "Missing";
+  if (member.haveFile === false) return member.inLibrary ? "In library · no file yet" : "Missing";
   return "Status unknown";
 }
 

@@ -4,6 +4,7 @@ const CLEANUP_NUMBERS = {
   stagedDays: [1, 365], managedTrashDays: [0, 365], nativeTrashDays: [1, 3650],
   pressureFreeGB: [0, 10000000], seedRatio: [0, 1000000], seedMinutes: [0, 5256000],
 };
+const CLEANUP_PHASE_TONES = { staging: "info", managed_trash: "info", native_trash: "info", removed: "muted", restored: "ok" };
 const CLEANUP_PHASES = { staging: "Download folder", managed_trash: "Library’s _trash", native_trash: "macOS Trash", removed: "Removed", restored: "Restored" };
 let cleanupBusy = false;
 let cleanupState = null;
@@ -135,7 +136,8 @@ function cleanupRender(status) {
     name.dataset.label = "Download";
     const phase = mediaNode("td");
     phase.dataset.label = "Stage";
-    phase.append(mediaNode("span", CLEANUP_PHASES[item.phase] || item.phase || "Not reported", "badge"));
+    const tone = CLEANUP_PHASE_TONES[item.phase];
+    phase.append(mediaNode("span", CLEANUP_PHASES[item.phase] || item.phase || "Not reported", "badge" + (tone ? " dlp-tone-" + tone : "")));
     const size = mediaNode("td", bytes(item.bytes || 0));
     size.dataset.label = "Size";
     const done = item.phase === "removed" ? "Done" : item.phase === "restored" ? "Restored" : "Not reported";
@@ -271,6 +273,13 @@ function confirmCleanupRun() {
     const heading = document.createElement("h2");
     heading.id = "cleanup-run-title";
     heading.textContent = "Run cleanup now?";
+    const head = document.createElement("div");
+    head.className = "d-head";
+    const headClose = document.createElement("button");
+    headClose.type = "button"; headClose.className = "close"; headClose.setAttribute("aria-label", "Close");
+    headClose.textContent = "×";
+    headClose.addEventListener("click", () => dialog.close());
+    head.append(heading, headClose);
     const text = document.createElement("p");
     text.textContent = cleanupRunSummary(cleanupState);
     const actions = document.createElement("div");
@@ -280,7 +289,7 @@ function confirmCleanupRun() {
     const go = document.createElement("button");
     go.type = "button"; go.className = "small primary"; go.textContent = "Run cleanup";
     actions.append(cancel, go);
-    dialog.append(heading, text, actions);
+    dialog.append(head, text, actions);
     document.body.append(dialog);
     const opener = document.activeElement;
     let answer = false;
@@ -332,7 +341,7 @@ $("#cleanup-form").addEventListener("submit", async (ev) => {
 });
 
 // One shell with Settings: the same tab row and panel pattern on this page.
-if (window.librarySettingsView?.mountTabbed) {
+if (typeof window !== "undefined" && window.librarySettingsView?.mountTabbed) {
   window.librarySettingsView.mountTabbed($("#cleanup-tabs"), [
     { id: "policy", label: "Policy", node: $("#cleanup-form") },
     { id: "status", label: "Status & preview", node: $("#cleanup-status-card") },

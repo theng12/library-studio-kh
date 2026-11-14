@@ -14,12 +14,16 @@
  *     draft,          // values shown in the Filters panel; defaults to filters
  *     view,           // "grid" (default) | "list"
  *     selected,       // libraryGridKey() of the item whose detail shows
+ *     selection,      // bulk-selected keys: [] (never touches selected)
+ *     selectionActions, // [{ id, label }] buttons on the selection bar
  *     loading, error, problems, filtersOpen,
  *     posterURL,      // optional item -> address, when posters are served over HTTP
  *     handlers: { onSearch(value), onFilterChange(nextDraft), onToggleFilters(),
  *                 onApply(), onReset(), onView("grid"|"list"), onSelect(key|null),
  *                 onType(""|"Movies"|"TV"|"Music"), onSetLocation(detail),
- *                 onOpenLocation(detail), onRetry(), onFindAndAdd() },
+ *                 onOpenLocation(detail), onRetry(), onFindAndAdd(),
+ *                 onToggleSelect(key), onSelectAll(keys),
+ *                 onClearSelection(), onBulkAction(id, keys) },
  *   }) -> element
  *
  * Old single-value filters ({ status, app, genre, year }) are still accepted and
@@ -31,7 +35,9 @@
  * libraryGridType, libraryGridTypeCounts, libraryGridTypeTabs,
  * libraryGridFilter, libraryGridFilterNormalize, libraryGridSort,
  * libraryGridCount, libraryGridActiveFilters, libraryGridChips,
- * libraryGridFilterOptions, libraryGridEmpty, libraryGridProblems.
+ * libraryGridFilterOptions, libraryGridEmpty, libraryGridProblems,
+ * libraryGridShelves, libraryGridShowShelves, libraryGridTypeAhead,
+ * libraryGridBatch.
  *
  * Honesty rules: a copy never reads "verified" without `verified` proof; a
  * missing location, time or metadata says so instead of going blank.
@@ -366,6 +372,67 @@ function libraryGridProblems(problems) {
   return list.length ? "Some sources didn't answer: " + list.join(" ") + " Showing what did." : "";
 }
 
+// The newest of the times an item records; 0 means "nothing recorded" and
+// never outranks a real date (Go's zero time is already filtered out).
+function libraryGridRecency(item) {
+  let at = 0;
+  for (const value of [item?.verifiedAt, item?.statusAt, item?.when]) {
+    const real = libraryGridRealTime(value);
+    if (!real) continue;
+    const time = new Date(real).getTime();
+    if (Number.isFinite(time) && time > at) at = time;
+  }
+  return at;
+}
+
+// Show all + Cards + no filters: shelves instead of one flat grid. A search, a
+// type tab or any applied value keeps the flat result list.
+function libraryGridShowShelves(view, filters = {}) {
+  if (view === "list") return false;
+  const f = libraryGridFilterNormalize(filters);
+  return !f.type && !f.query.trim() && !f.statuses.length && !f.apps.length
+    && !f.genres.length && !f.years.length;
+}
+
+// Continue, the 12 most recent, then each type. Shelves overlap on purpose;
+// an empty one is omitted.
+function libraryGridShelves(items) {
+  const list = items || [];
+  const shelves = [];
+  const active = list.filter((item) =>
+    item.status === "downloading" || item.status === "importing" || item.status === "stalled");
+  if (active.length) shelves.push({ id: "continue", label: "Continue", items: active });
+  // Only titles with a real recorded time are "recently added"; an undated row
+  // is never presented as new.
+  const recent = list.map((item, index) => ({ item, index, at: libraryGridRecency(item) }))
+    .filter((row) => row.at > 0)
+    .sort((a, b) => (b.at - a.at) || (a.index - b.index))
+    .slice(0, 12)
+    .map((row) => row.item);
+  if (recent.length) shelves.push({ id: "recent", label: "Recently added", items: recent });
+  for (const [type, label] of [["Movies", "Movies"], ["TV", "TV"], ["Music", "Music"]]) {
+    const rows = list.filter((item) => libraryGridType(item) === type);
+    if (rows.length) shelves.push({ id: type.toLocaleLowerCase(), label, items: rows });
+  }
+  return shelves;
+}
+
+// Type-ahead: the first title that starts with the letters typed so far.
+function libraryGridTypeAhead(items, buffer) {
+  const prefix = String(buffer || "").trim().toLocaleLowerCase();
+  if (!prefix) return -1;
+  return (items || []).findIndex((item) =>
+    String(item?.title || "").trim().toLocaleLowerCase().startsWith(prefix));
+}
+
+// First paint shows one page of cards; "Show more" appends the next one.
+function libraryGridBatch(items, limit = 60) {
+  const all = Array.isArray(items) ? items : [];
+  const n = Number(limit);
+  const size = Number.isFinite(n) && n > 0 ? Math.floor(n) : 60;
+  return { items: all.slice(0, size), rest: all.slice(size), hasMore: all.length > size };
+}
+
 // ---- DOM builders ----
 
 let libraryGridIdSeq = 0;
@@ -381,13 +448,17 @@ function libraryGridStatusChip(status) {
   return libraryGridNode("span", status.label, "libgrid-status libgrid-status-" + status.tone);
 }
 
-function libraryGridPosterPlaceholder(label) {
-  const span = libraryGridNode("span", label || "?", "libgrid-poster-placeholder");
+function libraryGridPosterPlaceholder(label, match) {
+  const span = libraryGridNode("span", null, "libgrid-poster-placeholder");
   span.setAttribute("aria-hidden", "true");
+  span.append(libraryGridNode("span", label || "?", "libgrid-poster-glyph"));
+  span.append(libraryGridNode("span", "No poster", "libgrid-poster-label"));
+  // A local file can be matched in its detail; the hint says so without opening it.
+  if (match) span.append(libraryGridNode("span", "Match", "libgrid-match-hint"));
   return span;
 }
 
-function libraryGridPosterBox(poster, className) {
+function libraryGridPosterBox(poster, className, match) {
   const box = libraryGridNode("span", null, "libgrid-poster" + (className ? " " + className : ""));
   if (poster.src) {
     const img = document.createElement("img");
@@ -395,9 +466,9 @@ function libraryGridPosterBox(poster, className) {
     img.alt = "";
     img.loading = "lazy";
     // A poster file that vanished reads as a placeholder, not a broken image.
-    img.addEventListener("error", () => img.replaceWith(libraryGridPosterPlaceholder(poster.label)));
+    img.addEventListener("error", () => img.replaceWith(libraryGridPosterPlaceholder(poster.label, match)));
     box.append(img);
-  } else box.append(libraryGridPosterPlaceholder(poster.label));
+  } else box.append(libraryGridPosterPlaceholder(poster.label, match));
   return box;
 }
 
@@ -408,7 +479,7 @@ function libraryGridCard(item, options = {}) {
   card.type = "button";
   card.setAttribute("data-key", key);
   card.setAttribute("aria-pressed", selected ? "true" : "false");
-  card.append(libraryGridPosterBox(libraryGridPoster(item, options.posterURL)));
+  card.append(libraryGridPosterBox(libraryGridPoster(item, options.posterURL), "", item.app === "Local"));
   card.append(libraryGridNode("span", item.title || "Untitled", "libgrid-card-title"));
   card.append(libraryGridStatusChip(libraryGridStatus(item)));
   card.append(libraryGridNode("span", libraryGridMeta(item), "libgrid-meta"));
@@ -428,6 +499,25 @@ function libraryGridCard(item, options = {}) {
   return card;
 }
 
+// The wrapper keeps the selection tick outside the clickable card or row, so a
+// tick never opens the detail and a click never flips the tick.
+function libraryGridItem(item, options = {}, buildMain = libraryGridCard) {
+  const key = libraryGridKey(item);
+  const picked = (options.selection || []).includes(key);
+  const wrap = libraryGridNode("div", null, "libgrid-item" + (picked ? " is-selected-item" : ""));
+  wrap.append(buildMain(item, options));
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.className = "libgrid-select";
+  box.checked = picked;
+  // The host restores focus by data-key after a re-render; the tick maps to its card.
+  box.setAttribute("data-key", key);
+  box.setAttribute("aria-label", "Select " + (item.title || "Untitled"));
+  box.addEventListener("change", () => options.handlers?.onToggleSelect?.(key));
+  wrap.append(box);
+  return wrap;
+}
+
 function libraryGridRow(item, options = {}) {
   const key = libraryGridKey(item);
   const selected = options.selected === key;
@@ -435,7 +525,7 @@ function libraryGridRow(item, options = {}) {
   row.type = "button";
   row.setAttribute("data-key", key);
   row.setAttribute("aria-pressed", selected ? "true" : "false");
-  row.append(libraryGridPosterBox(libraryGridPoster(item, options.posterURL), "libgrid-poster-small"));
+  row.append(libraryGridPosterBox(libraryGridPoster(item, options.posterURL), "libgrid-poster-small", item.app === "Local"));
   const main = libraryGridNode("span", null, "libgrid-row-main");
   main.append(libraryGridNode("span", item.title || "Untitled", "libgrid-card-title"));
   main.append(libraryGridNode("span", libraryGridMeta(item), "libgrid-meta"));
@@ -454,7 +544,7 @@ function libraryGridRow(item, options = {}) {
 
 function libraryGridGrid(items, options = {}) {
   const grid = libraryGridNode("div", null, "libgrid-grid");
-  grid.append(...items.map((item) => libraryGridCard(item, options)));
+  grid.append(...items.map((item) => libraryGridItem(item, options)));
   return grid;
 }
 
@@ -478,7 +568,7 @@ function libraryGridList(items, options = {}) {
   head.append(libraryGridNode("span", "Location", "libgrid-list-cell"));
   head.append(sortButton("status", "Status"));
   list.append(head);
-  list.append(...items.map((item) => libraryGridRow(item, options)));
+  list.append(...items.map((item) => libraryGridItem(item, options, libraryGridRow)));
   return list;
 }
 
@@ -499,7 +589,7 @@ function libraryGridDetailPanel(detail, handlers = {}) {
   close.addEventListener("click", () => handlers.onSelect?.(null));
   head.append(close);
   aside.append(head);
-  aside.append(libraryGridPosterBox(detail.poster));
+  aside.append(libraryGridPosterBox(detail.poster, null, detail.local));
   aside.append(libraryGridStatusChip(detail.status));
   aside.append(libraryGridNode("p", detail.overview || "No overview available from the metadata source.",
     "libgrid-overview" + (detail.overview ? "" : " is-muted")));
@@ -731,6 +821,25 @@ function libraryGridToolbar(options) {
 
   // Result count and one removable chip per applied value, on its own line.
   const line = libraryGridNode("div", null, "libgrid-filterline");
+  const selection = Array.isArray(options.selection) ? options.selection : [];
+  const selectKeys = Array.isArray(options.selectKeys) ? options.selectKeys : [];
+  if (selectKeys.length) {
+    const picked = new Set(selection);
+    const all = selectKeys.every((key) => picked.has(key));
+    const wrap = libraryGridNode("label", null, "libgrid-selectall");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.className = "libgrid-select-all";
+    box.checked = all;
+    box.indeterminate = !all && selectKeys.some((key) => picked.has(key));
+    box.setAttribute("aria-label", "Select all shown");
+    box.addEventListener("change", () => {
+      if (box.checked) options.handlers?.onSelectAll?.(selectKeys.slice());
+      else options.handlers?.onClearSelection?.();
+    });
+    wrap.append(box, libraryGridNode("span", "Select all shown", "libgrid-selectall-label"));
+    line.append(wrap);
+  }
   line.append(libraryGridNode("span", options.count, "libgrid-count"));
   for (const chip of libraryGridChips(options.filters)) {
     const el = libraryGridNode("span", null, "libgrid-chip");
@@ -825,13 +934,97 @@ function libraryGridStateBlock(state, handlers = {}) {
   return box;
 }
 
+// Cards paint one page of 60 at a time. The owner's "Show more" is remembered
+// until the filters or the Cards/Table view change.
+let libraryGridBatchSignature = null;
+const libraryGridBatchLimits = new Map();
+function libraryGridBatchLimit(key) {
+  return libraryGridBatchLimits.get(key) || 60;
+}
+
+// One bar while a bulk selection is live: count, the actions the host offers, Clear.
+function libraryGridSelectionBar(options = {}) {
+  const selection = Array.isArray(options.selection) ? options.selection : [];
+  if (!selection.length) return null;
+  const bar = libraryGridNode("div", null, "libgrid-selection");
+  bar.setAttribute("role", "group");
+  bar.setAttribute("aria-label", "Bulk selection");
+  bar.append(libraryGridNode("span", selection.length + " selected", "libgrid-selection-count"));
+  for (const action of options.selectionActions || []) {
+    const button = libraryGridNode("button", String(action.label || action.id || "Action"), "libgrid-bulk");
+    button.type = "button";
+    button.disabled = !selection.length;
+    button.addEventListener("click", () => options.handlers?.onBulkAction?.(action.id, selection.slice()));
+    bar.append(button);
+  }
+  const clear = libraryGridNode("button", "Clear", "libgrid-selection-clear");
+  clear.type = "button";
+  clear.setAttribute("aria-label", "Clear selection");
+  clear.addEventListener("click", () => options.handlers?.onClearSelection?.());
+  bar.append(clear);
+  return bar;
+}
+
+// "Show more" appends the next page of cards straight into the container it
+// sits under, so the first paint stays small without a windowing library.
+function libraryGridShowMore(key, items, container, options) {
+  const button = libraryGridNode("button", "Show more", "libgrid-show-more");
+  button.type = "button";
+  const label = (rest) => "Show " + Math.min(60, rest) + " more of " + items.length;
+  button.setAttribute("aria-label", label(items.length - libraryGridBatchLimit(key)));
+  button.addEventListener("click", () => {
+    const limit = libraryGridBatchLimit(key) + 60;
+    libraryGridBatchLimits.set(key, limit);
+    const batch = libraryGridBatch(items, limit);
+    container.replaceChildren(...batch.items.map((item) => libraryGridItem(item, options)));
+    if (batch.hasMore) button.setAttribute("aria-label", label(batch.rest.length));
+    else {
+      button.hidden = true;
+      button.setAttribute("aria-label", "All " + items.length + " titles shown");
+    }
+  });
+  return button;
+}
+
+// One shelf: heading with its count, a horizontal row of the same cards.
+function libraryGridShelf(shelf, options = {}) {
+  const section = libraryGridNode("section", null, "libgrid-shelf");
+  const title = libraryGridNode("h3", null, "libgrid-shelf-title");
+  title.append(libraryGridNode("span", shelf.label, "libgrid-shelf-label"));
+  const count = libraryGridNode("span", String(shelf.items.length), "libgrid-shelf-count");
+  count.setAttribute("aria-label", shelf.items.length + (shelf.items.length === 1 ? " item" : " items"));
+  title.append(count);
+  section.append(title);
+  const row = libraryGridNode("div", null, "libgrid-shelf-row");
+  const key = options.batchSignature + "|" + shelf.id;
+  const batch = libraryGridBatch(shelf.items, libraryGridBatchLimit(key));
+  row.append(...batch.items.map((item) => libraryGridItem(item, options)));
+  section.append(row);
+  if (batch.hasMore) section.append(libraryGridShowMore(key, shelf.items, row, options));
+  return section;
+}
+
+// Every card button under the page, in display order.
+function libraryGridCards(root, out = []) {
+  if (!root || typeof root !== "object") return out;
+  if (typeof root.className === "string" && root.className.split(/\s+/).includes("libgrid-card")) out.push(root);
+  if (root.children) for (const child of root.children) libraryGridCards(child, out);
+  return out;
+}
+
 function libraryGridPage(options = {}) {
   const items = Array.isArray(options.items) ? options.items : [];
   const filters = libraryGridFilterNormalize(options.filters || {});
   if (options.type != null) filters.type = String(options.type || "");
   const handlers = options.handlers || {};
   const view = options.view === "list" ? "list" : "grid";
+  const selection = Array.isArray(options.selection) ? options.selection.slice() : [];
   const shown = libraryGridSort(libraryGridFilter(items, filters), options.sort);
+  const batchSignature = JSON.stringify([filters, view]);
+  if (batchSignature !== libraryGridBatchSignature) {
+    libraryGridBatchSignature = batchSignature;
+    libraryGridBatchLimits.clear();
+  }
 
   const page = libraryGridNode("div", null, "libgrid-page");
   page.append(libraryGridTabsRow({ items, type: filters.type, handlers }));
@@ -840,6 +1033,8 @@ function libraryGridPage(options = {}) {
     count: libraryGridCount(shown.length, items.length),
     view,
     filtersOpen: options.filtersOpen,
+    selection,
+    selectKeys: shown.map(libraryGridKey),
     handlers,
   });
   // The panel lives inside the toolbar so it can pop over it on wide screens.
@@ -857,13 +1052,71 @@ function libraryGridPage(options = {}) {
 
   const body = libraryGridNode("div", null, "libgrid-body");
   const results = libraryGridNode("div", null, "libgrid-results");
+  const bar = libraryGridSelectionBar({ selection, selectionActions: options.selectionActions, handlers });
+  if (bar) results.append(bar);
+  const cardOptions = { ...options, handlers, selection, batchSignature };
   const empty = libraryGridEmpty({ items, shown: shown.length, loading: options.loading, error: options.error, query: filters.query });
   if (empty) results.append(libraryGridStateBlock(empty, handlers));
-  else results.append(view === "list" ? libraryGridList(shown, { ...options, handlers }) : libraryGridGrid(shown, { ...options, handlers }));
+  else if (view === "list") results.append(libraryGridList(shown, cardOptions));
+  else if (libraryGridShowShelves(view, filters)) {
+    const shelves = libraryGridShelves(shown);
+    if (shelves.length) {
+      const box = libraryGridNode("div", null, "libgrid-shelves");
+      box.append(...shelves.map((shelf) => libraryGridShelf(shelf, cardOptions)));
+      results.append(box);
+    } else results.append(libraryGridGrid(shown, cardOptions));
+  } else {
+    const key = batchSignature + "|flat";
+    const batch = libraryGridBatch(shown, libraryGridBatchLimit(key));
+    const grid = libraryGridGrid(batch.items, cardOptions);
+    results.append(grid);
+    if (batch.hasMore) results.append(libraryGridShowMore(key, shown, grid, cardOptions));
+  }
   body.append(results);
 
   const selected = shown.find((item) => libraryGridKey(item) === options.selected);
   if (selected) body.append(libraryGridDetailPanel(libraryGridDetail(selected, options.posterURL), handlers));
   page.append(body);
+
+  // Escape: clear a bulk selection first, then close the detail. A focused field
+  // keeps its own Escape (the host clears a search) and an open dialog is never
+  // touched from here — this listener only sees events born inside the page.
+  page.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || event.isComposing) return;
+    const tag = String(event.target?.tagName || "").toUpperCase();
+    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || event.target?.isContentEditable) return;
+    if (document.querySelector?.("dialog[open]")) return;
+    if (selection.length) {
+      event.preventDefault?.();
+      handlers.onClearSelection?.();
+      return;
+    }
+    if (options.selected) {
+      event.preventDefault?.();
+      handlers.onSelect?.(null);
+      // Focus goes back to the card that opened the detail; the host's own
+      // Escape branch is skipped once this handler has run.
+      const esc = globalThis.CSS?.escape ? CSS.escape(options.selected) : options.selected;
+      document.querySelector?.('#library-host [data-key="' + esc + '"]')?.focus?.();
+    }
+  });
+
+  // Type-ahead: a short letter buffer moves focus to the first title it matches.
+  let typeBuffer = "";
+  let typeAt = 0;
+  page.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
+    const tag = String(event.target?.tagName || "").toUpperCase();
+    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || event.target?.isContentEditable) return;
+    if (!/^[a-z0-9]$/i.test(String(event.key || ""))) return;
+    const now = Date.now();
+    typeBuffer = now - typeAt > 700 ? String(event.key) : typeBuffer + event.key;
+    typeAt = now;
+    const index = libraryGridTypeAhead(shown, typeBuffer);
+    if (index < 0) return;
+    const key = libraryGridKey(shown[index]);
+    libraryGridCards(page).find((card) => card.getAttribute("data-key") === key)?.focus?.();
+  });
+
   return page;
 }

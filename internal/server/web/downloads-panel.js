@@ -15,7 +15,7 @@
 // .dlp-bulk, .dlp-poster, .dlp-progress, .dlp-missing, .dlp-empty, .dlp-detail;
 // chips are the existing .badge plus .dlp-tone-{ok,info,muted,warn,bad}.
 
-const DOWNLOADS_MISSING_LABEL = "Files missing";
+const DOWNLOADS_MISSING_LABEL = "Missing";
 
 const DOWNLOADS_COLUMNS = [
   { key: "poster", label: "" },
@@ -80,11 +80,12 @@ function downloadsStatus(item) {
   // A stopped torrent always offers Resume, whatever the row's proof state.
   if (/^(paused|stopped)/.test(state)) return make("paused", DOWNLOADS_STATE_LABELS[state] || "Paused", "muted", { canResume: true });
   // The same words Activity uses for a local copy with no import proof.
-  if (status === "on-disk") return make("problems", "No import proof", "warn", { canPause: true });
-  if (/^(copied|moved)$/.test(status)) return make("problems", "Imported — proof missing", "warn");
+  if (status === "on-disk") return make("problems", "Needs proof", "warn", { canPause: true });
+  if (/^(copied|moved)$/.test(status)) return make("problems", "Needs proof", "warn");
   if (state === "error") return make("problems", "Error", "bad", { canResume: true });
   if (state === "queuedDL" || state === "queuedUP") return make("queued", DOWNLOADS_STATE_LABELS[state], "muted", { canPause: true });
-  if (/^(uploading|forcedUP|stalledUP)$/.test(state)) return make("seeding", DOWNLOADS_STATE_LABELS[state], "ok", { canPause: true });
+  if (/^(uploading|forcedUP)$/.test(state)) return make("seeding", DOWNLOADS_STATE_LABELS[state], "ok", { canPause: true });
+  if (state === "stalledUP") return make("seeding", DOWNLOADS_STATE_LABELS[state], "warn", { canPause: true });
   if (/^(downloading|forcedDL|stalledDL|metaDL|forcedMetaDL|checkingDL|allocating|moving)$/.test(state)) {
     return make("downloading", DOWNLOADS_STATE_LABELS[state], "info", { canPause: true });
   }
@@ -92,7 +93,7 @@ function downloadsStatus(item) {
   if (status === "downloading" || status === "stalled") {
     return make("downloading", status === "stalled" ? "Stalled" : "Downloading", "info", { canPause: true });
   }
-  if (item.progress === 1) return make("completed", "Completed", "ok");
+  if (item.progress === 1) return make("completed", "Completed · no proof", "warn");
   return make("other", state || status || "Status not reported", "muted");
 }
 
@@ -118,7 +119,7 @@ function downloadsSourceText(item) {
   const app = String(item.app || "");
   // Short enough that the column never clips the one word that matters.
   if (app === "Unmatched") return "Unmatched";
-  if (!app || app === "Unknown") return "Not verified";
+  if (!app || app === "Unknown") return "Status not reported";
   return app;
 }
 
@@ -215,7 +216,9 @@ function downloadsFilters(items) {
   return DOWNLOADS_FILTERS.map((filter) => ({ key: filter.key, label: filter.label, count: counts[filter.key] || 0 }));
 }
 
-function downloadsEmpty(all, rows, filter, query) {
+function downloadsEmpty(all, rows, filter, query, loading, error) {
+  if (loading && !all.length) return { message: "Loading downloads…" };
+  if (error) return { message: "Downloads could not be read. " + error, action: { key: "retry", label: "Try again" } };
   if (!all.length) return { message: "No downloads right now. New downloads appear here while they run.", action: { key: "find", label: "Find & add" } };
   if (!rows.length) {
     return {
@@ -261,7 +264,7 @@ function downloadsModel(items, state) {
     rows: rows,
     selected: selected,
     bulk: downloadsBulk(rows, selected),
-    empty: downloadsEmpty(list, rows, filter, query),
+    empty: downloadsEmpty(list, rows, filter, query, state.loading, state.error),
     countText: list.length === 0 ? "No downloads" : rows.length + " of " + list.length + (list.length === 1 ? " download" : " downloads"),
   };
 }
@@ -282,7 +285,7 @@ function downloadsDetail(item, history) {
     // it is proven, not just how big it is. Each fact appears once.
     facts: [
       ["Target", item.targetPath ? (libraryVolumeLabel(item.targetVolume) ? libraryVolumeLabel(item.targetVolume) + " · " : "") + item.targetPath : "Not known yet — nothing imported"],
-      ["Verified", method ? method + " · " + downloadsWhen(item.verifiedAt) : "Not verified yet"],
+      ["Proof", method ? method + " · " + downloadsWhen(item.verifiedAt) : "Needs proof"],
       ["Size", downloadsSizeText(item)],
       ["Source", downloadsSourceText(item)],
       ["Save folder", item.save_path || item.savePath || "Not reported"],

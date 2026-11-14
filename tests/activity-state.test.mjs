@@ -30,8 +30,10 @@ test("Activity never invents progress or a finished state", () => {
   assert.match(label({ status: "downloading", state: "downloading" }).detail, /Progress not reported/);
   assert.equal(label({ status: "queued", state: "queuedDL" }).label, "Queued");
   assert.equal(label({ status: "downloading", state: "pausedDL", progress: 0.4 }).label, "Paused");
-  assert.equal(label({ status: "downloading", state: "missingFiles" }).label, "Missing files");
+  assert.equal(label({ status: "downloading", state: "missingFiles" }).label, "Missing");
   assert.equal(label({ status: "downloading", state: "downloading", progress: 0.4 }).label, "Downloading");
+  assert.equal(label({ status: "downloading", state: "someFutureState" }).label, "Status not reported", "an unknown state is never called a download");
+  assert.equal(label({ status: "downloading", state: "uploading", progress: 1 }).label, "Seeding");
 });
 
 test("a verified copy names its proof and location; an unproven one says so", () => {
@@ -48,14 +50,14 @@ test("a verified copy names its proof and location; an unproven one says so", ()
   assert.match(size.detail, /Size and readback match/);
   const unproven = label({ status: "copied" });
   assert.equal(unproven.outcome, "problems");
-  assert.match(unproven.label, /not verified yet/);
+  assert.match(unproven.label, /needs proof/);
   assert.doesNotMatch(unproven.label, / · verified/);
 });
 
 test("states that are not proof are never shown as verified", () => {
   const label = labelHelpers();
   assert.equal(label({ status: "on-disk" }).outcome, "problems");
-  assert.match(label({ status: "on-disk" }).label, /no import proof/);
+  assert.match(label({ status: "on-disk" }).label, /needs proof/);
   assert.equal(label({ status: "missing" }).outcome, "problems");
   assert.equal(label({ status: "importing" }).label, "Importing");
   assert.equal(label({ status: "importing", state: "moving", progress: 1 }).label, "Importing", "a moving torrent reads like the other pages, never a separate word");

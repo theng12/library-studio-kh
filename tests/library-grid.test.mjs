@@ -209,13 +209,15 @@ test("the grid renders one card per item with poster, title, chip and meta", () 
   const g = load();
   const page = g.libraryGridPage({ items, filters: {}, view: "grid", selected: null, handlers: {} });
   const cards = byClass(page, "libgrid-card");
-  assert.equal(cards.length, 5);
-  assert.equal(cards[0].getAttribute("data-key"), "Sonarr:2");
-  assert.deepEqual(byClass(cards[0], "libgrid-card-title").map(text), ["Andor"]);
-  assert.deepEqual(byClass(cards[0], "libgrid-status").map(text), ["Verified"]);
-  assert.equal(byClass(cards[0], "libgrid-poster-placeholder").length, 1, "no posterPath means a placeholder");
-  assert.equal(byTag(cards[1], "img").length, 1, "a posterPath is used without a resolver");
-  assert.equal(byTag(cards[1], "img")[0].src, "/cache/posters/arrival.jpg");
+  // Unfiltered Cards view shows shelves, so every title appears as a card there.
+  const andor = cards.find((card) => card.getAttribute("data-key") === "Sonarr:2");
+  assert.ok(andor, "every title is a card");
+  assert.deepEqual(byClass(andor, "libgrid-card-title").map(text), ["Andor"]);
+  assert.deepEqual(byClass(andor, "libgrid-status").map(text), ["Verified"]);
+  assert.equal(byClass(andor, "libgrid-poster-placeholder").length, 1, "no posterPath means a placeholder");
+  const arrival = cards.find((card) => card.getAttribute("data-key") === "Radarr:1");
+  assert.equal(byTag(arrival, "img").length, 1, "a posterPath is used without a resolver");
+  assert.equal(byTag(arrival, "img")[0].src, "/cache/posters/arrival.jpg");
   assert.ok(byClass(page, "libgrid-count").map(text)[0].includes("5 items"));
   assert.deepEqual(byClass(page, "libgrid-view").map((b) => b.getAttribute("aria-pressed")), ["true", "false"]);
   assert.equal(byClass(page, "libgrid-detail").length, 0, "no detail panel without a selection");
@@ -337,7 +339,7 @@ test("search, view, selection and the Filters panel call their handlers", () => 
   assert.deepEqual(calls.shift(), ["toggle"]);
   byClass(page, "libgrid-view")[1].fire("click");
   assert.deepEqual(calls.shift(), ["view", "list"]);
-  byClass(page, "libgrid-card")[0].fire("click");
+  byClass(page, "libgrid-card").find((card) => card.getAttribute("data-key") === "Sonarr:2").fire("click");
   assert.deepEqual(calls.shift(), ["select", "Sonarr:2"]);
 
   const groups = byClass(page, "libgrid-filter-group");
@@ -590,4 +592,244 @@ test("a local file offers a metadata match and no import proof", () => {
   match.fire("click");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].path, path);
+});
+
+test("shelves group Continue, the most recent, and each type", () => {
+  const g = load();
+  const shelves = g.libraryGridShelves(items);
+  assert.deepEqual(Array.from(shelves, (s) => [s.id, s.items.length, s.label]), [
+    ["continue", 2, "Continue"],
+    ["recent", 2, "Recently added"],
+    ["movies", 3, "Movies"],
+    ["tv", 2, "TV"],
+  ]);
+  assert.deepEqual(titles(shelves[0].items), ["Blade Runner 2049", "Dune"]);
+  assert.deepEqual(titles(shelves[1].items), ["Arrival", "Andor"]);
+  // Shelves overlap on purpose: an in-flight title still counts in its type.
+  assert.ok(shelves[3].items.some((i) => i.title === "Dune"));
+  // An empty shelf is omitted.
+  assert.equal(shelves.find((s) => s.id === "music"), undefined);
+  // A Local file counts as Movies.
+  const withLocal = [...items, { app: "Local", id: "/f.mkv", title: "Film", status: "on-disk" }];
+  assert.ok(g.libraryGridShelves(withLocal).find((s) => s.id === "movies").items.some((i) => i.title === "Film"));
+});
+
+test("Recently added ranks by the newest real time and stops at 12", () => {
+  const g = load();
+  const dated = Array.from({ length: 14 }, (_, i) => ({
+    app: "Radarr", id: i, title: "Film " + String(i + 1).padStart(2, "0"), status: "copied", verified: "hash",
+    statusAt: "2026-11-" + String(i + 1).padStart(2, "0") + "T10:00:00Z",
+  }));
+  const goZero = { app: "Radarr", id: 7, title: "Go Zero", status: "copied", verified: "hash", statusAt: "0001-01-01T00:00:00Z" };
+  const noTime = { app: "Radarr", id: 99, title: "No Date", status: "on-disk" };
+  const recent = g.libraryGridShelves([...dated, goZero, noTime]).find((s) => s.id === "recent");
+  assert.equal(recent.items.length, 12, "capped at 12");
+  assert.equal(recent.items[0].title, "Film 14", "newest first");
+  assert.equal(recent.items[11].title, "Film 03", "twelve back");
+  // Go's zero time and a missing time never outrank a real one.
+  const mixed = g.libraryGridShelves([dated[0], goZero, noTime, dated[1]]).find((s) => s.id === "recent");
+  assert.deepEqual(titles(mixed.items), ["Film 02", "Film 01"]);
+  // With no real dates at all, the shelf is omitted rather than guessed.
+  const undated = g.libraryGridShelves([goZero, noTime]);
+  assert.equal(undated.find((s) => s.id === "recent"), undefined);
+});
+
+test("shelves appear only on the unfiltered Show all Cards view", () => {
+  const g = load();
+  assert.equal(g.libraryGridShowShelves("grid", {}), true);
+  assert.equal(g.libraryGridShowShelves("list", {}), false);
+  assert.equal(g.libraryGridShowShelves("grid", { type: "Movies" }), false);
+  assert.equal(g.libraryGridShowShelves("grid", { query: "dune" }), false);
+  assert.equal(g.libraryGridShowShelves("grid", { statuses: ["Missing"] }), false);
+  assert.equal(g.libraryGridShowShelves("grid", { apps: ["Radarr"] }), false);
+  assert.equal(g.libraryGridShowShelves("grid", { genres: ["Drama"] }), false);
+  assert.equal(g.libraryGridShowShelves("grid", { years: ["2017"] }), false);
+
+  const shelvesPage = g.libraryGridPage({ items, filters: {}, view: "grid", handlers: {} });
+  assert.equal(byClass(shelvesPage, "libgrid-shelves").length, 1);
+  assert.equal(byClass(shelvesPage, "libgrid-grid").length, 0, "no flat grid in shelf mode");
+  assert.deepEqual(byClass(shelvesPage, "libgrid-shelf-title").map(text),
+    ["Continue 2", "Recently added 2", "Movies 3", "TV 2"]);
+  const flat = g.libraryGridPage({ items, filters: { query: "e" }, view: "grid", handlers: {} });
+  assert.equal(byClass(flat, "libgrid-shelf").length, 0, "a search shows the flat list");
+  assert.equal(byClass(flat, "libgrid-grid").length, 1);
+  const table = g.libraryGridPage({ items, filters: {}, view: "list", handlers: {} });
+  assert.equal(byClass(table, "libgrid-shelf").length, 0, "the Table view stays flat");
+  assert.equal(byClass(table, "libgrid-list").length, 1);
+});
+
+test("poster frames are 2:3 with a designed placeholder, not a giant letter", () => {
+  const css = readFileSync(new URL("../internal/server/web/library-ia.css", import.meta.url), "utf8");
+  assert.match(css, /\.libgrid-poster \{[^}]*aspect-ratio: 2 \/ 3;/);
+  assert.match(css, /\.libgrid-poster img \{[^}]*object-fit: cover;/);
+  assert.match(css, /\.libgrid-grid \{[^}]*grid-auto-rows: 1fr;/);
+  assert.match(css, /\.libgrid-card \.libgrid-meta \{[^}]*line-clamp: 1;/);
+  assert.match(css, /\.libgrid-poster-glyph/);
+  assert.match(css, /\.libgrid-poster-label/);
+  assert.match(css, /\.libgrid-match-hint/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+
+  const g = load();
+  const page = g.libraryGridPage({ items, filters: { apps: ["Radarr"] }, view: "grid", handlers: {} });
+  const placeholder = byClass(page, "libgrid-poster-placeholder")[0];
+  assert.deepEqual(byClass(placeholder, "libgrid-poster-glyph").map(text), ["B"], "the small initial");
+  assert.deepEqual(byClass(placeholder, "libgrid-poster-label").map(text), ["No poster"]);
+  const local = g.libraryGridPage({
+    items: [{ app: "Local", id: "/f.mkv", title: "Film", status: "on-disk" }],
+    filters: {}, view: "grid", handlers: { onSelect: (key) => { local.picked = key; } },
+  });
+  const hint = byClass(local, "libgrid-match-hint")[0];
+  assert.ok(hint, "a local file without a poster carries the Match hint");
+  assert.equal(text(hint), "Match");
+  // The card itself still opens the detail, which owns the Match action.
+  byClass(local, "libgrid-card")[0].fire("click");
+  assert.equal(local.picked, "Local:/f.mkv");
+});
+
+test("a selection checkbox sits beside the card button, never inside it", () => {
+  const g = load();
+  const calls = [];
+  const page = g.libraryGridPage({
+    items, filters: { apps: ["Sonarr"] }, view: "grid", selection: ["Sonarr:2"],
+    handlers: { onToggleSelect: (key) => calls.push(key) },
+  });
+  const cards = byClass(page, "libgrid-card");
+  assert.equal(cards.length, 2);
+  for (const card of cards) assert.equal(byTag(card, "input").length, 0, "no tick inside the button");
+  const select = byClass(page, "libgrid-select")[0];
+  assert.equal(select.type, "checkbox");
+  assert.equal(select.getAttribute("aria-label"), "Select Andor");
+  assert.equal(select.checked, true, "Sonarr:2 is ticked");
+  const wrapper = byClass(page, "libgrid-item").find((node) => node.children.includes(cards[0]));
+  assert.ok(wrapper.children.includes(select), "the wrapper holds button and tick");
+  assert.match(wrapper.className, /is-selected-item/);
+  assert.doesNotMatch(cards[0].className, /is-selected-item/, "the pick state lives on the wrapper");
+  select.fire("change");
+  assert.deepEqual(calls, ["Sonarr:2"], "ticking never opens the detail");
+
+  const listPage = g.libraryGridPage({ items, filters: { apps: ["Sonarr"] }, view: "list", handlers: {} });
+  for (const row of byClass(listPage, "libgrid-row")) assert.equal(byTag(row, "input").length, 0);
+  assert.equal(byClass(listPage, "libgrid-select").length, 2, "rows get ticks too");
+});
+
+test("the toolbar selects all shown and the bar runs the bulk actions", () => {
+  const g = load();
+  const calls = [];
+  const handlers = {
+    onToggleSelect: (key) => calls.push(["toggle", key]),
+    onSelectAll: (keys) => calls.push(["all", ...keys]),
+    onClearSelection: () => calls.push(["clear"]),
+    onBulkAction: (id, keys) => calls.push([id, ...keys]),
+  };
+  const page = g.libraryGridPage({
+    items, filters: { apps: ["Sonarr"] }, view: "grid", selection: ["Sonarr:2"],
+    selectionActions: [{ id: "verify", label: "Verify selected" }], handlers,
+  });
+  const bar = byClass(page, "libgrid-selection")[0];
+  assert.ok(bar, "a live selection shows one bar");
+  assert.match(text(bar), /1 selected/);
+  const bulk = byClass(bar, "libgrid-bulk")[0];
+  assert.equal(bulk.textContent, "Verify selected");
+  assert.equal(bulk.disabled, false);
+  bulk.fire("click");
+  assert.deepEqual(calls.shift(), ["verify", "Sonarr:2"]);
+  byClass(bar, "libgrid-selection-clear")[0].fire("click");
+  assert.deepEqual(calls.shift(), ["clear"]);
+
+  const all = byClass(page, "libgrid-select-all")[0];
+  assert.equal(all.getAttribute("aria-label"), "Select all shown");
+  all.checked = true;
+  all.fire("change");
+  assert.deepEqual(calls.shift(), ["all", "Sonarr:2", "Sonarr:5"], "every shown key");
+  all.checked = false;
+  all.fire("change");
+  assert.deepEqual(calls.shift(), ["clear"], "unticking clears the selection");
+
+  // Nothing selected: no bar, but the select-all stays as the way in.
+  const none = g.libraryGridPage({
+    items, filters: {}, selection: [],
+    selectionActions: [{ id: "verify", label: "Verify selected" }], handlers,
+  });
+  assert.equal(byClass(none, "libgrid-selection").length, 0);
+  assert.equal(byClass(none, "libgrid-select-all").length, 1);
+});
+
+test("Escape clears the selection, then closes the detail; a field keeps Escape", () => {
+  const g = load();
+  const calls = [];
+  let prevented = 0;
+  const page = g.libraryGridPage({
+    items, filters: {}, selection: ["Sonarr:2"],
+    handlers: { onClearSelection: () => calls.push(["clear"]), onSelect: (key) => calls.push(["select", key]) },
+  });
+  page.fire("keydown", { key: "Escape", target: { tagName: "DIV" }, preventDefault: () => { prevented += 1; } });
+  assert.deepEqual(calls, [["clear"]], "the selection goes first");
+  assert.equal(prevented, 1, "the host's own Escape branch is skipped");
+
+  // A focused field keeps its own Escape (the host clears a search box).
+  page.fire("keydown", { key: "Escape", target: { tagName: "INPUT" }, preventDefault: () => { prevented += 1; } });
+  assert.equal(calls.length, 1);
+
+  // An open dialog is never touched from the library page.
+  g.document.querySelector = () => ({});
+  page.fire("keydown", { key: "Escape", target: { tagName: "DIV" }, preventDefault: () => { prevented += 1; } });
+  assert.equal(calls.length, 1);
+  g.document.querySelector = undefined;
+
+  // With nothing selected, Escape closes the detail.
+  const detail = g.libraryGridPage({
+    items, filters: {}, selected: "Radarr:1", selection: [],
+    handlers: { onSelect: (key) => calls.push(["select", key]) },
+  });
+  detail.fire("keydown", { key: "Escape", target: { tagName: "DIV" }, preventDefault: () => { prevented += 1; } });
+  assert.deepEqual(calls.at(-1), ["select", null]);
+  assert.equal(prevented, 2, "only the two handled Escapes were consumed");
+});
+
+test("type-ahead focuses the first card whose title starts with the letters", () => {
+  const g = load();
+  assert.equal(g.libraryGridTypeAhead(items, "bl"), 2);
+  assert.equal(g.libraryGridTypeAhead(items, "BL"), 2, "case-insensitive");
+  assert.equal(g.libraryGridTypeAhead(items, ""), -1);
+  assert.equal(g.libraryGridTypeAhead(items, "zz"), -1);
+
+  const page = g.libraryGridPage({ items, filters: {}, view: "grid", handlers: {} });
+  let focused = null;
+  for (const card of byClass(page, "libgrid-card")) card.focus = () => { focused = card; };
+  page.fire("keydown", { key: "b", target: { tagName: "DIV" } });
+  assert.equal(focused?.getAttribute("data-key"), "Radarr:3", "Blade Runner 2049");
+  focused = null;
+  page.fire("keydown", { key: "a", target: { tagName: "INPUT" } });
+  assert.equal(focused, null, "a field keeps typing to itself");
+  page.fire("keydown", { key: "b", metaKey: true, target: { tagName: "DIV" } });
+  assert.equal(focused, null, "a shortcut never types ahead");
+});
+
+test("the grid paints the first 60 cards and Show more appends the next page", () => {
+  const g = load();
+  const many = Array.from({ length: 130 }, (_, i) => ({
+    app: "Radarr", id: i, title: "Film " + String(i).padStart(3, "0"), status: "copied", verified: "hash",
+  }));
+  const first = g.libraryGridBatch(many, 60);
+  assert.equal(first.items.length, 60);
+  assert.equal(first.rest.length, 70);
+  assert.equal(first.hasMore, true);
+  const all = g.libraryGridBatch(many, 200);
+  assert.equal(all.items.length, 130);
+  assert.equal(all.hasMore, false);
+
+  // An active filter keeps the flat grid, which batches.
+  const page = g.libraryGridPage({ items: many, filters: { apps: ["Radarr"] }, view: "grid", handlers: {} });
+  assert.equal(byClass(page, "libgrid-card").length, 60, "first paint stays small");
+  const more = byClass(page, "libgrid-show-more")[0];
+  assert.ok(more, "the rest is one button away");
+  assert.equal(more.textContent, "Show more");
+  more.fire("click");
+  assert.equal(byClass(page, "libgrid-card").length, 120);
+  byClass(page, "libgrid-show-more")[0].fire("click");
+  assert.equal(byClass(page, "libgrid-card").length, 130);
+  assert.equal(byClass(page, "libgrid-show-more")[0].hidden, true, "nothing left to show");
+  const shown = byClass(page, "libgrid-card").map((card) => byClass(card, "libgrid-card-title")[0].textContent);
+  assert.deepEqual(shown.slice(0, 2), ["Film 000", "Film 001"], "sorting order is kept");
+  assert.equal(shown[129], "Film 129");
 });

@@ -143,7 +143,7 @@ function renderMediaChildren() {
       .sort((a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber);
     const rows = episodes.map(e => row([
       "S" + String(e.seasonNumber).padStart(2, "0") + "E" + String(e.episodeNumber).padStart(2, "0") + " · " + e.title,
-      e.haveFiles ? "In library" : "No file reported", e.when ? mediaDay(e.when) : "Date not reported",
+      e.haveFiles ? "In library" : "No file yet", e.when ? mediaDay(e.when) : "Date not reported",
       mediaMonitor(e.monitored, { app: d.app, id: d.id, kind: "episode", childId: e.id }, "Monitor " + e.title),
       mediaSearchButton("Search releases", { episodeId: e.id }, e.title),
     ]));

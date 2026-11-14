@@ -19,8 +19,8 @@ test("the footer pill shows the app name and version and opens What's New", () =
 
 test("the pill uses the shared footer numbers", () => {
   assert.match(css, /\.pill \{[^}]*min-height: 26px[^}]*padding: 0 7px[^}]*border-radius: 999px/);
-  assert.match(css, /\.pill-name \{ font-size: 11px/);
-  assert.match(css, /\.pill-version \{[^}]*font-size: 10px/);
+  assert.match(css, /\.pill-name \{ font-size: var\(--text-xs\)/);
+  assert.match(css, /\.pill-version \{[^}]*font-size: var\(--text-xs\)/);
   assert.match(css, /\.side-footer \{[^}]*gap: 6px[^}]*padding-top: 9px/);
 });
 
@@ -46,14 +46,14 @@ test("Settings offers System, Light and Dark and starts on System", () => {
 });
 
 test("Appearance reads as a segmented control and checkboxes are app controls", () => {
-  assert.match(css, /#appearance-panel \.appearance label:has\(input:checked\)/);
-  assert.match(css, /#appearance-panel \.appearance input \{[^}]*opacity: 0/);
-  assert.match(css, /#appearance-panel \.appearance label:has\(input:focus-visible\)/);
+  assert.match(css, /#settings-card-appearance \.appearance label:has\(input:checked\)/);
+  assert.match(css, /#settings-card-appearance \.appearance input \{[^}]*opacity: 0/);
+  assert.match(css, /#settings-card-appearance \.appearance label:has\(input:focus-visible\)/);
   assert.match(css, /label\.check input\[type="checkbox"\] \{[^}]*width: 1\.25rem/);
   assert.match(css, /label\.check:has\(input:focus-visible\)/);
-  assert.match(css, /#appearance-panel \.appearance \{[^}]*display: inline-flex[^}]*width: auto/);
-  assert.match(css, /#appearance-panel \.appearance label \{[^}]*flex: 0 0 auto[^}]*min-width: 5\.5rem/);
-  assert.match(css, /@media \(max-width: 760px\) \{[\s\S]*?#appearance-panel \.appearance label \{ min-height: 44px; \}/);
+  assert.match(css, /#settings-card-appearance \.appearance \{[^}]*display: inline-flex[^}]*width: auto/);
+  assert.match(css, /#settings-card-appearance \.appearance label \{[^}]*flex: 0 0 auto[^}]*min-width: 5\.5rem/);
+  assert.match(css, /@media \(max-width: 760px\) \{[\s\S]*?#settings-card-appearance \.appearance label \{ min-height: 44px; \}/);
 });
 
 test("a saved theme drives the palette instead of the OS query alone", () => {

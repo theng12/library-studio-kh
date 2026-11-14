@@ -65,7 +65,7 @@ test("Settings renders an OFF switch and keeps keys empty while preserving saved
   fields.querySelector = () => button;
   fields.addEventListener = (_, handler) => { submit = handler; };
   const nodes = { "#form": fields, "#form-msg": msg, "#remote-status": {}, "#remote-link-box": {}, "#remote-link": {}, "#arr-fields": { insertAdjacentHTML: (_, s) => { rendered += s; } } };
-  const c = { $: (s) => nodes[s], current: null, api: async (_, b) => { body = b; return {}; }, load: async () => {}, setTimeout: () => 0, clearTimeout: () => {} };
+  const c = { window: {}, $: (s) => nodes[s], current: null, api: async (_, b) => { body = b; return {}; }, load: async () => {}, setTimeout: () => 0, clearTimeout: () => {} };
   runInNewContext(app.slice(app.indexOf("const ARRS"), app.indexOf("const AUTH_FORM_PATHS")) + fn(app, "fillForm") + fn(app, "buildArrFields"), c);
   c.buildArrFields();
   assert.match(rendered, /name="whisparrOn"/);

@@ -186,6 +186,9 @@ const SETUP_APP_LABELS = {
   needs_sources: "Needs sources", needs_restart: "Restart needed",
 };
 
+const SETUP_JOB_TONES = { ready: "ok", needs_restart: "warn", blocked: "bad", interrupted: "warn", failed: "bad", not_started: "muted" };
+const SETUP_APP_TONES = { ready: "ok", connected: "ok", adopt: "ok", needs_restart: "warn", blocked: "bad", failed: "bad", not_checked: "muted", needs_connection: "warn", needs_open: "warn", needs_config: "warn", configured: "warn", needs_sources: "warn" };
+
 let setupJob = null;
 let setupDefaults = null;
 let setupTimer = 0;
@@ -447,7 +450,7 @@ function renderSetupJob() {
   const box = setupNode("div", null, "setup-job");
   const head = setupNode("div", null, "setup-job-head");
   head.append(setupNode("h3", "Setup plan"));
-  head.append(setupNode("span", SETUP_JOB_LABELS[state] || state, "badge"));
+  head.append(setupNode("span", SETUP_JOB_LABELS[state] || state, "badge" + (SETUP_JOB_TONES[state] ? " dlp-tone-" + SETUP_JOB_TONES[state] : "")));
   box.append(head);
   if (setupEditing) box.append(setupNode("p", "Editing choices. The saved plan is kept until you review a new plan.", "notice"));
   if (job.detail) box.append(setupNode("p", job.detail, "muted"));
@@ -462,7 +465,7 @@ function renderSetupJob() {
       const appHead = setupNode("div", null, "setup-app-head");
       const name = app.name || SETUP_APP_NAMES[app.id] || app.id;
       appHead.append(setupNode("strong", name));
-      appHead.append(setupNode("span", SETUP_APP_LABELS[app.state] || app.state || "Not checked", "badge"));
+      appHead.append(setupNode("span", SETUP_APP_LABELS[app.state] || app.state || "Not checked", "badge" + (SETUP_APP_TONES[app.state] ? " dlp-tone-" + SETUP_APP_TONES[app.state] : "")));
       item.append(appHead);
       if (app.detail) item.append(setupNode("p", app.detail, "muted setup-detail"));
       const facts = [];
@@ -522,7 +525,9 @@ function setupConfirm(title, detail) {
   return new Promise((resolve) => {
     const dialog = document.createElement("dialog");
     const head = setupNode("div", null, "d-head");
-    head.append(setupNode("h2", title));
+    const headClose = setupButton("×", "close", () => dialog.close());
+    headClose.setAttribute("aria-label", "Close");
+    head.append(setupNode("h2", title), headClose);
     const body = setupNode("div", null, "prose");
     body.append(setupNode("p", detail));
     const actions = setupNode("div", null, "actions");

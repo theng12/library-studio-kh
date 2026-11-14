@@ -670,3 +670,13 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
 /* One stacked page body for pages that are a column of cards; the shared
    spacing token keeps the gap the same everywhere. */
 .page-body.stack { display: grid; gap: var(--space-4); align-content: start; }
+
+/* Phone tap targets: the same 44px floor as the rest of the app. */
+@media (max-width: 760px) {
+  .libgrid-tab, .libgrid-back, .libgrid-copy-path, .libgrid-chip-remove,
+  .libgrid-set-location, .libgrid-open-location, .libgrid-show-more,
+  .libgrid-bulk, .libgrid-selection-clear, .row-menu > summary,
+  dialog.confirm button, dialog .actions button { min-height: 44px; }
+  .libgrid-chip-remove { min-width: 44px; }
+  .row-menu-list button { min-height: 44px; }
+}

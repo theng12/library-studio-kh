@@ -59,7 +59,7 @@ test("columns are the brief's columns in order and every row models each one", (
 
 test("a row whose source is gone says so and offers Clear instead of a fake 0%", () => {
   const row = downloadsModel(items).rows.find((r) => r.hash === H.old);
-  assert.equal(row.status.label, "Files missing");
+  assert.equal(row.status.label, "Missing");
   assert.equal(row.status.label, DOWNLOADS_MISSING_LABEL);
   assert.equal(row.status.missing, true);
   assert.equal(row.actions.primary.key, "clear");
@@ -83,7 +83,7 @@ test("imported and verified rows are excluded by the documented helper, never sh
   // Imported without proof is not "done": it stays visible and flagged.
   const unproven = { hash: hash("f"), name: "Copied, unproven", status: "copied" };
   assert.deepEqual(names(downloadsPanelItems([unproven])), ["Copied, unproven"]);
-  assert.equal(downloadsStatus(unproven).label, "Imported — proof missing");
+  assert.equal(downloadsStatus(unproven).label, "Needs proof");
   assert.equal(downloadsStatus(unproven).tone, "warn");
 });
 
@@ -164,18 +164,18 @@ test("detail pane carries proof, target, verification and history", () => {
   assert.deepEqual(Array.from(detail.sections, (s) => s.key), ["proof", "history"]);
   const facts = Object.fromEntries(plain(detail.facts));
   assert.match(facts["Target"], /\/Volumes\/NAS\/Movies\/Imported Film \(2020\)/);
-  assert.match(facts["Verified"], /SHA-256 hash/);
-  assert.match(facts["Verified"], /2026/);
+  assert.match(facts["Proof"], /SHA-256 hash/);
+  assert.match(facts["Proof"], /2026/);
   const section = (key) => detail.sections.find((s) => s.key === key);
   assert.equal(section("history").events.length, 1);
   assert.equal(section("history").events[0].text, "Import started");
   assert.match(section("history").events[0].when, /2026/);
   assert.equal(detail.facts.find((f) => f[0] === "Size")[1], "Size not reported");
-  assert.equal(detail.facts.find((f) => f[0] === "Source")[1], "Not verified");
+  assert.equal(detail.facts.find((f) => f[0] === "Source")[1], "Status not reported");
 
   const missing = downloadsDetail(oldShow);
   const missingFacts = Object.fromEntries(plain(missing.facts));
-  assert.equal(missingFacts["Verified"], "Not verified yet");
+  assert.equal(missingFacts["Proof"], "Needs proof");
   assert.match(missingFacts["Why"], /can’t find/);
   assert.match(missingFacts["Next step"], /already gone/);
   assert.equal(missing.sections.find((s) => s.key === "history").empty, "No history reported yet.");
