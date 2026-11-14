@@ -122,3 +122,14 @@ test("Activity is filterable by app and outcome, newest first", () => {
   assert.match(html, /id="act-app"/);
   assert.match(html, /id="act-outcome"/);
 });
+
+test("torrent files are chosen, listed as removable chips, and never a raw bar", () => {
+  const html2 = readFileSync(new URL("../internal/server/web/index.html", import.meta.url), "utf8");
+  const app2 = readFileSync(new URL("../internal/server/web/app.js", import.meta.url), "utf8");
+  for (const id of ['id="t-drop"', 'id="t-files"', 'id="t-chips"', 'id="t-reason"']) assert.ok(html2.includes(id), id);
+  assert.doesNotMatch(html2 + app2, /no files selected/i);
+  assert.match(app2, /function torrentInputReason\(links, count\)/);
+  assert.match(app2, /aria-label", "Remove " \+ file\.name/);
+  assert.match(app2, /addEventListener\("drop"/);
+  assert.match(app2, /btn\.disabled = !!reason/);
+});

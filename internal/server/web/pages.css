@@ -582,3 +582,19 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
   /* Rows stack on phones; the column header would describe a layout that is not there. */
   .libgrid-list-head { display: none; }
 }
+
+/* Torrent input: a drop zone with named, removable chips; no raw file bar. */
+.dropzone {
+  display: grid; place-items: center; gap: 0.2rem; min-height: 7rem; padding: 1rem;
+  border: 1.5px dashed var(--line); border-radius: var(--radius-card); background: var(--ground);
+  text-align: center; cursor: pointer;
+}
+.dropzone:hover, .dropzone:focus-visible, .dropzone.is-over { border-color: var(--accent); background: var(--accent-soft); }
+.dropzone p { margin: 0; }
+.file-chips { list-style: none; display: grid; gap: 0.35rem; margin: 0.5rem 0 0; padding: 0; }
+.file-chip {
+  display: flex; align-items: center; gap: 0.6rem; min-width: 0; padding: 0.35rem 0.6rem;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: var(--text-sm);
+}
+.file-chip > span:first-child { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-chip button { flex: none; }

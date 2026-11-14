@@ -30,15 +30,18 @@
  * missing location, time or metadata says so instead of going blank.
  */
 
+// One plain status language, shared with Downloads and Activity. Proof values and
+// methods live in the detail's "Proof details", never in a chip.
 const LIBGRID_STATUS = {
-  queued: { label: "Queued", tone: "queued" },
+  queued: { label: "No file yet", tone: "queued" },
   downloading: { label: "Downloading", tone: "active" },
   stalled: { label: "Stalled", tone: "problem" },
   importing: { label: "Importing", tone: "active" },
-  copied: { label: "Copied", tone: "ok" },
-  moved: { label: "Moved", tone: "ok" },
+  copied: { label: "Verified", tone: "ok" },
+  moved: { label: "Verified", tone: "ok" },
   missing: { label: "Missing", tone: "problem" },
   "on-disk": { label: "On disk", tone: "neutral" },
+  "proof-pending": { label: "Needs proof", tone: "problem" },
   upcoming: { label: "Upcoming", tone: "neutral" },
 };
 
@@ -407,12 +410,29 @@ function libraryGridDetailPanel(detail, handlers = {}) {
   if (!detail.year && !detail.runtime && !detail.genres.length && !detail.rating) fact("Metadata", "Not reported by the source");
   if (detail.app) fact("Added through", detail.app);
   fact("Location", detail.location.display || detail.location.text, detail.location.path ? null : "is-problem");
-  fact("Verified", detail.verification.verified
-    ? detail.verification.method + (detail.verification.at ? " · " + detail.verification.at : " · time not recorded")
-    : detail.verification.method, detail.verification.verified ? null : "is-problem");
-  if (detail.verification.hash) fact("Proof hash", detail.verification.hash);
-  if (detail.source) fact("Source", detail.source);
+  if (detail.location.path) {
+    const missing = detail.status.key === "missing";
+    fact("File check", missing ? "Checked on this machine — not found" : "Checked on this machine — found", missing ? "is-problem" : null);
+  }
+  fact("Proof", detail.verification.verified
+    ? "Verified" + (detail.verification.at ? " · " + detail.verification.at : "")
+    : "Needs proof — no verification recorded yet", detail.verification.verified ? null : "is-problem");
   aside.append(facts);
+  if (detail.verification.verified || detail.verification.hash || detail.source) {
+    // Proof values are detail on demand, not banner copy.
+    const proof = document.createElement("details");
+    proof.className = "libgrid-proof";
+    const summary = document.createElement("summary");
+    summary.textContent = "Proof details";
+    const list = document.createElement("dl");
+    list.className = "libgrid-facts";
+    const row = (name, value) => list.append(libraryGridNode("dt", name), libraryGridNode("dd", value));
+    row("Method", detail.verification.method);
+    if (detail.verification.hash) row("Hash", detail.verification.hash);
+    if (detail.source) row("Source", detail.source);
+    proof.append(summary, list);
+    aside.append(proof);
+  }
   if (detail.location.path) {
     const copy = libraryGridNode("button", "Copy path", "libgrid-copy-path");
     copy.type = "button";
@@ -430,10 +450,17 @@ function libraryGridDetailPanel(detail, handlers = {}) {
     });
     aside.append(copy);
   }
-  // 3) A title with no file is never a dead end.
-  if (!detail.location.path && detail.status.key === "queued") {
+  // A title that is not checkable in the library is never a dead end.
+  const nextKey = detail.status.key;
+  const noPath = !detail.location.path;
+  if ((nextKey === "queued" && noPath) || (nextKey === "proof-pending" && noPath) || nextKey === "missing") {
     const box = libraryGridNode("div", null, "libgrid-next");
-    box.append(libraryGridNode("p", "No file yet. Add a title, or check Downloads for its transfer.", "is-muted"));
+    const message = nextKey === "missing"
+      ? "Not found at " + (detail.location.path || "the recorded path") + ". Check Downloads, or add the title again."
+      : nextKey === "proof-pending"
+        ? "The app reports a file, but no path could be checked. Locate it in Downloads, or add it again."
+        : "No file yet. Add a title, or check Downloads for its transfer.";
+    box.append(libraryGridNode("p", message, "is-muted"));
     const downloads = libraryGridNode("button", "Open Downloads", "libgrid-state-action");
     downloads.type = "button";
     downloads.addEventListener("click", () => handlers.onOpenDownloads?.());

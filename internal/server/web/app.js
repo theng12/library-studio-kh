@@ -443,14 +443,75 @@ function openDetails(it) {
 $("#details .close").addEventListener("click", () => $("#details").close());
 $("#details").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); });
 
+// Torrent files are chosen by picker or drop, listed as named chips, and the
+// Add button stays disabled with its reason until the input is valid.
+const torrentFiles = [];
+function torrentInputReason(links, count) {
+  if (count > 0) return "";
+  if (String(links || "").trim()) return "";
+  return "Paste a link or choose at least one .torrent file.";
+}
+function torrentReady() {
+  const links = $("#t-links").value, btn = $("#torrent-form button[type=submit]"), line = $("#t-reason");
+  const reason = torrentInputReason(links, torrentFiles.length);
+  if (btn) { btn.disabled = !!reason; btn.title = reason; }
+  if (line) {
+    line.textContent = reason || (torrentFiles.length
+      ? torrentFiles.length + (torrentFiles.length === 1 ? " file chosen" : " files chosen")
+      : "Links ready.");
+  }
+}
+function renderTorrentChips() {
+  const box = $("#t-chips");
+  if (!box) return;
+  box.replaceChildren(...torrentFiles.map((file, index) => {
+    const li = document.createElement("li");
+    li.className = "file-chip";
+    const name = document.createElement("span");
+    name.textContent = file.name;
+    const size = document.createElement("span");
+    size.className = "muted";
+    size.textContent = bytes(file.size);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "small";
+    remove.textContent = "Remove";
+    remove.setAttribute("aria-label", "Remove " + file.name);
+    remove.addEventListener("click", () => { torrentFiles.splice(index, 1); renderTorrentChips(); torrentReady(); });
+    li.append(name, size, remove);
+    return li;
+  }));
+}
+function torrentAddFiles(list) {
+  for (const file of list) {
+    if (!/\.torrent$/i.test(file.name)) continue;
+    if (torrentFiles.some((x) => x.name === file.name && x.size === file.size)) continue;
+    torrentFiles.push(file);
+  }
+  renderTorrentChips();
+  torrentReady();
+}
+$("#t-links").addEventListener("input", torrentReady);
+$("#t-files").addEventListener("change", (ev) => { torrentAddFiles([...ev.target.files]); ev.target.value = ""; });
+$("#t-drop").addEventListener("click", () => $("#t-files").click());
+$("#t-drop").addEventListener("keydown", (ev) => {
+  if (ev.key !== "Enter" && ev.key !== " ") return;
+  ev.preventDefault();
+  $("#t-files").click();
+});
+for (const type of ["dragenter", "dragover"]) $("#t-drop").addEventListener(type, (ev) => { ev.preventDefault(); $("#t-drop").classList.add("is-over"); });
+for (const type of ["dragleave", "drop"]) $("#t-drop").addEventListener(type, (ev) => { ev.preventDefault(); $("#t-drop").classList.remove("is-over"); });
+$("#t-drop").addEventListener("drop", (ev) => torrentAddFiles([...(ev.dataTransfer?.files || [])]));
+torrentReady();
+
 $("#torrent-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const links = $("#t-links").value, files = $("#t-files").files, msg = $("#t-msg"), btn = ev.target.querySelector("button");
+  const links = $("#t-links").value, msg = $("#t-msg"), btn = ev.target.querySelector("button");
   msg.hidden = false;
-  if (!links.trim() && !files.length) { msg.textContent = "Paste a link or choose a .torrent file first."; $("#t-links").focus(); return; }
+  if (torrentInputReason(links, torrentFiles.length)) { msg.textContent = torrentInputReason(links, torrentFiles.length); torrentReady(); return; }
   const fd = new FormData();
   fd.append("links", links);
-  for (const f of files) fd.append("torrents", f, f.name);
+  for (const f of torrentFiles) fd.append("torrents", f, f.name);
   btn.disabled = true; msg.textContent = "Adding…";
   try {
     const headers = { "X-Library-Request": "1" };
@@ -464,6 +525,8 @@ $("#torrent-form").addEventListener("submit", async (ev) => {
     if (data.files) parts.push(data.files === 1 ? "1 file" : data.files + " files");
     msg.textContent = "Added " + parts.join(" and ") + " to qBittorrent. They show in Activity.";
     ev.target.reset();
+    torrentFiles.length = 0;
+    renderTorrentChips();
     load();
   } catch (e) { msg.textContent = e.message; }
   finally { btn.disabled = false; }

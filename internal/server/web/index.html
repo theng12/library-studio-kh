@@ -286,10 +286,15 @@
         <div class="prose add-grid">
           <label>Magnet or web links <span class="hint">· one per line, as many as you like</span>
             <textarea id="t-links" rows="4" spellcheck="false" placeholder="magnet:?xt=urn:btih:…"></textarea></label>
-          <label>.torrent files <span class="hint">· choose one or several</span>
-            <input type="file" id="t-files" accept=".torrent,application/x-bittorrent" multiple></label>
+          <div class="dropzone" id="t-drop" tabindex="0" role="button" aria-label="Choose or drop .torrent files">
+            <input type="file" id="t-files" accept=".torrent,application/x-bittorrent" multiple hidden>
+            <p><strong>Choose .torrent files</strong> or drop them here</p>
+            <p class="muted">One or several; each appears below with its size.</p>
+          </div>
+          <ul id="t-chips" class="file-chips" aria-label="Chosen torrent files"></ul>
+          <p id="t-reason" class="muted" role="status">Paste a link or choose at least one .torrent file.</p>
           <div class="actions">
-            <button type="submit" class="primary">Add to qBittorrent</button>
+            <button type="submit" class="primary" disabled>Add to qBittorrent</button>
             <p id="t-msg" class="msg" role="status" hidden></p>
           </div>
         </div>

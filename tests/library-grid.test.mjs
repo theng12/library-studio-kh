@@ -58,15 +58,16 @@ const titles = (rows) => Array.from(rows, (x) => x.title);
 
 test("status chips follow the pipeline and never say verified without proof", () => {
   const g = load();
-  assert.equal(g.libraryGridStatus({ status: "queued" }).label, "Queued");
+  assert.equal(g.libraryGridStatus({ status: "queued" }).label, "No file yet");
   assert.equal(g.libraryGridStatus({ status: "downloading" }).label, "Downloading");
   assert.equal(g.libraryGridStatus({ status: "importing" }).label, "Importing");
   assert.deepEqual({ ...g.libraryGridStatus({ status: "copied", verified: "hash" }) },
-    { key: "copied", label: "Copied (verified)", tone: "ok" });
+    { key: "verified", label: "Verified", tone: "ok" });
   assert.deepEqual({ ...g.libraryGridStatus({ status: "moved", verified: "size" }) },
-    { key: "moved", label: "Moved (verified)", tone: "ok" });
+    { key: "verified", label: "Verified", tone: "ok" });
   assert.deepEqual({ ...g.libraryGridStatus({ status: "copied" }) },
-    { key: "copied", label: "Copied (not verified)", tone: "problem" });
+    { key: "proof-pending", label: "Needs proof", tone: "problem" });
+  assert.equal(g.libraryGridStatus({ status: "proof-pending" }).label, "Needs proof");
   assert.deepEqual({ ...g.libraryGridStatus({ status: "missing" }) },
     { key: "missing", label: "Missing", tone: "problem" });
   assert.equal(g.libraryGridStatus({ status: "copied", verified: "none" }).tone, "problem");
@@ -128,7 +129,7 @@ test("result count and active filters read truthfully", () => {
 test("filter options come only from the items on screen", () => {
   const g = load();
   const options = g.libraryGridFilterOptions(items);
-  assert.deepEqual(Array.from(options.statuses, (x) => x.value), ["Copied to NAS-1 (verified)", "Downloading", "Importing", "Missing", "Moved to NAS-1 (verified)"]);
+  assert.deepEqual(Array.from(options.statuses, (x) => x.value), ["Downloading", "Importing", "Missing", "Verified"]);
   assert.deepEqual(Array.from(options.apps, (x) => x.value), ["Radarr", "Sonarr"]);
   assert.deepEqual(Array.from(options.genres, (x) => x.value), ["Drama", "Mystery", "Sci-Fi", "Thriller"]);
   assert.deepEqual(Array.from(options.years, (x) => x.value), ["2022", "2021", "2017", "2016"]);
@@ -194,7 +195,7 @@ test("detail model carries proof, location and history newest first", () => {
   assert.equal(arrival.verification.method, "SHA-256 hash match");
   assert.ok(arrival.verification.at, "the verification time is shown");
   assert.deepEqual(Array.from(arrival.history, (entry) => entry.label),
-    ["Verified: SHA-256 hash match", "Status: Copied to NAS-1 (verified)"]);
+    ["Verified: SHA-256 hash match", "Status: Verified"]);
   assert.equal(arrival.history[0].at, "2026-11-12T10:05:00Z");
   const missing = g.libraryGridDetail(items[3]);
   assert.equal(missing.status.label, "Missing");
@@ -212,7 +213,10 @@ test("the page shows the count, the selected detail and working state actions", 
   const panel = byClass(selected, "libgrid-detail")[0];
   assert.ok(panel, "the selected item opens the detail panel");
   assert.ok(text(panel).includes("Arrival"));
-  assert.ok(text(panel).includes("SHA-256 hash match"));
+  assert.ok(text(panel).includes("Verified"));
+  const proof = byClass(panel, "libgrid-proof")[0];
+  assert.ok(proof, "proof values live in an on-demand block");
+  assert.ok(text(proof).includes("SHA-256 hash match"));
   byClass(panel, "libgrid-close")[0].fire("click");
   assert.deepEqual(calls.shift(), ["select", null]);
 
@@ -392,4 +396,43 @@ test("paths stay raw, offer Copy path, and a no-file title has a next step", asy
   assert.doesNotMatch(css, /\.libgrid-body:has\(> \.libgrid-detail\) \.libgrid-row/);
   assert.match(css, /\.tabpanel > \.card:only-of-type \{ grid-column: 1 \/ -1; \}/);
   assert.match(css, /\.libgrid-list-head \{ display: none; \}/);
+});
+
+test("a checkable missing file names the check; an uncheckable one needs proof", () => {
+  const g = load();
+  const missing = {
+    app: "Radarr", id: 8, title: "Gone Film", status: "missing", localCopy: false,
+    targetVolume: "NAS-1", targetPath: "/Volumes/NAS-1/Films/Gone Film", verified: "hash",
+    verifiedAt: "2026-11-12T10:05:00Z",
+  };
+  const page = g.libraryGridPage({ items: [missing], filters: {}, selected: "Radarr:8", handlers: {} });
+  const panel = byClass(page, "libgrid-detail")[0];
+  assert.match(text(panel), /Checked on this machine — not found/);
+  assert.match(text(panel), /Not found at \/Volumes\/NAS-1\/Films\/Gone Film/);
+  const actions = byClass(panel, "libgrid-state-action").map((b) => b.textContent);
+  assert.deepEqual(actions, ["Open Downloads", "Find & add"]);
+
+  const pending = { app: "Radarr", id: 9, title: "Pending Film", status: "proof-pending", localCopy: false };
+  const pendingPage = g.libraryGridPage({ items: [pending], filters: {}, selected: "Radarr:9", handlers: {} });
+  const pendingPanel = byClass(pendingPage, "libgrid-detail")[0];
+  assert.match(text(pendingPanel), /no path could be checked/);
+  assert.deepEqual(byClass(pendingPanel, "libgrid-state-action").map((b) => b.textContent), ["Open Downloads", "Find & add"]);
+
+  // Plain copy: no raw hash in the visible facts; it sits in Proof details.
+  const arrival = items[1];
+  const arrivalPage = g.libraryGridPage({ items, filters: {}, selected: "Radarr:1", handlers: {} });
+  const factsBlock = byClass(arrivalPage, "libgrid-detail")[0];
+  const facts = byClass(factsBlock, "libgrid-facts")[0];
+  assert.doesNotMatch(text(facts), new RegExp(String(arrival.proofHash || "ffffffff"), "i"));
+  assert.match(text(factsBlock), /Proof details/);
+});
+
+test("torrent input validity has one reason, and the Add button follows it", () => {
+  const app2 = readFileSync(new URL("../internal/server/web/app.js", import.meta.url), "utf8");
+  const reason = app2.match(/function torrentInputReason\(links, count\) \{[\s\S]*?\n\}/)[0];
+  const context = {};
+  runInNewContext(reason, context);
+  assert.equal(context.torrentInputReason("", 0), "Paste a link or choose at least one .torrent file.");
+  assert.equal(context.torrentInputReason("magnet:?xt=urn:btih:x", 0), "");
+  assert.equal(context.torrentInputReason("", 1), "");
 });

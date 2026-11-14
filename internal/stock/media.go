@@ -20,6 +20,7 @@ type Media struct {
 	Overview         string          `json:"overview,omitempty"`
 	OriginalLanguage string          `json:"originalLanguage,omitempty"`
 	HaveFiles        bool            `json:"haveFiles"`
+	Path             string          `json:"path,omitempty"` // the folder this app keeps the item in, when it reports one
 	InLibrary        bool            `json:"inLibrary"`
 	Monitored        *bool           `json:"monitored"`
 	QualityProfileID int             `json:"qualityProfileId"`
@@ -40,13 +41,14 @@ type rawMedia struct {
 	Overview         string
 	OriginalLanguage *language `json:"originalLanguage"`
 	HasFile          bool
-	Monitored        *bool `json:"monitored"`
-	QualityProfileID int   `json:"qualityProfileId"`
+	Monitored        *bool  `json:"monitored"`
+	QualityProfileID int    `json:"qualityProfileId"`
+	Path             string `json:"path"`
 	Statistics       *struct{ EpisodeFileCount, TrackFileCount int }
 }
 
 func (r rawMedia) media(app string) Media {
-	m := Media{App: app, ID: r.ID, Title: r.Title, Year: r.Year, Genres: []string{}, Status: r.Status, Overview: r.Overview, InLibrary: r.ID > 0, HaveFiles: r.HasFile, Monitored: r.Monitored, QualityProfileID: r.QualityProfileID}
+	m := Media{App: app, ID: r.ID, Title: r.Title, Year: r.Year, Genres: []string{}, Status: r.Status, Overview: r.Overview, InLibrary: r.ID > 0, HaveFiles: r.HasFile, Monitored: r.Monitored, QualityProfileID: r.QualityProfileID, Path: r.Path}
 	if r.Genres != nil {
 		m.Genres = r.Genres
 	}

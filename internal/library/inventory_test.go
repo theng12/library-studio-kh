@@ -89,7 +89,7 @@ func sonarrLibrary(t *testing.T, historyUp bool) *httptest.Server {
 	files := func(n int) map[string]any { return map[string]any{"episodeFileCount": n} }
 	series := []map[string]any{
 		{"id": 1, "title": "Queued Show", "statistics": files(0)},
-		{"id": 2, "title": "Disk Show", "statistics": files(2)},
+		{"id": 2, "title": "Disk Show", "path": "/fake/Disk Show", "statistics": files(2)},
 		{"id": 3, "title": "Copied Show", "year": 2020, "overview": "App overview", "statistics": files(1)},
 		{"id": 4, "title": "Moved Show", "statistics": files(1)},
 		{"id": 5, "title": "Missing Show", "statistics": files(0)},
@@ -115,6 +115,9 @@ func sonarrLibrary(t *testing.T, historyUp bool) *httptest.Server {
 }
 
 func TestInventoryJoinsProofByMediaID(t *testing.T) {
+	oldExists := pathExists
+	pathExists = func(path string) bool { return !strings.Contains(path, "Missing Show") }
+	t.Cleanup(func() { pathExists = oldExists })
 	srv := sonarrLibrary(t, true)
 	home := t.TempDir()
 	writeLedger(t, home,
@@ -141,7 +144,7 @@ func TestInventoryJoinsProofByMediaID(t *testing.T) {
 		at                                              time.Time
 	}{
 		{"Queued Show", "queued", "", "", "", "", time.Time{}},
-		{"Disk Show", "on-disk", "", "", "", "", time.Time{}},
+		{"Disk Show", "on-disk", "", "/fake/Disk Show", "Startup disk", "", time.Time{}},
 		{"Copied Show", "copied", "hash", "/Volumes/ATLAS/TV/Copied Show", "ATLAS", "/dl/Copied", importedAt},
 		{"Moved Show", "moved", "size", "/Volumes/ATLAS/TV/Moved Show", "ATLAS", "/dl/Moved", importedAt},
 		{"Missing Show", "missing", "", "/Volumes/ATLAS/TV/Missing Show", "ATLAS", "", importedAt},
@@ -180,12 +183,11 @@ func TestInventoryUnreadHistoryNeverClaimsQueued(t *testing.T) {
 		t.Fatalf("history failure must list items and report a problem: %d %v", len(items), problems)
 	}
 	for _, it := range items {
-		want := ""
-		if it.Title == "Disk Show" || it.Title == "Copied Show" || it.Title == "Moved Show" {
-			want = "on-disk"
+		if it.Status == "queued" {
+			t.Errorf("%s: unread history must never claim queued", it.Title)
 		}
-		if it.Status != want || it.Verified != "" {
-			t.Errorf("%s: status %q verified %q without readable history", it.Title, it.Status, it.Verified)
+		if it.Verified != "" {
+			t.Errorf("%s: proof invented without readable history: %q", it.Title, it.Verified)
 		}
 	}
 }
@@ -248,6 +250,9 @@ func TestVolumeName(t *testing.T) {
 }
 
 func TestInventoryKeepsAVerifiedCopyCopiedWhenAnotherDownloadIsQueued(t *testing.T) {
+	oldExists := pathExists
+	pathExists = func(string) bool { return true }
+	t.Cleanup(func() { pathExists = oldExists })
 	queueDownload := hashE
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -321,5 +326,48 @@ func TestInventoryShowsActiveWorkAsImportingOrDownloading(t *testing.T) {
 	}
 	if got := by["Moving Show"].Status; got != "importing" {
 		t.Fatalf("a queued show whose files exist reads %q, want importing", got)
+	}
+}
+
+func TestInventoryChecksTheRealPathBeforeSayingMissing(t *testing.T) {
+	root := t.TempDir()
+	onDisk := filepath.Join(root, "On Disk Show")
+	if err := os.Mkdir(onDisk, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(root, "Gone Show")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/series":
+			json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 1, "title": "On Disk Show", "path": onDisk, "statistics": map[string]any{"episodeFileCount": 1}},
+				{"id": 2, "title": "Gone Show", "path": gone, "statistics": map[string]any{"episodeFileCount": 1}},
+				{"id": 3, "title": "Pending Show", "statistics": map[string]any{"episodeFileCount": 1}},
+			})
+		case "/api/v3/history":
+			json.NewEncoder(w).Encode(map[string]any{"page": 1, "totalRecords": 0, "records": []map[string]any{}})
+		case "/api/v3/queue":
+			json.NewEncoder(w).Encode(map[string]any{"page": 1, "totalRecords": 0, "records": []map[string]any{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	items, problems := Inventory(config.Config{Sonarr: config.App{URL: srv.URL, APIKey: "k"}}, t.TempDir(), nil)
+	if len(problems) != 0 || len(items) != 3 {
+		t.Fatalf("items %d, problems %v", len(items), problems)
+	}
+	by := map[string]Item{}
+	for _, it := range items {
+		by[it.Title] = it
+	}
+	if got := by["On Disk Show"]; got.Status != "on-disk" || got.TargetPath != onDisk || got.TargetVolume != "Startup disk" {
+		t.Fatalf("an existing file must read on-disk at the checked path: %+v", got)
+	}
+	if got := by["Gone Show"]; got.Status != "missing" || got.TargetPath != gone {
+		t.Fatalf("a checked path that is gone must read missing and name it: %+v", got)
+	}
+	if got := by["Pending Show"]; got.Status != "proof-pending" || got.TargetPath != "" {
+		t.Fatalf("files with no checkable path must read proof-pending: %+v", got)
 	}
 }

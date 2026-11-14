@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"encoding/hex"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -13,6 +14,13 @@ import (
 	"librarystudio/internal/platform"
 	"librarystudio/internal/stock"
 )
+
+// pathExists is the one filesystem check behind "On disk" and "Missing". It is
+// replaceable in tests so the status rules are exercised without a NAS.
+var pathExists = func(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
 
 // metaKinds maps each library app to the metadata kind of its items. Lidarr has
 // no keyless provider, so an artist is never given a film's facts or poster.
@@ -146,6 +154,18 @@ func Inventory(c config.Config, home string, meta *metadata.Client) ([]Item, []s
 				it.TargetPath, it.TargetVolume, it.StatusAt = p.ImportedPath, volumeName(p.ImportedPath), p.ImportedAt
 			}
 		}
+		// What a person can verify: the app's own path first, then the saved import
+		// proof. "Missing" is only said after a real path was checked and not found;
+		// with no checkable path the item reads "Imported — proof pending".
+		checked := strings.TrimSpace(m.Path)
+		if checked == "" {
+			checked = strings.TrimSpace(it.TargetPath)
+		}
+		fileFound := false
+		if checked != "" {
+			fileFound = pathExists(checked)
+			it.TargetPath, it.TargetVolume = checked, volumeName(checked)
+		}
 		switch {
 		case proven && queuedHash[strings.ToUpper(p.DownloadID)]:
 			it.Status = "importing" // the app is still handling the download that imported it
@@ -153,14 +173,20 @@ func Inventory(c config.Config, home string, meta *metadata.Client) ([]Item, []s
 			it.Status = "importing"
 		case !proven && queuedMedia[proofKey(m.App, m.ID)]:
 			it.Status = "downloading"
-		case m.HaveFiles && proven && rec != nil && rec.State == phaseRemoved:
-			it.Status = "moved"
-		case m.HaveFiles && proven:
-			it.Status = "copied"
-		case m.HaveFiles:
-			it.Status = "on-disk"
-		case proven:
-			it.Status = "missing" // the app imported it, but now reports no files
+		case checked != "" && !fileFound:
+			it.Status = "missing" // checked on this machine and not there
+		case (m.HaveFiles || proven) && checked != "" && fileFound:
+			if proven {
+				if rec != nil && rec.State == phaseRemoved {
+					it.Status = "moved"
+				} else {
+					it.Status = "copied"
+				}
+			} else {
+				it.Status = "on-disk"
+			}
+		case m.HaveFiles || proven:
+			it.Status = "proof-pending" // reported, but no path could be checked
 		case read[m.App]:
 			it.Status = "queued"
 		}
