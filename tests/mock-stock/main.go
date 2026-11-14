@@ -101,7 +101,7 @@ func main() {
 			case "sonarr":
 				records = []map[string]any{{"id": 1, "downloadId": hashOf("A1"), "seriesId": 1}, {"id": 2, "downloadId": hashOf("A6"), "seriesId": 1}}
 			case "radarr":
-				records = []map[string]any{{"id": 3, "downloadId": hashOf("A7"), "movieId": 1}, {"id": 4, "downloadId": uiHash("c2"), "movieId": 2}}
+				records = []map[string]any{{"id": 3, "downloadId": hashOf("A7"), "movieId": 1}}
 			case "lidarr":
 				records = []map[string]any{{"id": 5, "downloadId": hashOf("A8"), "artistId": 1}}
 			}
@@ -121,7 +121,7 @@ func main() {
 					"data": map[string]any{"importedPath": "/Volumes/NAS/Media/Sample Series/Season 02/Sample Series S02E03 1080p.mkv"}}, ui.sonarrHistory()}
 			case "radarr":
 				records = []map[string]any{{"eventType": "downloadFolderImported", "downloadId": hashOf("A2"), "date": ago(1), "movieId": 1,
-					"data": map[string]any{"importedPath": "/Volumes/NAS/Media/Example Film (2024)/Example Film (2024) 2160p.mkv"}}}
+					"data": map[string]any{"importedPath": "/Volumes/NAS/Media/Example Film (2024)/Example Film (2024) 2160p.mkv"}}, ui.radarrHistory()}
 			case "lidarr":
 				records = []map[string]any{{"eventType": "downloadImported", "downloadId": hashOf("A3"), "date": ago(6), "artistId": 1,
 					"data": map[string]any{"importedPath": "/Volumes/NAS/Music/Demo Artist/First Album"}}}

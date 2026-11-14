@@ -12,6 +12,8 @@ import (
 const (
 	uiImportedFile = "Sample Series S02E06 1080p.mkv"
 	uiImportedRel  = "Sample Series/Season 02/" + uiImportedFile
+	uiQuietFile    = "A Quiet Film (1998) 1080p"
+	uiQuietRel     = "A Quiet Film (1998)/A Quiet Film (1998) 1080p.mkv"
 )
 
 // uiHash is a 40-hex qBittorrent hash; history reports it upper-case like the real apps.
@@ -29,9 +31,9 @@ func (u uiFixture) unix(hours float64) int64 {
 	return u.now.Add(-time.Duration(hours * float64(time.Hour))).Unix()
 }
 
-// importedSize is read from the seeded file so qBittorrent, the record and the disk agree.
-func (u uiFixture) importedSize() int64 {
-	if fi, err := os.Stat(filepath.Join(u.downloads, uiImportedFile)); err == nil {
+// fileSize is read from the seeded file so qBittorrent, the record and the disk agree.
+func (u uiFixture) fileSize(name string) int64 {
+	if fi, err := os.Stat(filepath.Join(u.downloads, name)); err == nil {
 		return fi.Size()
 	}
 	return 0
@@ -50,15 +52,16 @@ func (u uiFixture) state(hash, original string, progress float64) string {
 }
 
 func (u uiFixture) torrents() []map[string]any {
-	size := u.importedSize()
+	size := u.fileSize(uiImportedFile)
+	quietSize := u.fileSize(uiQuietFile)
 	// One active download so Pause/Resume and its Activity record are exercisable.
 	return []map[string]any{
 		{"hash": uiHash("c5"), "name": "Fresh Film (2021) 1080p", "progress": 0.42, "state": u.state("c5", "downloading", 0.42), "size": 4e9, "downloaded": 1.68e9,
 			"dlspeed": 8e6, "eta": 360, "added_on": u.unix(2), "num_seeds": 9, "num_leechs": 2, "save_path": u.downloads, "category": "radarr"},
 		{"hash": uiHash("c1"), "name": uiImportedFile, "progress": 1, "state": u.state("c1", "stalledUP", 1), "size": size, "downloaded": size, "uploaded": size / 2,
 			"ratio": 0.5, "seeding_time": 3600, "added_on": u.unix(30), "completion_on": u.unix(26), "num_seeds": 0, "num_leechs": 0, "save_path": u.downloads, "category": "tv-sonarr"},
-		{"hash": uiHash("c2"), "name": "A Quiet Film (1998) 1080p", "progress": 1, "state": u.state("c2", "moving", 1), "size": 6e9, "downloaded": 6e9,
-			"added_on": u.unix(3), "completion_on": u.unix(1), "save_path": u.downloads, "category": "radarr"},
+		{"hash": uiHash("c2"), "name": uiQuietFile, "progress": 1, "state": u.state("c2", "stalledUP", 1), "size": quietSize, "downloaded": quietSize, "uploaded": quietSize / 2,
+			"ratio": 0.5, "seeding_time": 3600, "added_on": u.unix(3), "completion_on": u.unix(1), "num_seeds": 0, "num_leechs": 0, "save_path": u.downloads, "category": "radarr"},
 		{"hash": uiHash("c3"), "name": "Another Show S01E02 720p", "progress": 0.9, "state": u.state("c3", "missingFiles", 0.9), "size": 1.1e9, "downloaded": 0.99e9,
 			"added_on": u.unix(200), "save_path": u.downloads, "category": "tv-sonarr"},
 		{"hash": uiHash("c4"), "name": "Old Download Without Import", "progress": 1, "state": u.state("c4", "stalledUP", 1), "size": 3.2e9, "downloaded": 3.2e9, "uploaded": 6.4e9,
@@ -70,6 +73,12 @@ func (u uiFixture) torrents() []map[string]any {
 func (u uiFixture) sonarrHistory() map[string]any {
 	return map[string]any{"eventType": "downloadFolderImported", "downloadId": strings.ToUpper(uiHash("c1")), "seriesId": 1,
 		"date": u.now.Add(-24 * time.Hour).Format(time.RFC3339), "data": map[string]any{"importedPath": filepath.Join(u.library, uiImportedRel)}}
+}
+
+// radarrHistory is the whole-download import proof for c2, joined to movie 2 by movieId.
+func (u uiFixture) radarrHistory() map[string]any {
+	return map[string]any{"eventType": "downloadFolderImported", "downloadId": strings.ToUpper(uiHash("c2")), "movieId": 2,
+		"date": u.now.Add(-24 * time.Hour).Format(time.RFC3339), "data": map[string]any{"importedPath": filepath.Join(u.library, uiQuietRel)}}
 }
 
 // files answers /api/v2/torrents/files for the UI torrents; ok is false for any other hash.

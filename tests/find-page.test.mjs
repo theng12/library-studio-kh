@@ -32,6 +32,14 @@ test("the ready line counts valid links and chosen files", () => {
   assert.equal(ready("magnet:?xt=urn:btih:abc\nhttps://example.test/f.torrent", 0), "2 links ready.");
   assert.equal(ready("", 2), "2 files ready.");
   assert.equal(ready("https://example.test/f.torrent", 1), "1 link and 1 file ready.");
+  // A bad line is named, but only the valid lines count as ready.
+  assert.equal(ready("magnet:?xt=urn:btih:abc\nnonsense", 0), "1 link ready.");
+  assert.equal(ready("nonsense\nalso bad", 0), "");
+  assert.equal(ready("magnet:?xt=urn:btih:abc\nnonsense", 1), "1 link and 1 file ready.");
+});
+
+test("the reason and the ready count are shown together, not either/or", () => {
+  assert.match(app, /line\.textContent = reason \? \(ready \? reason \+ " " \+ ready : reason\) : ready;/);
 });
 
 test("Find & add lays out one full-width search row and a sized type control", () => {

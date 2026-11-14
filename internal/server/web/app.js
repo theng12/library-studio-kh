@@ -466,9 +466,12 @@ function torrentInputReason(links, count) {
   return "Paste a link or choose at least one .torrent file.";
 }
 function torrentReadyText(links, count) {
-  const n = String(links || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length;
+  // Count only valid lines (same check as torrentInputReason), so a bad line is
+  // named while the good lines still read as ready. Kept inline so it stays a
+  // plain testable helper.
+  const valid = String(links || "").split(/\r?\n/).map((line) => line.trim()).filter((line) => /^magnet:\?/i.test(line) || /^https?:\/\/\S+$/i.test(line)).length;
   const parts = [
-    n ? n + (n === 1 ? " link" : " links") : "",
+    valid ? valid + (valid === 1 ? " link" : " links") : "",
     count ? count + (count === 1 ? " file" : " files") : "",
   ].filter(Boolean);
   return parts.length ? parts.join(" and ") + " ready." : "";
@@ -477,7 +480,10 @@ function torrentReady() {
   const links = $("#t-links").value, btn = $("#torrent-form button[type=submit]"), line = $("#t-reason");
   const reason = torrentInputReason(links, torrentFiles.length);
   if (btn) { btn.disabled = !!reason; btn.title = reason; }
-  if (line) line.textContent = reason || torrentReadyText(links, torrentFiles.length);
+  if (line) {
+    const ready = torrentReadyText(links, torrentFiles.length);
+    line.textContent = reason ? (ready ? reason + " " + ready : reason) : ready;
+  }
 }
 function renderTorrentChips() {
   const box = $("#t-chips");

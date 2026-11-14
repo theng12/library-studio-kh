@@ -51,6 +51,25 @@ var testManagedHash = strings.ToUpper(strings.Repeat("e1", 20))
 
 const testManagedName = "Old Show S01E01 720p"
 
+// testQuietHash is the mock's c2 torrent: a Radarr movie that finished importing,
+// so the download → import → proof journey is walkable for films as c1 is for TV.
+var testQuietHash = strings.ToUpper(strings.Repeat("c2", 20))
+
+const (
+	testQuietName = "A Quiet Film (1998) 1080p"
+	testQuietRel  = "A Quiet Film (1998)/A Quiet Film (1998) 1080p.mkv"
+)
+
+// testDueHash is a staging copy past its retention wait whose qBittorrent entry is
+// already gone, so Preview proposes the move, Run moves it to Library's _trash and
+// the row then offers Restore.
+var testDueHash = strings.ToUpper(strings.Repeat("c6", 20))
+
+const (
+	testDueName = "Due Show S01E01 1080p"
+	testDueRel  = "Due Show/Season 01/" + testDueName + ".mkv"
+)
+
 type testEnv struct {
 	Home, Stock, Downloads, Library, Metadata string
 	Port                                      int
@@ -135,6 +154,9 @@ type testRecord struct {
 	Label        string                `json:"label"`
 	Files        []library.CleanupFile `json:"files"`
 	Bytes        int64                 `json:"bytes"`
+	// MetadataRemoved marks a tracked import whose qBittorrent entry is already
+	// gone, so a due staging copy can move without a live seeding check.
+	MetadataRemoved bool `json:"metadataRemoved,omitempty"`
 }
 
 type testFixtureTitle struct {
@@ -162,6 +184,7 @@ func testCacheKey(kind, title string, year int) string {
 func seedFixtures(e testEnv, now time.Time) error {
 	episode := bytes.Repeat([]byte("Library Studio KH headless test episode fixture\n"), 1024)
 	film := bytes.Repeat([]byte("Library Studio KH headless test film fixture\n"), 1024)
+	due := bytes.Repeat([]byte("Library Studio KH headless test due fixture\n"), 768)
 	for path, b := range map[string][]byte{
 		filepath.Join(e.Library, testImportedRel): episode,
 		filepath.Join(e.Library, testFilmRel):     film,
@@ -174,6 +197,11 @@ func seedFixtures(e testEnv, now time.Time) error {
 		// the deliberately missing source reads as missing.
 		filepath.Join(e.Downloads, "A Quiet Film (1998) 1080p"):   film,
 		filepath.Join(e.Downloads, "Old Download Without Import"): film,
+		// c2's organized library copy (its import proof) and c6's due staging copy
+		// plus library import, so verifyTree passes for both.
+		filepath.Join(e.Library, testQuietRel):  film,
+		filepath.Join(e.Downloads, testDueName): due,
+		filepath.Join(e.Library, testDueRel):    due,
 	} {
 		if err := writeFile(path, b); err != nil {
 			return err
@@ -187,6 +215,19 @@ func seedFixtures(e testEnv, now time.Time) error {
 		ImportedAt: importedAt, ImportedPath: filepath.Join(e.Library, testImportedRel), VerifiedAt: importedAt,
 		State: "staging", SavePath: e.Downloads, MoveRoot: filepath.Join(e.Downloads, testImportedFile), Label: testImportedFile,
 		Files: []library.CleanupFile{{Rel: "", Size: int64(len(episode)), SHA256: hex.EncodeToString(sum[:])}}, Bytes: int64(len(episode)),
+	}
+	if err := addCleanupRecord(filepath.Join(e.Home, "staged_cleanup.json"), rec); err != nil {
+		return err
+	}
+	// c2: a Radarr movie that finished importing — the film download → import →
+	// proof journey, mirroring c1 for TV. Still inside its 3-day staging wait.
+	filmSum := sha256.Sum256(film)
+	quietAt := now.Add(-24 * time.Hour).UTC()
+	rec = testRecord{
+		Hash: testQuietHash, Name: testQuietName, App: "Radarr", DownloadID: testQuietHash,
+		ImportedAt: quietAt, ImportedPath: filepath.Join(e.Library, testQuietRel), VerifiedAt: quietAt,
+		State: "staging", SavePath: e.Downloads, MoveRoot: filepath.Join(e.Downloads, testQuietName), Label: testQuietName,
+		Files: []library.CleanupFile{{Rel: "", Size: int64(len(film)), SHA256: hex.EncodeToString(filmSum[:])}}, Bytes: int64(len(film)),
 	}
 	if err := addCleanupRecord(filepath.Join(e.Home, "staged_cleanup.json"), rec); err != nil {
 		return err
@@ -210,6 +251,21 @@ func seedFixtures(e testEnv, now time.Time) error {
 		State: "managed_trash", SavePath: e.Downloads, MoveRoot: filepath.Join(e.Downloads, testManagedName), Label: testManagedName,
 		ManagedPath: managedPath, ManagedRoot: managedRoot, StagedAt: now.Add(-4 * 24 * time.Hour).UTC(),
 		Files: []library.CleanupFile{{Rel: "", Size: int64(len(managedBytes)), SHA256: hex.EncodeToString(managedSum[:])}}, Bytes: int64(len(managedBytes)),
+	}
+	if err := addCleanupRecord(filepath.Join(e.Home, "staged_cleanup.json"), rec); err != nil {
+		return err
+	}
+	// c6: a staging copy 4 days old (past the 3-day wait) whose qBittorrent entry
+	// is already gone, so it is due and movable: Preview proposes the move, Run
+	// moves it to Library's _trash, and the row then offers Restore.
+	dueSum := sha256.Sum256(due)
+	dueAt := now.Add(-4 * 24 * time.Hour).UTC()
+	rec = testRecord{
+		Hash: testDueHash, Name: testDueName, App: "Sonarr", DownloadID: testDueHash,
+		ImportedAt: dueAt, ImportedPath: filepath.Join(e.Library, testDueRel), VerifiedAt: dueAt,
+		State: "staging", SavePath: e.Downloads, MoveRoot: filepath.Join(e.Downloads, testDueName), Label: testDueName,
+		Files: []library.CleanupFile{{Rel: "", Size: int64(len(due)), SHA256: hex.EncodeToString(dueSum[:])}}, Bytes: int64(len(due)),
+		MetadataRemoved: true,
 	}
 	if err := addCleanupRecord(filepath.Join(e.Home, "staged_cleanup.json"), rec); err != nil {
 		return err

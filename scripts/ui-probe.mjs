@@ -8,6 +8,8 @@
 //   node scripts/ui-probe.mjs wait "document.querySelectorAll('.libgrid-card').length" 10000
 //   node scripts/ui-probe.mjs measure [--viewport 1440x900]   # asserts layout, prints JSON
 //   node scripts/ui-probe.mjs click "#selector" [--after "JS"] [--viewport 768x1024]   (trusted pointer)
+//   node scripts/ui-probe.mjs key Escape [--after "JS"]            (trusted CDP key event)
+//   node scripts/ui-probe.mjs key --text "look" --focus "#find-q"  (focus a field, then type real keys)
 //   node scripts/ui-probe.mjs shot /tmp/x.png [--viewport 768x1024]
 //   node scripts/ui-probe.mjs stop
 //
@@ -99,6 +101,48 @@ async function evaluate(expression, vp = null) {
   ws.close();
   if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || "page error");
   return result.result.value;
+}
+
+// A trusted pointer click at the element's centre, not element.click(): it focuses
+// and opens like a person. Shared by `click` and `key --focus` so a field can be
+// focused and typed into within one session (focus clears between CLI calls).
+async function clickSelector(ws, selector) {
+  await send(ws, "Runtime.evaluate", { expression: `document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({ block: "center", inline: "center" })` });
+  await sleep(250);
+  const r = await send(ws, "Runtime.evaluate", { expression: `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`, returnByValue: true });
+  const spot = r.result.value;
+  if (!spot) throw new Error("no element for " + selector);
+  await send(ws, "Input.dispatchMouseEvent", { type: "mouseMoved", x: spot.x, y: spot.y });
+  await send(ws, "Input.dispatchMouseEvent", { type: "mousePressed", x: spot.x, y: spot.y, button: "left", clickCount: 1 });
+  await send(ws, "Input.dispatchMouseEvent", { type: "mouseReleased", x: spot.x, y: spot.y, button: "left", clickCount: 1 });
+}
+
+// Named keys the walk needs, with the virtual-key codes CDP expects. Trusted
+// Input.dispatchKeyEvent, not a synthetic DOM KeyboardEvent.
+const KEYS = {
+  Escape: { code: "Escape", vk: 27 }, Enter: { code: "Enter", vk: 13 }, Tab: { code: "Tab", vk: 9 },
+  ArrowDown: { code: "ArrowDown", vk: 40 }, ArrowUp: { code: "ArrowUp", vk: 38 },
+  ArrowLeft: { code: "ArrowLeft", vk: 37 }, ArrowRight: { code: "ArrowRight", vk: 39 },
+  Backspace: { code: "Backspace", vk: 8 }, Delete: { code: "Delete", vk: 46 },
+  Space: { code: "Space", vk: 32, key: " " }, Home: { code: "Home", vk: 36 }, End: { code: "End", vk: 35 },
+};
+
+async function dispatchKey(ws, name) {
+  const k = KEYS[name];
+  if (!k) throw new Error("unknown key " + name + " (named keys: " + Object.keys(KEYS).join(", ") + "; use --text for characters)");
+  const base = { key: k.key || name, code: k.code, windowsVirtualKeyCode: k.vk, nativeVirtualKeyCode: k.vk };
+  await send(ws, "Input.dispatchKeyEvent", { type: "rawKeyDown", ...base });
+  await send(ws, "Input.dispatchKeyEvent", { type: "keyUp", ...base });
+}
+
+async function typeText(ws, text) {
+  for (const ch of text) {
+    const upper = ch.toUpperCase();
+    const vk = upper.charCodeAt(0);
+    const code = /^[a-z]$/i.test(ch) ? "Key" + upper : /^[0-9]$/.test(ch) ? "Digit" + ch : "";
+    await send(ws, "Input.dispatchKeyEvent", { type: "keyDown", key: ch, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, text: ch, unmodifiedText: ch });
+    await send(ws, "Input.dispatchKeyEvent", { type: "keyUp", key: ch, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk });
+  }
 }
 
 const MEASURE = `(() => {
@@ -243,17 +287,9 @@ async function main() {
     const selector = args[0];
     if (!selector) throw new Error("click needs a CSS selector");
     const ws = await connectWith(vp);
-    await send(ws, "Runtime.evaluate", { expression: `document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({ block: "center", inline: "center" })` });
-    await sleep(250);
-    const spot = await (async () => {
-      const r = await send(ws, "Runtime.evaluate", { expression: `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`, returnByValue: true });
-      return r.result.value;
-    })();
-    if (!spot) { ws.close(); throw new Error("no element for " + selector); }
-    // A trusted pointer click, not element.click(): focuses and opens like a person.
-    await send(ws, "Input.dispatchMouseEvent", { type: "mouseMoved", x: spot.x, y: spot.y });
-    await send(ws, "Input.dispatchMouseEvent", { type: "mousePressed", x: spot.x, y: spot.y, button: "left", clickCount: 1 });
-    await send(ws, "Input.dispatchMouseEvent", { type: "mouseReleased", x: spot.x, y: spot.y, button: "left", clickCount: 1 });
+    try {
+      await clickSelector(ws, selector);
+    } catch (e) { ws.close(); throw e; }
     // Read the settled state before the session (and its viewport) goes away;
     // clearing the emulation resizes the page and would reset the UI.
     const after = args.includes("--after") ? args[args.indexOf("--after") + 1] : "";
@@ -267,6 +303,32 @@ async function main() {
     if (!after) console.log("clicked " + selector);
     return;
   }
+  if (cmd === "key") {
+    const textIdx = args.indexOf("--text");
+    const focusIdx = args.indexOf("--focus");
+    const afterIdx = args.indexOf("--after");
+    const after = afterIdx >= 0 ? args[afterIdx + 1] : "";
+    const ws = await connectWith(vp);
+    try {
+      // Optional trusted click first, so typing lands in the field in this session.
+      if (focusIdx >= 0) await clickSelector(ws, args[focusIdx + 1]);
+      if (textIdx >= 0) await typeText(ws, args[textIdx + 1] || "");
+      else {
+        const name = args[0];
+        if (!name || name.startsWith("--")) throw new Error("key needs a name (Escape, Enter, Tab, ...) or --text \"...\"");
+        await dispatchKey(ws, name);
+      }
+      await sleep(400);
+      if (after) {
+        const out = await send(ws, "Runtime.evaluate", { expression: after, returnByValue: true, awaitPromise: true });
+        if (out.exceptionDetails) throw new Error(out.exceptionDetails.exception?.description || "after error");
+        console.log(JSON.stringify(out.result.value, null, 1));
+      } else {
+        console.log(textIdx >= 0 ? "typed " + JSON.stringify(args[textIdx + 1] || "") : "key " + args[0]);
+      }
+    } finally { ws.close(); }
+    return;
+  }
   if (cmd === "shot") {
     const ws = await connectWith(vp);
     const { data } = await send(ws, "Page.captureScreenshot", { format: "png" });
@@ -275,7 +337,7 @@ async function main() {
     console.log("saved " + (args[0] || "ui-probe.png"));
     return;
   }
-  console.error("usage: start --url URL | login u p | eval JS | wait EXPR MS | measure | shot PATH | stop  (all accept --viewport WxH)");
+  console.error("usage: start --url URL | login u p | eval JS | wait EXPR MS | measure | click SEL | key NAME|--text TXT [--focus SEL] | shot PATH | stop  (all accept --viewport WxH; click/key accept --after JS)");
   process.exitCode = 2;
 }
 
