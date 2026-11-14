@@ -996,8 +996,12 @@ function openLocalMatch(detail, opener) {
     matchTarget = null;
     // Escape, Cancel and a backdrop click all close natively; hand focus back
     // to the Match metadata control instead of leaving it on the page body.
-    if (matchOpener?.isConnected) matchOpener.focus();
+    const opener = matchOpener;
     matchOpener = null;
+    if (!opener?.isConnected) return;
+    opener.focus();
+    // The dialog's own focus restore runs after this call, so assert again next frame.
+    requestAnimationFrame(() => { if (opener.isConnected) opener.focus(); });
   }, { once: true });
   if (!$("#local-match-dialog").open) $("#local-match-dialog").showModal();
   $("#local-match-name").focus();

@@ -87,7 +87,9 @@ test("the chooser returns focus to the control that opened it", () => {
   // A synthetic click leaves focus on the body, so the caller's control wins.
   assert.match(picker, /pickOpener = opener \|\| \(document\.activeElement !== document\.body/);
   assert.match(picker, /function restoreOpener\(\)/);
-  assert.match(picker, /pickOpener = null;\n    target\?\.focus\?\.\(\);/);
+  assert.match(picker, /pickOpener = null;\n    browser = null;/);
+  // The dialog's own focus restore can run after ours; assert again next frame.
+  assert.match(picker, /requestAnimationFrame\(\(\) => \{ if \(target\.isConnected\) target\.focus\(\); \}\);/);
   const close = picker.match(/function closeDialog\(\) \{[\s\S]*?\n  \}/)[0];
   assert.match(close, /restoreOpener\(\)/);
   const closeEvent = picker.match(/dialog\.addEventListener\("close",[\s\S]*?\n    \}\);/)[0];

@@ -187,7 +187,11 @@ function folderPickerValidSelection(state) {
   function restoreOpener() {
     const target = pickOpener || browser?.input;
     pickOpener = null;
-    target?.focus?.();
+    browser = null; // one target per close; the path field is not a second one
+    if (!target?.focus) return;
+    target.focus();
+    // The dialog's own focus restore runs after this call, so assert again next frame.
+    requestAnimationFrame(() => { if (target.isConnected) target.focus(); });
   }
 
   function closeDialog() {
@@ -231,10 +235,12 @@ function folderPickerValidSelection(state) {
     setMessage("Reading…");
     try {
       const listing = await readDirs(path);
+      if (!browser) return; // the panel closed while the folder was being read
       browser.listing = listing;
       render(listing);
       setMessage("");
     } catch (e) {
+      if (!browser) return;
       browser.listing = null;
       renderCrumbs([]);
       renderList([]);

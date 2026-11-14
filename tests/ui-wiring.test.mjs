@@ -159,6 +159,7 @@ test("library filters and type are remembered, and location actions are wired", 
   // A synthetic click leaves focus on the body; the clicked control is recorded.
   assert.match(picker, /pickOpener = opener \|\| \(document\.activeElement !== document\.body/);
   assert.match(app, /matchOpener = opener \|\| \(document\.activeElement !== document\.body/);
+  assert.match(app, /requestAnimationFrame\(\(\) => \{ if \(opener\.isConnected\) opener\.focus\(\); \}\)/);
   assert.match(grid, /onSetLocation\?\.\(detail, ev\.currentTarget\)/);
   assert.match(grid, /onMatch\?\.\(detail, ev\.currentTarget\)/);
 });

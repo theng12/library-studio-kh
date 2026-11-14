@@ -65,7 +65,7 @@ test("appearance reports its own saved state and the General grid has no void", 
   assert.match(pages, /#settings-card-appearance \{ grid-column: 1; grid-row: 1; \}/);
   assert.match(pages, /#settings-card-help \{ grid-column: 2; grid-row: 1; \}/);
   assert.match(pages, /#settings-card-dead \{ grid-column: 1 \/ span 2; grid-row: 2; \}/);
-  assert.match(pages, /#settings-card-connections \{ grid-column: 3; grid-row: 1 \/ span 2; \}/);
+  assert.match(pages, /#settings-card-connections \{ grid-column: 3; grid-row: 1 \/ span 2; align-self: stretch; \}/);
   assert.match(pages, /#settings-card-folders \{ grid-column: 1 \/ -1; grid-row: 3; \}/);
 });
 
