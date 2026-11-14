@@ -269,7 +269,8 @@ test("render shows the empty state with its next-step action", () => {
   assert.equal(empty.hidden, false);
   assert.equal(empty.textContent, "No downloads match this filter.");
   assert.deepEqual(findAll(empty, (n) => n.tag === "button").map((b) => b.textContent), ["Show all"]);
-  assert.equal(findAll(root, (n) => n.tag === "tr").length, 1, "only the header row remains");
+  assert.equal(findAll(root, (n) => n.tag === "tr").length, 0, "no column header when nothing matches");
+  assert.equal(findOne(root, hasClass("dlp-bulk")).hidden, true, "no bulk actions above an empty result");
 
   const noRows = fakeRoot();
   downloadsPanelRender(noRows, downloadsModel([]), {});

@@ -40,6 +40,7 @@ test("Find & add lays out one full-width search row and a sized type control", (
   assert.match(html, /<label class="find-type">Type <select id="find-type">/);
   assert.match(html, /<option value="Radarr">Movies<\/option>/);
   assert.match(html, /<p id="find-count" class="find-count" role="status" hidden><\/p>/);
+  assert.match(css, /#find-form \{ max-width: none; \}/);
   assert.match(css, /\.find-tools \{[^}]*display: grid; grid-template-columns: 11rem auto minmax\(0, 1fr\)/);
   assert.match(css, /\.find-tools \.search \{ grid-column: 1 \/ -1; \}/);
 });

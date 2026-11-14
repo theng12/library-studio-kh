@@ -514,7 +514,10 @@ function libraryGridItem(item, options = {}, buildMain = libraryGridCard) {
   box.setAttribute("data-key", key);
   box.setAttribute("aria-label", "Select " + (item.title || "Untitled"));
   box.addEventListener("change", () => options.handlers?.onToggleSelect?.(key));
-  wrap.append(box);
+  // The label is the touch target (44px on phones); the box stays visually small.
+  const tick = libraryGridNode("label", null, "libgrid-select-wrap");
+  tick.append(box);
+  wrap.append(tick);
   return wrap;
 }
 

@@ -1825,12 +1825,12 @@ $("#form").addEventListener("submit", async (ev) => {
     // A successful save clears the dirty state it just applied.
     const pageStatus = $("#settings-status");
     if (pageStatus) pageStatus.textContent = "Changes apply when you save.";
-    for (const name of ["tailscaleOn", "bazarrOn", "whisparrOn", "deadCleanupOn", "deadArrCleanupOn"]) {
+    for (const name of ["tailscaleOn", "bazarrOn", "whisparrOn", "deadCleanupOn", "deadArrCleanupOn", "appearance"]) {
       window.librarySettingsApi?.savedFeedback?.(name, "Saved", "saved");
     }
   } catch (e) {
     say("Not saved. " + e.message);
-    for (const name of ["tailscaleOn", "bazarrOn", "whisparrOn", "deadCleanupOn", "deadArrCleanupOn"]) {
+    for (const name of ["tailscaleOn", "bazarrOn", "whisparrOn", "deadCleanupOn", "deadArrCleanupOn", "appearance"]) {
       window.librarySettingsApi?.savedFeedback?.(name, "Not saved", "error");
     }
   }

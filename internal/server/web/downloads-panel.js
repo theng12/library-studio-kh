@@ -436,7 +436,13 @@ function downloadsPanelRender(root, model, handlers) {
     empty.append(showAll);
   }
 
-  root.append(bar, wrap, empty);
+  // With nothing to show, keep the filter that explains the empty state, but
+  // never the bulk actions or a bare column header.
+  const hasRows = model.rows.length > 0;
+  bulk.hidden = !hasRows;
+  root.append(bar);
+  if (hasRows) root.append(wrap);
+  root.append(empty);
   return root;
 }
 

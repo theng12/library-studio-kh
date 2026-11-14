@@ -56,6 +56,17 @@ test("Appearance reads as a segmented control and checkboxes are app controls", 
   assert.match(css, /@media \(max-width: 760px\) \{[\s\S]*?#settings-card-appearance \.appearance label \{ min-height: 44px; \}/);
 });
 
+test("appearance reports its own saved state and the General grid has no void", () => {
+  const view = readFileSync(new URL("../internal/server/web/settings-view.js", import.meta.url), "utf8");
+  const app = readFileSync(new URL("../internal/server/web/app.js", import.meta.url), "utf8");
+  const pages = readFileSync(new URL("../internal/server/web/pages.css", import.meta.url), "utf8");
+  assert.match(view, /data-saved-for": field\.name/);
+  assert.match(app, /\["tailscaleOn", "bazarrOn", "whisparrOn", "deadCleanupOn", "deadArrCleanupOn", "appearance"\]/);
+  assert.match(pages, /#settings-card-appearance \{ grid-column: 1 \/ span 2; grid-row: 1; \}/);
+  assert.match(pages, /#settings-card-connections \{ grid-column: 3; grid-row: 1; \}/);
+  assert.match(pages, /#settings-card-folders \{ grid-column: 1 \/ -1; grid-row: 2; \}/);
+});
+
 test("a saved theme drives the palette instead of the OS query alone", () => {
   assert.match(css, /:root\[data-theme="dark"\] \{/);
   assert.match(css, /@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme\]\)/);

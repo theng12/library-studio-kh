@@ -118,7 +118,7 @@
 .libgrid-row-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.6rem; min-width: 0; }
 .libgrid-row .libgrid-card-title { display: block; -webkit-line-clamp: unset; line-clamp: none; overflow: visible; }
 .libgrid-row-location {
-  justify-self: end; min-width: 0; max-width: 100%; text-align: right; color: var(--muted);
+  justify-self: stretch; min-width: 0; max-width: 100%; text-align: left; color: var(--muted);
   font-size: var(--text-xs); white-space: normal; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
 }
@@ -637,6 +637,7 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
 
 /* Find & add: one full-width search row, a compact type control, a measured
    gap between the two cards, and states that say what happens next. */
+#find-form { max-width: none; }
 .find-tools {
   display: grid; grid-template-columns: 11rem auto minmax(0, 1fr);
   gap: var(--space-3) var(--space-4); align-items: end;
@@ -685,6 +686,8 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
   .row-menu-list button { min-height: 44px; }
 }
 
+/* A page with one card in its tab body gives that card the whole width. */
+.tabpanel > :only-child { grid-column: 1 / -1; }
 /* Cleanup policy uses the page width on large screens instead of a narrow column. */
 #cleanup-form { max-width: none; }
 @media (min-width: 1000px) {
@@ -697,7 +700,9 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
     grid-column: 1 / -1;
   }
 }
-/* Settings: a short Appearance card spans the row so no column is left empty. */
+/* Settings General: place the three cards so no column is left empty. */
 @media (min-width: 1200px) {
-  #settings-card-appearance { grid-column: span 2; }
+  #settings-card-appearance { grid-column: 1 / span 2; grid-row: 1; }
+  #settings-card-connections { grid-column: 3; grid-row: 1; }
+  #settings-card-folders { grid-column: 1 / -1; grid-row: 2; }
 }

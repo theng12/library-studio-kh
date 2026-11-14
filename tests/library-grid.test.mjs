@@ -715,7 +715,9 @@ test("a selection checkbox sits beside the card button, never inside it", () => 
   assert.equal(select.getAttribute("aria-label"), "Select Andor");
   assert.equal(select.checked, true, "Sonarr:2 is ticked");
   const wrapper = byClass(page, "libgrid-item").find((node) => node.children.includes(cards[0]));
-  assert.ok(wrapper.children.includes(select), "the wrapper holds button and tick");
+  const tickWrap = byClass(wrapper, "libgrid-select-wrap")[0];
+  assert.ok(tickWrap && wrapper.children.includes(tickWrap), "the wrapper holds the button and the tick label");
+  assert.ok(tickWrap.children.includes(select), "the tick label holds the checkbox");
   assert.match(wrapper.className, /is-selected-item/);
   assert.doesNotMatch(cards[0].className, /is-selected-item/, "the pick state lives on the wrapper");
   select.fire("change");
@@ -848,6 +850,12 @@ test("the grid paints the first 60 cards and Show more appends the next page", (
   assert.equal(shown[129], "Film 129");
 });
 
+test("one-card tab bodies span the width and the Location column has one edge", () => {
+  const css = readFileSync(new URL("../internal/server/web/pages.css", import.meta.url), "utf8");
+  assert.match(css, /\.tabpanel > :only-child \{ grid-column: 1 \/ -1; \}/);
+  assert.match(css, /\.libgrid-row-location \{[^}]*justify-self: stretch[^}]*text-align: left/);
+});
+
 test("filter Apply and Reset stay outside the scrolling options", () => {
   const g = load();
   const css = readFileSync(new URL("../internal/server/web/library-ia.css", import.meta.url), "utf8");
@@ -860,6 +868,6 @@ test("filter Apply and Reset stay outside the scrolling options", () => {
   assert.ok(!options.children.includes(actions), "the actions are not inside the scroll box");
   assert.deepEqual(byClass(actions, "libgrid-apply").map(text), ["Apply"]);
   assert.deepEqual(byClass(actions, "libgrid-reset").map(text), ["Reset"]);
-  assert.match(css, /\.libgrid-filter-options \{ display: contents; \}/);
-  assert.match(css, /\.libgrid-filter-actions \{[^}]*position: sticky; bottom: 0/);
+  assert.match(css, /\.libgrid-filter-options \{[^}]*overflow: auto; min-height: 0/);
+  assert.match(css, /\.libgrid-filters \{[^}]*height: min\(70vh, 32rem\); overflow: hidden/);
 });
