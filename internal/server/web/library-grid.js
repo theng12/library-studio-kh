@@ -926,21 +926,38 @@ function libraryGridFilterPanel(options) {
   actions.append(apply, reset);
   panel.append(actions);
   // End the scroll box on a whole row so no option is sliced in half at rest.
-  // Groups carry legends between them, so snap to the lowest row bottom that fits
-  // rather than a fixed pitch. The mask still softens rows cut mid-scroll.
+  // Measure the box at its natural (max-height) size, cut at the top of the first row
+  // that reaches the fade buffer, and fade only the empty gap before it: the last whole
+  // row stays crisp and the next row sits fully below the edge. Groups carry legends, so
+  // the gap varies row to row. Resetting the height before measuring keeps it natural
+  // instead of ratcheting down off the previous shrink; re-run on window resize so the
+  // boundary never goes stale when the window changes or a phone rotates.
   if (typeof requestAnimationFrame !== "function") return panel;
-  requestAnimationFrame(() => {
-    if (!optionsBox.isConnected) return;
-    const boxTop = optionsBox.getBoundingClientRect().top;
-    const padBottom = parseFloat(getComputedStyle(optionsBox).paddingBottom) || 0;
-    const limit = optionsBox.clientHeight - padBottom;
-    let end = 0;
-    for (const row of optionsBox.querySelectorAll(".libgrid-check")) {
-      const bottom = row.getBoundingClientRect().bottom - boxTop;
-      if (bottom <= limit + 0.5 && bottom > end) end = bottom;
+  const sizeToRow = () => {
+    if (!optionsBox.isConnected) {
+      if (typeof window !== "undefined") window.removeEventListener("resize", sizeToRow);
+      return;
     }
-    if (end > 0) optionsBox.style.height = Math.round(end + padBottom) + "px";
-  });
+    optionsBox.style.height = "";
+    const rect = optionsBox.getBoundingClientRect();
+    const padBottom = parseFloat(getComputedStyle(optionsBox).paddingBottom) || 0;
+    const rows = [...optionsBox.querySelectorAll(".libgrid-check")];
+    const cut = rows.find((row) => row.getBoundingClientRect().bottom > rect.bottom - padBottom + 0.5);
+    if (!cut) return;
+    const cutTop = cut.getBoundingClientRect().top;
+    const prev = rows[rows.indexOf(cut) - 1];
+    const gap = prev ? Math.max(0, Math.round(cutTop - prev.getBoundingClientRect().bottom)) : 0;
+    optionsBox.style.boxSizing = "border-box";
+    optionsBox.style.height = Math.max(0, Math.round(cutTop - optionsBox.getBoundingClientRect().top)) + "px";
+    const mask = gap > 0 ? "linear-gradient(to bottom, #000 calc(100% - " + gap + "px), transparent)" : "none";
+    optionsBox.style.maskImage = mask;
+    optionsBox.style.webkitMaskImage = mask;
+  };
+  // Two frames: the phone sheet is a flex column that settles a frame after mount.
+  requestAnimationFrame(() => requestAnimationFrame(sizeToRow));
+  if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+    window.addEventListener("resize", sizeToRow);
+  }
   return panel;
 }
 

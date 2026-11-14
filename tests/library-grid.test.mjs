@@ -881,8 +881,10 @@ test("filter Apply and Reset stay outside the scrolling options", () => {
   // and Apply/Reset stay on screen instead of being pushed below the fold.
   assert.match(css, /@media \(max-width: 760px\) \{[\s\S]*?\.libgrid-filters \{[^}]*position: fixed/);
   assert.match(css, /@media \(max-width: 760px\) \{[\s\S]*?\.libgrid-filter-options \{[^}]*overflow: auto/);
-  // The box is rounded to a whole row at rest, so no option is half-shown.
+  // The box ends on a whole row at rest: it cuts at the top of the first clipped row
+  // and fades only the empty gap before it, so no option is half-shown.
   const grid = readFileSync(new URL("../internal/server/web/library-grid.js", import.meta.url), "utf8");
   assert.match(grid, /End the scroll box on a whole row/);
-  assert.match(grid, /optionsBox\.style\.height = Math\.round\(end \+ padBottom\)/);
+  assert.match(grid, /row\.getBoundingClientRect\(\)\.bottom > rect\.bottom - padBottom/);
+  assert.match(grid, /optionsBox\.style\.height = Math\.max\(0, Math\.round\(cutTop - optionsBox\.getBoundingClientRect\(\)\.top\)\)/);
 });
