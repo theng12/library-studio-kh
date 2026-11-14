@@ -384,7 +384,12 @@ test("paths stay raw, offer Copy path, and a no-file title has a next step", asy
   assert.equal(openedFind, 1);
 
   const css = readFileSync(new URL("../internal/server/web/pages.css", import.meta.url), "utf8");
-  assert.match(css, /\.libgrid-body:has\(> \.libgrid-detail\) \.libgrid-row \{ grid-template-columns: 2\.5rem minmax\(14rem, 1fr\)/);
+  const shared = /grid-template-columns: 2\.5rem minmax\(15rem, 1\.35fr\) minmax\(0, 1\.4fr\) 11rem;/;
+  const rowRule = css.slice(css.indexOf(".libgrid-row {"), css.indexOf(".libgrid-row {") + 200);
+  const headRule = css.slice(css.indexOf(".libgrid-list-head {"), css.indexOf(".libgrid-list-head {") + 200);
+  assert.match(rowRule, shared);
+  assert.match(headRule, shared);
+  assert.doesNotMatch(css, /\.libgrid-body:has\(> \.libgrid-detail\) \.libgrid-row/);
   assert.match(css, /\.tabpanel > \.card:only-of-type \{ grid-column: 1 \/ -1; \}/);
   assert.match(css, /\.libgrid-list-head \{ display: none; \}/);
 });

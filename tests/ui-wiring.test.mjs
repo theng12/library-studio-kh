@@ -66,7 +66,9 @@ test("actions, saves and empty states stay honest", () => {
   // A pause/resume that qBittorrent did not carry out is never reported as success.
   assert.match(app, /still reports " \+ \(unchanged\[0\]\.state/);
   // Saving repaints the live dead-download lines and marks the switches saved.
-  assert.match(app, /loadDeadSummary\(\);\s*const settings = window\.librarySettingsApi/);
+  assert.match(app, /loadDeadSummary\(\);[\s\S]*?const settings = window\.librarySettingsApi/);
+  // A successful save clears the dirty status.
+  assert.match(app, /pageStatus\.textContent = "Changes apply when you save\."/);
   // Folder fields carry the full value so the two locations are distinguishable.
   assert.match(app, /Full path: " \+ input\.value/);
   // A filtered-empty Activity says what to do and offers it.
@@ -98,8 +100,12 @@ test("the remaining review findings are wired", () => {
   assert.match(app, /not applied yet; Save to apply\./);
   // Save belongs to General only.
   assert.match(app, /save\.hidden = \(ev\?\.detail\?\.id \|\| "general"\) !== "general"/);
-  // Activity announces its repaint.
+  // Activity opens a real busy window and reports the filtered count politely.
+  assert.match(app, /function activityFilterInput\(\)/);
   assert.match(app, /setAttribute\("aria-busy", "true"\)/);
+  assert.match(app, /setTimeout\(\(\) => timeline\?\.setAttribute\("aria-busy", "false"\), 120\)/);
+  assert.match(app, /countLine\.textContent/);
+  assert.match(html, /id="act-count"[^>]*role="status"/);
 });
 
 test("a metadata provider outage is stated on both lists", () => {

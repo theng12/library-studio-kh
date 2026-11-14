@@ -255,9 +255,7 @@ function activityEntries() {
 
 function renderActivity() {
   if (!current) return;
-  // A filter change repaints this list; announce the short busy window so a
-  // keyboard or screen-reader user knows the rows are being replaced.
-  $("#timeline")?.setAttribute("aria-busy", "true");
+
   const s = current.snapshot, q = $("#act-q").value, app = $("#act-app").value, outcome = $("#act-outcome").value;
   const appSelect = $("#act-app"), keep = app;
   const apps = [...new Set([...(s.items || []).map((it) => it.app).filter(Boolean), ...(s.apps || []).map((a) => a.name)])].sort();
@@ -292,7 +290,7 @@ function renderActivity() {
         $("#act-q").value = "";
         $("#act-app").value = "";
         $("#act-outcome").value = "";
-        renderActivity();
+        activityFilterInput();
         $("#act-q").focus();
       });
       document.querySelector("#view-activity .tools")?.append(clearButton);
@@ -358,7 +356,20 @@ function renderActivity() {
     li.append(when, dot, main, source);
     return li;
   }));
-  $("#timeline")?.setAttribute("aria-busy", "false");
+  const countLine = $("#act-count");
+  if (countLine) countLine.textContent = entries.length + (entries.length === 1 ? " entry" : " entries") + (entries.length !== all.length ? " of " + all.length : "");
+}
+
+// A filter change opens a real busy window for the list, then repaints and
+// clears it, so assistive tech sees the update even though the work is fast.
+function activityFilterInput() {
+  const timeline = $("#timeline");
+  timeline?.setAttribute("aria-busy", "true");
+  requestAnimationFrame(() => {
+    renderActivity();
+    // Keep the window open long enough to be observable by assistive tech.
+    setTimeout(() => timeline?.setAttribute("aria-busy", "false"), 120);
+  });
 }
 
 function dur(s) {
@@ -457,7 +468,7 @@ $("#torrent-form").addEventListener("submit", async (ev) => {
   } catch (e) { msg.textContent = e.message; }
   finally { btn.disabled = false; }
 });
-for (const id of ["#act-q", "#act-app", "#act-outcome"]) $(id).addEventListener("input", renderActivity);
+for (const id of ["#act-q", "#act-app", "#act-outcome"]) $(id).addEventListener("input", activityFilterInput);
 $("#act-refresh").addEventListener("click", () => load());
 
 function titleCell(m) {
@@ -1514,6 +1525,9 @@ $("#form").addEventListener("submit", async (ev) => {
     await load();
     fillForm(current);
     loadDeadSummary();
+    // A successful save clears the dirty state it just applied.
+    const pageStatus = $("#settings-status");
+    if (pageStatus) pageStatus.textContent = "Changes apply when you save.";
     const settings = window.librarySettingsApi;
     for (const name of ["tailscaleOn", "bazarrOn", "whisparrOn", "deadCleanupOn", "deadArrCleanupOn"]) {
       settings?.savedFeedback?.(name, "Saved", "saved");
