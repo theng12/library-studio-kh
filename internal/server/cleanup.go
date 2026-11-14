@@ -47,6 +47,7 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 		if len(res.Actions) > 0 {
 			library.RecordEvent(s.Home, library.Item{ID: "cleanup-pass", Kind: "cleanup-pass", Title: "Cleanup pass", SourcePath: strings.Join(res.Actions, " "), When: s.Now()})
 		}
+		s.invalidateData()
 		writeJSON(w, 200, res)
 	})
 	mux.HandleFunc("POST /api/cleanup/verify", func(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +65,7 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 			return
 		}
 		log.Printf("cleanup: verify %s %s", req.Hash, strings.Join(res.Actions, " "))
+		s.invalidateData()
 		writeJSON(w, 200, res)
 	})
 	mux.HandleFunc("POST /api/cleanup/remove-now", func(w http.ResponseWriter, r *http.Request) {
@@ -82,6 +84,7 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 		}
 		log.Printf("cleanup: remove-now %s moved its local copy to Library's _trash", req.Hash)
 		s.recordCleanupEvent(res, req.Hash, "cleanup-moved")
+		s.invalidateData()
 		writeJSON(w, 200, res)
 	})
 	mux.HandleFunc("POST /api/cleanup/restore", func(w http.ResponseWriter, r *http.Request) {
@@ -100,6 +103,7 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 		}
 		log.Printf("cleanup: restore %s %s", req.Hash, strings.Join(res.Actions, " "))
 		s.recordCleanupEvent(res, req.Hash, "cleanup-restored")
+		s.invalidateData()
 		writeJSON(w, 200, res)
 	})
 }

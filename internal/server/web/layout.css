@@ -226,3 +226,14 @@
   --type-body: 0.95rem;
   --type-title: 1.45rem;
 }
+
+/* One motion rule for the whole app: when the system asks for less, nothing
+   animates and nothing scrolls smoothly. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -40,6 +40,7 @@ type Server struct {
 
 	prefetching atomic.Bool // single-flight guard for background metadata fills
 	local       *localMediaCache
+	data        dataCache
 	mu          sync.Mutex
 	last        *lastRun
 	remote      remoteAccess
@@ -58,6 +59,7 @@ type lastRun struct {
 func New(store *config.Store, home string) *Server {
 	s := &Server{Store: store, Home: home, Now: time.Now, Meta: &metadata.Client{Dir: filepath.Join(home, "metadata")}}
 	s.local = &localMediaCache{}
+	s.data.cond = sync.NewCond(&s.data.mu)
 	s.cleanup = library.NewStagedCleanup(store.Get, home)
 	s.setup = setup.NewManager(home, store)
 	s.initAccess()
@@ -132,6 +134,7 @@ func (s *Server) Handler() http.Handler {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
+		s.invalidateData()
 		writeJSON(w, 200, map[string]string{"folder": where})
 	})
 	mux.HandleFunc("POST /api/torrents", s.addTorrents)
@@ -191,6 +194,9 @@ func (s *Server) addTorrents(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
+	if len(links) > 0 || len(files) > 0 {
+		s.invalidateData()
+	}
 	writeJSON(w, 200, map[string]int{"links": len(links), "files": len(files)})
 }
 
@@ -248,12 +254,19 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	last := s.last
 	s.mu.Unlock()
+	data := s.pageData()
+	snapshot := data.Snapshot
+	if snapshot == nil { // a damaged disk cache can never blank the page
+		built := library.Gather(c, s.Home, s.Now(), s.Meta)
+		snapshot = &built
+	}
 	writeJSON(w, 200, map[string]any{
 		"version":   librarystudio.Version(),
 		"releases":  librarystudio.Releases(),
 		"settings":  pub,
 		"saved":     saved,
-		"snapshot":  library.Gather(c, s.Home, s.Now(), s.Meta),
+		"snapshot":  snapshot,
+		"cachedAt":  data.BuiltAt,
 		"metadata":  s.Meta.Notice(),
 		"lastClean": last,
 		"remote":    s.RemoteStatus(),
@@ -263,14 +276,12 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 
 // inventory lists the library with cache-only metadata, then fills cache gaps in the background.
 func (s *Server) inventory(w http.ResponseWriter, r *http.Request) {
-	items, problems := library.Inventory(s.Store.Get(), s.Home, s.Meta)
-	local, localProblems := s.localMediaItems()
-	items = append(items, local...)
-	problems = append(problems, localProblems...)
+	data := s.pageData()
+	items, problems := data.Items, data.Problems
 	if problems == nil {
 		problems = []string{}
 	}
-	writeJSON(w, 200, map[string]any{"items": items, "problems": problems, "metadata": s.Meta.Notice()})
+	writeJSON(w, 200, map[string]any{"items": items, "problems": problems, "metadata": s.Meta.Notice(), "cachedAt": data.BuiltAt})
 	s.prefetch(items)
 }
 
@@ -380,6 +391,7 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
+	s.invalidateData()
 	var problems []string
 	if err := s.ConfigureRemote(); err != nil {
 		problems = append(problems, err.Error())

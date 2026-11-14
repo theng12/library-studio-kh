@@ -578,7 +578,7 @@ function applyLibraryFilters(next) {
   storeLibraryFilters(lib.filters);
 }
 
-const lib = { items: [], problems: [], metadata: "", notice: "", loading: false, error: "", filters: storedLibraryFilters(), draft: {}, sort: { key: "title", dir: "asc" }, selected: null, filtersOpen: false, view: storedLibraryView() };
+const lib = { items: [], problems: [], metadata: "", notice: "", cachedAt: "", loading: false, error: "", filters: storedLibraryFilters(), draft: {}, sort: { key: "title", dir: "asc" }, selected: null, filtersOpen: false, view: storedLibraryView() };
 let libraryLoading = false;
 
 async function loadLibrary() {
@@ -592,6 +592,7 @@ async function loadLibrary() {
     lib.items = Array.isArray(r.items) ? r.items : [];
     lib.problems = (r.problems || []).filter(Boolean);
     lib.metadata = r.metadata || "";
+    lib.cachedAt = r.cachedAt || "";
     lib.error = "";
   } catch (e) {
     lib.error = e.message;
@@ -620,6 +621,7 @@ function renderLibraryPage() {
       + ". Status and proof come from import records or a real file check."
     : "Everything Sonarr, Radarr and Lidarr look after.")
     + (lib.metadata ? " " + lib.metadata : "")
+    + (lib.cachedAt ? " Last checked " + time(lib.cachedAt) + "." : "")
     + (unverified ? " " + unverified + (unverified === 1 ? " imported copy has" : " imported copies have") + " no verification proof yet — open one to see whether a local copy is tracked." : "");
   const notice = $("#browse-notice");
   const notices = [lib.notice, ...groupMessages(lib.problems)].filter(Boolean);
