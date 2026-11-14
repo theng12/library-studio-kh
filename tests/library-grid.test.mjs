@@ -886,5 +886,5 @@ test("filter Apply and Reset stay outside the scrolling options", () => {
   const grid = readFileSync(new URL("../internal/server/web/library-grid.js", import.meta.url), "utf8");
   assert.match(grid, /End the scroll box on a whole row/);
   assert.match(grid, /row\.getBoundingClientRect\(\)\.bottom > rect\.bottom - padBottom/);
-  assert.match(grid, /optionsBox\.style\.height = Math\.max\(0, Math\.round\(cutTop - optionsBox\.getBoundingClientRect\(\)\.top\)\)/);
+  assert.match(grid, /optionsBox\.style\.height = Math\.max\(0, cutTop - optionsBox\.getBoundingClientRect\(\)\.top\)/);
 });

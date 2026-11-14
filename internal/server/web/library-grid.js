@@ -948,7 +948,9 @@ function libraryGridFilterPanel(options) {
     const prev = rows[rows.indexOf(cut) - 1];
     const gap = prev ? Math.max(0, Math.round(cutTop - prev.getBoundingClientRect().bottom)) : 0;
     optionsBox.style.boxSizing = "border-box";
-    optionsBox.style.height = Math.max(0, Math.round(cutTop - optionsBox.getBoundingClientRect().top)) + "px";
+    // Exact (unrounded) height so the edge lands on the cut row's top, not a fraction
+    // past it — rounding up would leave that row straddling the boundary by subpixels.
+    optionsBox.style.height = Math.max(0, cutTop - optionsBox.getBoundingClientRect().top) + "px";
     const mask = gap > 0 ? "linear-gradient(to bottom, #000 calc(100% - " + gap + "px), transparent)" : "none";
     optionsBox.style.maskImage = mask;
     optionsBox.style.webkitMaskImage = mask;
