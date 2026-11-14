@@ -76,7 +76,7 @@ func main() {
 		"/api/v3/rootfolder": []map[string]any{{"id": 1, "path": "/Volumes/NAS/Media"}}, "/api/v1/rootfolder": []map[string]any{{"id": 1, "path": "/Volumes/NAS/Music"}},
 		"/api/v1/metadataprofile": []map[string]any{{"id": 1}},
 	}
-	tracking := newTrackingFixture(media)
+	tracking := newTrackingFixture(media, *nas)
 	feature := newFeatureFixture(media)
 	subtitles := newSubtitleFixture()
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

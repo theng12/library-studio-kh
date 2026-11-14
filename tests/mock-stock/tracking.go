@@ -3,18 +3,27 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
 // Shared under main's mutex so browser checks can observe monitoring changes.
-func newTrackingFixture(media map[string]any) func(http.ResponseWriter, *http.Request) bool {
+func newTrackingFixture(media map[string]any, library string) func(http.ResponseWriter, *http.Request) bool {
 	for _, kind := range []string{"/api/v3/series", "/api/v3/movie", "/api/v1/artist"} {
 		for _, item := range media[kind].([]map[string]any) {
 			item["monitored"] = true
 			item["qualityProfileId"] = 1
+			// The two titles the seed writes real files for report that real folder,
+			// so local-media rows and the app's own rows reconcile like production.
 			item["path"] = "/Volumes/NAS/Media/Fixture"
+			if strings.HasSuffix(kind, "/series") && item["id"] == 1 {
+				item["path"] = filepath.Join(library, "Sample Series")
+			}
+			if strings.HasSuffix(kind, "/movie") && item["id"] == 1 {
+				item["path"] = filepath.Join(library, "Example Film (2024)")
+			}
 			item["overview"] = "Sample metadata description for this title."
 			item["genres"] = []string{"Drama", "Mystery"}
 			if !strings.HasSuffix(kind, "artist") {
