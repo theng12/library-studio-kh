@@ -1196,9 +1196,16 @@ function show(view) {
   window.scrollTo(0, 0);
 }
 document.addEventListener("click", (ev) => {
-  // A click whose target is the dialog itself landed on its backdrop.
+  // A click outside the dialog's own box landed on its backdrop. A click on
+  // the dialog's padding is inside the box and must not close it.
   const dialog = ev.target;
-  if (dialog?.tagName === "DIALOG" && dialog.open) { dialog.close(); return; }
+  if (dialog?.tagName === "DIALOG" && dialog.open) {
+    const r = dialog.getBoundingClientRect();
+    if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) {
+      dialog.close();
+      return;
+    }
+  }
   const b = ev.target.closest?.("[data-view]");
   if (b) show(b.dataset.view);
 });
