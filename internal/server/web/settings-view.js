@@ -144,7 +144,10 @@ function settingsBuildField(doc, field, savedSlots) {
         settingsEl(doc, "input", { type: "radio", id: settingsFieldId(field.name + "-" + value), name: field.name, value, checked: !!checked }),
         settingsEl(doc, "span", { text: label })));
     }
-    return field.hint ? [group, settingsEl(doc, "p", { class: "muted", text: field.hint })] : [group];
+    // Appearance previews at once but still needs Save to stay; its own badge says so.
+    const slot = settingsEl(doc, "span", { class: "switch-saved", role: "status", "aria-live": "polite", "data-saved-for": field.name });
+    savedSlots.set(field.name, slot);
+    return field.hint ? [group, slot, settingsEl(doc, "p", { class: "muted", text: field.hint })] : [group, slot];
   }
   if (field.kind === "switch") {
     const slot = settingsEl(doc, "span", { class: "switch-saved", role: "status", "aria-live": "polite", "data-saved-for": field.name });
