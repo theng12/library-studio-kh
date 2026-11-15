@@ -37,7 +37,10 @@ addEventListener("DOMContentLoaded", () => {
     const expected = ["#settings-downloadpath", "#settings-librarypath", "#view-cleanup input[name=managedTrashPath]", ...["appDir", "downloadPath", "root.sonarr", "root.radarr", "root.lidarr", "root.whisparr"].map(name => '#view-help input[name="' + name + '"]')];
     report.pathControls = expected.map(selector => {
       const input = document.querySelector(selector);
-      return { selector, typeable: !!input && !input.readOnly, chooser: input?.nextElementSibling?.classList.contains("folder-picker-choose") || false };
+      // The chooser sits beside the field, not always immediately after it: the
+      // full-path line comes first. Look in the field's own label.
+      const chooser = !!input?.parentElement?.querySelector(".folder-picker-choose");
+      return { selector, typeable: !!input && !input.readOnly, chooser };
     });
     if (report.pathControls.some(item => !item.typeable || !item.chooser)) throw new Error("A path control must offer a chooser and accept a typed path");
     document.querySelector("button[data-view=browse]").click();
