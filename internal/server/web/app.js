@@ -1265,7 +1265,10 @@ document.addEventListener("click", (ev) => {
   if (dialog?.tagName === "DIALOG" && dialog.open) {
     const r = dialog.getBoundingClientRect();
     if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) {
-      dialog.close();
+      // Escape's dialog branch hands focus back through the dialog's own close
+      // handler; the backdrop path has to do the same.
+      if (dialog.id === "details") closeActivityDetail();
+      else dialog.close();
       return;
     }
   }
