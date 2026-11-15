@@ -152,17 +152,6 @@
           <div class="page-actions"><button type="button" class="small" id="act-refresh">Refresh</button></div>
         </header>
         <div class="page-body stack">
-          <details class="connections" id="web-addresses">
-            <summary>Web addresses · copy links</summary>
-            <p class="muted">Use your Library account to sign in. These links contain no login key.</p>
-            <label for="local-web-address">Local · on the host computer only</label>
-            <div class="actions"><input id="local-web-address" type="text" readonly aria-describedby="web-address-help"><button type="button" class="small" data-copy-address="local-web-address" aria-label="Copy local web address" disabled>Copy</button></div>
-            <label for="tail-web-address">Tailscale · on your other devices</label>
-            <div class="actions"><input id="tail-web-address" type="text" readonly aria-describedby="web-address-help"><button type="button" class="small" data-copy-address="tail-web-address" aria-label="Copy Tailscale web address" disabled>Copy</button></div>
-            <p id="web-address-help" class="muted">Loading addresses…</p>
-            <p class="muted">Ordinary Wi-Fi/LAN access is not enabled. Use Tailscale from another device.</p>
-            <p id="web-address-msg" class="msg" role="status" aria-live="polite"></p>
-          </details>
           <ul id="apps" class="apps" aria-label="App connections"></ul>
           <p id="notice" class="notice" role="alert" hidden></p>
           <section class="card">

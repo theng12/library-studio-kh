@@ -81,7 +81,6 @@ function row(cells, tableID) {
 
 function render(st) {
   current = st;
-  fillWebAddresses(st);
   const s = st.snapshot, cfg = st.settings;
   $("#version").textContent = st.version;
   const updatesVersion = $("#updates-version");

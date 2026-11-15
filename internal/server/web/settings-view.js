@@ -93,7 +93,7 @@ const SETTINGS_CARDS = {
         {
           kind: "slot", id: "remote-link-box", tag: "label", hidden: true,
           text: "Phone link", hint: "· keep it private",
-          input: { id: "remote-link", readonly: true, describedby: "remote-help" },
+          input: { id: "remote-link", readonly: true, describedby: "remote-help", copy: "Copy phone link" },
         },
         {
           kind: "slot", id: "remote-help", tag: "p", class: "muted",
@@ -183,6 +183,13 @@ function settingsBuildField(doc, field, savedSlots) {
         id: field.input.id, type: "text", readonly: field.input.readonly,
         "aria-describedby": field.input.describedby,
       }));
+      if (field.input.copy) {
+        node.append(settingsEl(doc, "button", {
+          type: "button", class: "small", text: "Copy", "aria-label": field.input.copy,
+          "data-copy-address": field.input.id, "data-copy-msg": field.input.id + "-msg",
+        }));
+        node.append(settingsEl(doc, "span", { id: field.input.id + "-msg", class: "msg", role: "status", "aria-live": "polite" }));
+      }
     }
     return [node];
   }

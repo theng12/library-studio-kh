@@ -175,11 +175,6 @@ button.inline { border: 0; background: none; padding: 0; color: var(--accent); t
   content: ""; display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%;
   margin-right: 0.45rem; background: currentColor; vertical-align: 0.06rem;
 }
-.connections summary { cursor: pointer; min-height: 44px; padding: 0.6rem 0; color: var(--ink-2); font-size: 0.9rem; }
-.connections .apps { padding: 0.5rem 0; }
-#web-addresses .actions { gap: 0.5rem; }
-#web-addresses input { flex: 1 1 12rem; min-width: 0; min-height: 44px; font: inherit; font-size: 1rem; color: var(--ink); background: var(--ground); border: 1px solid var(--line); border-radius: 8px; padding: 0.5rem 0.7rem; }
-#web-addresses button { min-height: 44px; }
 .apps .ok::before { background: var(--connected); }
 .apps .bad::before { background: var(--disconnected); }
 .notice { margin: 0; background: var(--warn-bg); color: var(--warn-ink); padding: 0.75rem 1rem; border-radius: 10px; }
@@ -228,6 +223,7 @@ label input:not([type=checkbox]) {
 }
 label input:focus-visible { outline-offset: 0; border-color: var(--accent); }
 label.short input { max-width: 8rem; }
+#remote-link-box button { margin: 0.4rem 0.6rem 0 0; }
 label.check { display: flex; gap: 0.6rem; align-items: center; color: var(--ink); font-size: 0.95rem; }
 .appearance { display: flex; flex-wrap: wrap; gap: 0.35rem 1.5rem; margin-bottom: 0.5rem; }
 /* Settings → Appearance is a segmented control, not raw radio circles. */

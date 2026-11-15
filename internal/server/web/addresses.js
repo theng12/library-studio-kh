@@ -1,16 +1,5 @@
 "use strict";
 
-function fillWebAddresses(state) {
-  const remote = state.remote || {};
-  for (const [id, value] of [["local-web-address", state.localUrl], ["tail-web-address", remote.on ? remote.url : ""]]) {
-    const input = document.getElementById(id);
-    input.value = value || "";
-    input.placeholder = "Not available";
-    document.querySelector('[data-copy-address="' + id + '"]').disabled = !value;
-  }
-  document.getElementById("web-address-help").textContent = remote.error || (remote.on ? "Both devices must be connected to the same Tailscale network." : "Tailscale access is off. Enable it in Settings to get a link for other devices.");
-}
-
 async function copyWebAddress(input, message) {
   if (!input.value) return;
   input.focus(); input.select(); input.setSelectionRange(0, input.value.length);
@@ -24,6 +13,10 @@ async function copyWebAddress(input, message) {
   message.textContent = copied ? "Link copied." : "Automatic copy is unavailable. The link is selected; use your device’s Copy command.";
 }
 
-for (const button of document.querySelectorAll("[data-copy-address]")) {
-  button.addEventListener("click", () => copyWebAddress(document.getElementById(button.dataset.copyAddress), document.getElementById("web-address-msg")));
-}
+// Delegated: the Copy button lives in Settings, which renders after this script loads.
+document.addEventListener("click", event => {
+  const button = event.target.closest?.("[data-copy-address]");
+  if (!button) return;
+  event.preventDefault();
+  copyWebAddress(document.getElementById(button.dataset.copyAddress), document.getElementById(button.dataset.copyMsg));
+});

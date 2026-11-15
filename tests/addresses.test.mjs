@@ -9,10 +9,11 @@ function fixture(clipboard, fallback = () => true) {
     if (!elements.has(id)) elements.set(id, { value: "", disabled: false, focus() {}, select() { this.selected = true; }, setSelectionRange(start, end) { this.selection = [start, end]; } });
     return elements.get(id);
   };
-  const document = { getElementById: element, querySelector: element, querySelectorAll: () => [], execCommand: fallback };
+  const listeners = {};
+  const document = { getElementById: element, execCommand: fallback, addEventListener(type, fn) { listeners[type] = fn; } };
   const context = { document, navigator: { clipboard } };
   runInNewContext(readFileSync(new URL("../internal/server/web/addresses.js", import.meta.url), "utf8"), context);
-  return { context, element };
+  return { context, element, listeners };
 }
 
 test("copies the full webpage URL through the modern clipboard", async () => {
@@ -35,21 +36,28 @@ test("denied clipboard uses HTTP fallback; failure leaves manual selection", asy
   assert.match(message.textContent, /Automatic copy is unavailable/);
 });
 
-test("host and Tailscale addresses stay distinct and contain no bootstrap key", () => {
-  const { context, element } = fixture(undefined);
-  context.fillWebAddresses({ localUrl: "http://localhost:4567/", remote: { on: true, url: "http://tail.example.invalid:7890/" } });
-  assert.equal(element("local-web-address").value, "http://localhost:4567/");
-  assert.equal(element("tail-web-address").value, "http://tail.example.invalid:7890/");
-  assert.equal(element('[data-copy-address="tail-web-address"]').disabled, false);
+test("the Settings Copy button copies its own link into its own message, even though it renders later", async () => {
+  let copied;
+  const { element, listeners } = fixture({ writeText: async value => { copied = value; } });
+  element("remote-link").value = "http://tail.example.invalid:7882/";
+  const button = { dataset: { copyAddress: "remote-link", copyMsg: "remote-link-msg" } };
+  listeners.click({ target: { closest: () => button }, preventDefault() {} });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(copied, "http://tail.example.invalid:7882/");
+  assert.equal(element("remote-link-msg").textContent, "Link copied.");
 });
 
-test("HTTP-only clipboard can succeed; unavailable Tailscale link is disabled", async () => {
-  const { context, element } = fixture(undefined);
-  context.fillWebAddresses({ localUrl: "http://localhost:4567/", remote: { on: false } });
-  assert.equal(element("local-web-address").value, "http://localhost:4567/");
-  assert.equal(element('[data-copy-address="tail-web-address"]').disabled, true);
-  assert.equal(element("tail-web-address").value, "");
-  const message = element("message");
-  await context.copyWebAddress(element("local-web-address"), message);
-  assert.equal(message.textContent, "Link copied.");
+test("a click elsewhere copies nothing", async () => {
+  let copied = false;
+  const { listeners } = fixture({ writeText: async () => { copied = true; } });
+  listeners.click({ target: { closest: () => null }, preventDefault() {} });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(copied, false);
+});
+
+test("Activity no longer carries the web-address disclosure; Settings offers the copy", () => {
+  const html = readFileSync(new URL("../internal/server/web/index.html", import.meta.url), "utf8");
+  const settings = readFileSync(new URL("../internal/server/web/settings-view.js", import.meta.url), "utf8");
+  assert.ok(!html.includes('id="web-addresses"'), "the status detail is off the Activity page");
+  assert.match(settings, /id: "remote-link"[^}]*copy: "Copy phone link"/);
 });
