@@ -79,7 +79,7 @@ fn finish(app: &tauri::AppHandle, report: serde_json::Value) {
     app.exit(code);
 }
 
-pub fn run() -> Result<(), String> {
+pub fn run(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
     let url = fixture_url(&std::env::var("KH_TEST_URL").map_err(|_| "KH_TEST_URL is required")?)?;
     let home = fixture_home(&std::env::var("KH_TEST_HOME").map_err(|_| "KH_TEST_HOME is required")?)?;
     prepared_home(&home)?;
@@ -138,7 +138,7 @@ pub fn run() -> Result<(), String> {
             });
             Ok(())
         })
-        .build(tauri::generate_context!()).map_err(|e| e.to_string())?
+        .build(context).map_err(|e| e.to_string())?
         .run(|_, _| {});
     Ok(())
 }

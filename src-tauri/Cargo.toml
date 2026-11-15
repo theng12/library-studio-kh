@@ -12,3 +12,8 @@ tauri = { version = "2", features = [] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+
+[[bin]]
+name = "library-studio-kh"
+path = "src/main.rs"
+test = true

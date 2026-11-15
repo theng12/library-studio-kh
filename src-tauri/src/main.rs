@@ -10,6 +10,8 @@ use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 mod webview_check;
 
+fn app_context() -> tauri::Context<tauri::Wry> { tauri::generate_context!() }
+
 struct Server(Mutex<Option<Child>>);
 
 // The URL the main window shows, kept so a closed window can be rebuilt.
@@ -320,7 +322,7 @@ fn main() {
     // flag is an ordinary unknown argument and the normal window path runs.
     #[cfg(all(test, debug_assertions))]
     if std::env::args().any(|arg| arg == "--webview-check") {
-        if let Err(error) = webview_check::run() {
+        if let Err(error) = webview_check::run(app_context()) {
             eprintln!("native-webview-check: FAIL ({error})");
             std::process::exit(1);
         }
@@ -357,7 +359,7 @@ fn main() {
                 app.exit(0);
             }
         })
-        .build(tauri::generate_context!())
+        .build(app_context())
         .expect("Library Studio KH could not start")
         .run(|app, event| {
             #[cfg(target_os = "macos")]
