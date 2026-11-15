@@ -29,8 +29,10 @@ const SETTINGS_CARDS = {
       id: "folders",
       title: "Folders",
       fields: [
-        { kind: "path", name: "downloadPath", label: "Download folder on this computer", placeholder: "Used to show free space" },
-        { kind: "path", name: "libraryPath", label: "Library folder", placeholder: "The folder your library apps import into" },
+        { kind: "path", name: "downloadPath", label: "Download folder on this computer", placeholder: "Used to show free space",
+          hint: "Where downloads land before they are imported; used to show free space." },
+        { kind: "path", name: "libraryPath", label: "Library folder", placeholder: "The folder your library apps import into",
+          hint: "Where finished items are moved to build your library." },
       ],
     },
     {
@@ -38,9 +40,12 @@ const SETTINGS_CARDS = {
       title: "Companion apps",
       hint: "qBittorrent downloads; Sonarr, Radarr and Lidarr look after the library. Turn on each app’s Remove Completed so dead rows do not pile up; Library’s Clear removes leftovers without touching files.",
       fields: [
-        { kind: "text", name: "qbittorrent.url", label: "qBittorrent address", placeholder: "http://127.0.0.1:8080", inputmode: "url" },
-        { kind: "text", name: "qbittorrent.username", label: "qBittorrent username", autocomplete: "off" },
-        { kind: "password", name: "qbittorrent.password", label: "qBittorrent password", secret: "qbi" + "ttorrent" },
+        { kind: "text", name: "qbittorrent.url", label: "qBittorrent address", placeholder: "http://127.0.0.1:8080", inputmode: "url",
+          hint: "The address Library uses to reach qBittorrent." },
+        { kind: "text", name: "qbittorrent.username", label: "qBittorrent username", autocomplete: "off",
+          hint: "The name you sign in to qBittorrent with." },
+        { kind: "password", name: "qbittorrent.password", label: "qBittorrent password", secret: "qbi" + "ttorrent",
+          hint: "The password you sign in to qBittorrent with; leave empty to keep the saved one." },
         {
           kind: "details", summary: "Library apps · Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, Whisparr",
           fields: [{ kind: "slot", id: "arr-fields" }],
@@ -52,10 +57,13 @@ const SETTINGS_CARDS = {
       title: "Dead downloads",
       hint: "A dead download has missing files and no import proof. Both actions are off by default and never touch files on disk.",
       fields: [
-        { kind: "switch", name: "deadCleanupOn", label: "Remove dead downloads automatically" },
-        { kind: "number", name: "deadCleanupHours", label: "Grace before removing (hours, 1–168)", min: 1, max: 168, inputmode: "numeric", labelClass: "short" },
+        { kind: "switch", name: "deadCleanupOn", label: "Remove dead downloads automatically",
+          hint: "Switches the automatic removal of dead downloads on or off." },
+        { kind: "number", name: "deadCleanupHours", label: "Grace before removing (hours, 1–168)", min: 1, max: 168, inputmode: "numeric", labelClass: "short",
+          hint: "How long a dead download waits before it can be removed." },
         { kind: "slot", id: "dead-cleanup-status", tag: "p", class: "muted", role: "status", text: "Off by default. Removes the torrent entry only. Files on disk are never deleted." },
-        { kind: "switch", name: "deadArrCleanupOn", label: "Also remove failed items from the arr queues" },
+        { kind: "switch", name: "deadArrCleanupOn", label: "Also remove failed items from the arr queues",
+          hint: "Also drops the dead row from the library app’s queue." },
         { kind: "slot", id: "dead-arr-status", tag: "p", class: "muted", role: "status", text: "Off by default. Removes only the app’s queue row; the release is never blocklisted and files, history and library records are untouched." },
       ],
     },
@@ -83,12 +91,21 @@ const SETTINGS_CARDS = {
   ],
   remote: [
     {
-      id: "remote",
+      // Server status sits at the top of this card: the addresses and ids come
+      // from the state and sessions payloads the page already fetches, and the
+      // card id stays stable for anything that fills or removes these lines.
+      id: "server",
       title: "Phone & Tailscale access",
-      hint: "Off by default. Your phone opens this library over your private Tailscale network.",
+      hint: "Where this Library answers on the network. Phone access is off by default; your phone opens this library over your private Tailscale network.",
       fields: [
-        { kind: "switch", name: "tailscaleOn", label: "Allow access from my Tailscale devices" },
-        { kind: "number", name: "tailscalePort", label: "Port", min: 1024, max: 65535, inputmode: "numeric", labelClass: "short" },
+        { kind: "slot", id: "server-address", tag: "p", class: "muted", text: "Not checked" },
+        { kind: "slot", id: "server-phone-link", tag: "p", class: "muted", text: "Not checked" },
+        { kind: "slot", id: "server-port", tag: "p", class: "muted", text: "Not checked" },
+        { kind: "slot", id: "server-session", tag: "p", class: "muted", text: "Not checked", style: "overflow-wrap: anywhere" },
+        { kind: "switch", name: "tailscaleOn", label: "Allow access from my Tailscale devices",
+          hint: "Switches phone and Tailscale access on or off." },
+        { kind: "number", name: "tailscalePort", label: "Port", min: 1024, max: 65535, inputmode: "numeric", labelClass: "short",
+          hint: "The port your phone connects to when access is on." },
         { kind: "slot", id: "remote-status", tag: "p", class: "msg", role: "status" },
         {
           kind: "slot", id: "remote-link-box", tag: "label", hidden: true,
@@ -152,25 +169,32 @@ function settingsBuildField(doc, field, savedSlots) {
   if (field.kind === "switch") {
     const slot = settingsEl(doc, "span", { class: "switch-saved", role: "status", "aria-live": "polite", "data-saved-for": field.name });
     savedSlots.set(field.name, slot);
-    return [settingsEl(doc, "div", { class: "switch-row" },
+    const row = settingsEl(doc, "div", { class: "switch-row" },
       settingsEl(doc, "label", { class: "switch" },
         settingsEl(doc, "input", { type: "checkbox", role: "switch", id: settingsFieldId(field.name), name: field.name, checked: !!field.checked }),
         settingsEl(doc, "span", { text: field.label, class: "switch-label" })),
-      slot)];
+      slot);
+    return field.hint ? [row, settingsEl(doc, "p", { class: "hint muted", text: field.hint })] : [row];
   }
   if (field.kind === "text" || field.kind === "password" || field.kind === "number" || field.kind === "path") {
-    return [settingsEl(doc, "label", { class: field.labelClass },
+    const id = settingsFieldId(field.name);
+    const input = settingsEl(doc, "input", {
+      id, name: field.name,
+      type: field.kind === "number" ? "number" : "text",
+      placeholder: field.placeholder, inputmode: field.inputmode,
+      autocomplete: field.kind === "password" ? "new-password" : field.autocomplete,
+      "data-secret": field.secret,
+      "data-path-picker": field.kind === "path",
+      "aria-describedby": field.hint ? id + "-hint" : null,
+      min: field.min, max: field.max,
+    });
+    const label = settingsEl(doc, "label", { class: field.labelClass },
       settingsEl(doc, "span", { text: field.label }),
-      settingsEl(doc, "input", {
-        id: settingsFieldId(field.name), name: field.name,
-        type: field.kind === "number" ? "number" : "text",
-        placeholder: field.placeholder, inputmode: field.inputmode,
-        autocomplete: field.kind === "password" ? "new-password" : field.autocomplete,
-        "data-secret": field.secret,
-        "data-path-picker": field.kind === "path",
-        readonly: field.kind === "path",
-        min: field.min, max: field.max,
-      }))];
+      input);
+    // Hint under its own input; the picker's status line — carrying any save
+    // reason — follows the field, and aria-describedby links both to the input.
+    if (field.hint) label.append(settingsEl(doc, "p", { class: "hint muted", id: id + "-hint", text: field.hint }));
+    return [label];
   }
   if (field.kind === "slot") {
     const node = settingsEl(doc, field.tag || "div", {

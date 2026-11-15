@@ -1104,6 +1104,22 @@ function fillForm(st) {
   $("#remote-status").textContent = remote.error || (remote.on ? "Ready for Tailscale connections." : "Tailscale access is off.");
   $("#remote-link-box").hidden = !remote.url;
   $("#remote-link").value = remote.url || "";
+  // Server status lines: the same state fetch, no extra endpoint.
+  const serverAddress = $("#server-address");
+  if (serverAddress) serverAddress.textContent = st.localUrl ? "On this computer: " + st.localUrl : "Not reported";
+  const serverPhone = $("#server-phone-link");
+  if (serverPhone) {
+    serverPhone.textContent = remote.url
+      ? "Phone: " + remote.url
+      : "Phone: " + (remote.error || (c.tailscaleOn ? "waiting for a Tailscale address." : "off — turn it on under Remote access."));
+  }
+  const serverPort = $("#server-port");
+  if (serverPort) {
+    const localPort = (st.localUrl || "").match(/:(\d+)\/?$/)?.[1] || "";
+    serverPort.textContent = localPort
+      ? "Port: " + localPort + " on this computer" + (remote.on && c.tailscalePort ? " · " + c.tailscalePort + " for Tailscale" : "") + "."
+      : "Not reported";
+  }
   const saved = c.appearance === "default" ? "system" : (c.appearance || "system");
   for (const r of f.querySelectorAll('input[name="appearance"]')) r.checked = r.value === saved;
   f.bazarrOn.checked = !!c.bazarrOn;
@@ -1111,8 +1127,15 @@ function fillForm(st) {
   f.deadCleanupOn.checked = !!c.deadCleanupOn;
   f.deadCleanupHours.value = c.deadCleanupHours || 24;
   f.deadArrCleanupOn.checked = !!c.deadArrCleanupOn;
-  f.downloadPath.value = c.downloadPath;
-  f.libraryPath.value = c.libraryPath;
+  // A folder whose typed value failed its save keeps that text and its reason on
+  // screen; every other field fills from the saved settings as usual.
+  const typedPathBlocked = (name) => {
+    const input = (f.elements || {})[name] || f[name];
+    const status = globalThis.document?.getElementById?.(((input && input.id) || name) + "-picker-status");
+    return !!(status && status.dataset.invalid === "1");
+  };
+  if (!typedPathBlocked("downloadPath")) f.downloadPath.value = c.downloadPath;
+  if (!typedPathBlocked("libraryPath")) f.libraryPath.value = c.libraryPath;
   for (const name of ["downloadPath", "libraryPath"]) {
     const input = (f.elements || {})[name] || f[name];
     if (!input || !input.parentElement || typeof input.insertAdjacentElement !== "function") continue;
@@ -1732,6 +1755,14 @@ async function loadSessions() {
       li.textContent = "No signed-in sessions.";
       box.append(li);
     }
+    // Server status lines: this browser's own session id, straight from the same list.
+    const serverSession = $("#server-session");
+    if (serverSession) {
+      const me = items.find((s) => s.current);
+      serverSession.textContent = me
+        ? "This browser: " + (me.device || "device not recorded") + " · session " + me.id
+        : "Not reported";
+    }
     msg.hidden = true;
   } catch (e) { msg.hidden = false; msg.textContent = e.message; }
 }
@@ -1862,6 +1893,14 @@ openUpdate.addEventListener("click", async () => {
 
 $("#form").addEventListener("change", (ev) => {
   if (ev.target.name === "appearance") applyAppearance(ev.target.value);
+  // A folder's own reason clears the moment its value changes; Save re-checks it.
+  if (ev.target.hasAttribute?.("data-path-picker")) {
+    const reasonLine = document.getElementById((ev.target.id || ev.target.name) + "-picker-status");
+    if (reasonLine && reasonLine.dataset.invalid === "1") {
+      reasonLine.textContent = "";
+      delete reasonLine.dataset.invalid;
+    }
+  }
   const status = $("#settings-status");
   if (status) status.textContent = "Unsaved changes — Save to apply.";
   if (ev.target.name === "deadCleanupOn" || ev.target.name === "deadArrCleanupOn") {
@@ -1882,13 +1921,36 @@ $("#form").addEventListener("change", (ev) => {
 $("#form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const f = ev.target, msg = $("#form-msg"), btn = $("#settings-save") || f.querySelector("button.primary");
+  // Each typed folder is checked on its own: a bad path never blocks the rest of
+  // the save, and its reason sits under that field instead of one global error.
+  const badPaths = {};
+  if (window.folderPicker?.checkPath) {
+    for (const name of ["downloadPath", "libraryPath"]) {
+      const input = f[name];
+      const reason = await window.folderPicker.checkPath(input.value);
+      const reasonLine = globalThis.document?.getElementById?.((input.id || name) + "-picker-status");
+      if (reason) {
+        badPaths[name] = reason;
+        if (reasonLine) {
+          reasonLine.textContent = reason;
+          reasonLine.dataset.invalid = "1";
+        }
+      } else if (reasonLine && reasonLine.dataset.invalid === "1") {
+        reasonLine.textContent = "";
+        delete reasonLine.dataset.invalid;
+      }
+    }
+  }
   const body = {
     appearance: f.querySelector('input[name="appearance"]:checked')?.value || "system",
     tailscaleOn: f.tailscaleOn.checked, tailscalePort: Number(f.tailscalePort.value),
     deadCleanupOn: f.deadCleanupOn.checked, deadCleanupHours: Number(f.deadCleanupHours.value),
     deadArrCleanupOn: f.deadArrCleanupOn.checked,
     bazarrOn: f.bazarrOn.checked, whisparrOn: f.whisparrOn.checked,
-    downloadPath: f.downloadPath.value.trim(), libraryPath: f.libraryPath.value.trim(),
+    // A path that failed its check keeps the saved value; the typed text and its
+    // reason stay on screen for the owner to correct.
+    downloadPath: badPaths.downloadPath ? (current?.settings?.downloadPath || "") : f.downloadPath.value.trim(),
+    libraryPath: badPaths.libraryPath ? (current?.settings?.libraryPath || "") : f.libraryPath.value.trim(),
     qbittorrent: { url: f["qbittorrent.url"].value.trim(), username: f["qbittorrent.username"].value.trim(), password: f["qbittorrent.password"].value },
   };
   for (const a of ARRS) body[a] = { url: f[a + ".url"].value.trim(), apiKey: f[a + ".apiKey"].value.trim() };
@@ -1905,9 +1967,15 @@ $("#form").addEventListener("submit", async (ev) => {
   btn.disabled = true; msg.hidden = false; say("Saving…");
   try {
     const r = await api("/api/settings", body);
+    let savedText = "Saved.";
+    if (Object.keys(badPaths).length) {
+      savedText = badPaths.downloadPath && badPaths.libraryPath
+        ? "Saved. Two folders kept their saved value — the reasons sit under them."
+        : "Saved. One folder kept its saved value — the reason sits under it.";
+    }
     say(r.problems && r.problems.length
       ? "Saved, but these settings couldn't be applied: " + r.problems.join("; ")
-      : "Saved.");
+      : savedText);
     await load();
     fillForm(current);
     loadDeadSummary();

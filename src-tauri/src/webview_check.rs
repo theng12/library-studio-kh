@@ -288,11 +288,17 @@ fn webview_report_complete(w: &serde_json::Value, expect: &Expect) -> bool {
         && under_work(str_at(w, &["fixtureBinding", "libraryPath"]));
     let controls = field(w, &["controls"]).and_then(|v| v.as_u64());
     let chosen = field(w, &["chosen"]).and_then(|v| v.as_u64());
-    let counts_ok = controls == Some(expect.controls as u64) && controls == chosen;
+    // Every path control offers a chooser; the setup/cleanup ones stay read-only and
+    // the Settings folders accept a typed path (owner, 2026-11-15).
+    let read_only = field(w, &["readOnly"]).and_then(|v| v.as_u64());
+    let typeable = field(w, &["typeable"]).and_then(|v| v.as_u64());
+    let counts_ok = controls == Some(expect.controls as u64)
+        && controls == chosen
+        && read_only.zip(typeable).is_some_and(|(r, t)| r + t == expect.controls as u64 && r > 0 && t > 0);
     let clipboard_ok = str_at(w, &["clipboard", "state"]) == Some("ok")
         && field(w, &["clipboard", "readbackOk"]).and_then(|v| v.as_bool()) == Some(true);
     let folder_ok = field(w, &["folder", "exact"]).and_then(|v| v.as_bool()) == Some(true)
-        && field(w, &["folder", "readOnly"]).and_then(|v| v.as_bool()) == Some(true)
+        && field(w, &["folder", "typeable"]).and_then(|v| v.as_bool()) == Some(true)
         && under_work(str_at(w, &["folder", "chosen"]));
     let picker_ok = str_at(w, &["picker"]).is_some_and(|s| !s.is_empty());
     nonce_ok && binding_ok && counts_ok && clipboard_ok && folder_ok && picker_ok
@@ -464,8 +470,10 @@ mod tests {
             "fixtureBinding": {"localUrl": URL, "downloadPath": fx.downloads, "libraryPath": fx.library},
             "controls": 9,
             "chosen": 9,
+            "readOnly": 7,
+            "typeable": 2,
             "clipboard": {"feedback": "Copied.", "state": "ok", "readbackOk": true, "readbackError": null},
-            "folder": {"expected": dir, "chosen": dir, "exact": true, "readOnly": true, "status": format!("Chose {}", dir.display())},
+            "folder": {"expected": dir, "chosen": dir, "exact": true, "typeable": true, "status": format!("Chose {}", dir.display())},
             "picker": format!("Chose {}", dir.display())
         })
     }
@@ -597,8 +605,10 @@ mod tests {
         cases.push(("inexact folder", v));
         let mut v = full.clone(); v["folder"]["chosen"] = serde_json::json!(outside);
         cases.push(("folder outside work", v));
-        let mut v = full.clone(); v["folder"]["readOnly"] = serde_json::json!(false);
-        cases.push(("editable folder field", v));
+        let mut v = full.clone(); v["folder"]["typeable"] = serde_json::json!(false);
+        cases.push(("folder field left read-only", v));
+        let mut v = full.clone(); v["typeable"] = serde_json::json!(0);
+        cases.push(("no typeable path field", v));
         let mut v = full.clone(); v["picker"] = serde_json::json!("");
         cases.push(("missing picker outcome", v));
         let mut v = full.clone(); v.as_object_mut().unwrap().remove("fixtureBinding");

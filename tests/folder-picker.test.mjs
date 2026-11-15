@@ -73,7 +73,7 @@ test("Settings folder fields are rendered as path pickers", () => {
   assert.match(settings, /\{ kind: "path", name: "downloadPath"/);
   assert.match(settings, /\{ kind: "path", name: "libraryPath"/);
   assert.match(settings, /"data-path-picker": field\.kind === "path"/);
-  assert.match(settings, /readonly: field\.kind === "path"/);
+  assert.doesNotMatch(settings, /readonly: field\.kind === "path"/, "the owner types a path as well as browsing for it");
 });
 
 test("packaged webview check requires every chooser and read-only path", () => {
@@ -84,7 +84,10 @@ test("packaged webview check requires every chooser and read-only path", () => {
   assert.equal(nativeCheck.includes("if (report.pathControls.some(item => !item.readOnly || !item.chooser))"), true);
   assert.equal(nativeCheck.includes('name => \'#view-help input[name="\' + name + \'"]\')'), true);
   assert.equal(nativeCheck.includes('["appDir", "downloadPath", "root.sonarr", "root.radarr", "root.lidarr", "root.whisparr"].map(name => \'#view-help input[name="\' + name + \'"]\')'), true);
-  assert.equal(nativeCheck.includes('report.pathControls = expected.map'), true);
+  assert.equal(nativeCheck.includes('report.pathControls = pickOnly.map(describe)'), true);
+  // The Settings folders accept a typed path too; setup and cleanup stay read-only.
+  assert.equal(nativeCheck.includes("report.typeablePaths = typeable.map(describe)"), true);
+  assert.equal(nativeCheck.includes('if (report.typeablePaths.some(item => item.readOnly || !item.chooser))'), true);
 });
 
 test("the picker loads before app and its stylesheet follows the layout", () => {

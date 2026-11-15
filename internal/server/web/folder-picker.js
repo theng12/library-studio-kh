@@ -1,7 +1,9 @@
 "use strict";
-// Path fields are choosers, never text boxes. On the desktop the app's own
-// platform layer opens the native folder panel; a phone/remote page opens this
-// in-app directory browser instead. Plain script, no imports, no dependencies.
+// Every path field offers the chooser and accepts a typed path; a typed value is
+// checked on save (checkPath) and the reason lands beside that field. On the
+// desktop the app's own platform layer opens the native folder panel; a
+// phone/remote page opens this in-app directory browser instead. Plain script,
+// no imports, no dependencies.
 
 function folderPickerIsAbsolute(path) {
   const p = typeof path === "string" ? path.trim() : "";
@@ -73,6 +75,20 @@ function folderPickerValidSelection(state) {
     return data;
   }
 
+  // Save-time check for a typed path: full path first, then a folder that opens.
+  // Returns "" when the value is fine (an empty field just clears the setting).
+  async function checkPath(path) {
+    const p = typeof path === "string" ? path.trim() : "";
+    if (!p) return "";
+    if (!folderPickerIsAbsolute(p)) return "Type a full folder path, starting with /.";
+    try {
+      await readDirs(p);
+      return "";
+    } catch (e) {
+      return e.message || "That folder can't be opened.";
+    }
+  }
+
   function setPath(input, value) {
     input.value = value;
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -90,8 +106,8 @@ function folderPickerValidSelection(state) {
   function enhance(input) {
     if (!input || input.dataset.pathPickerReady === "1") return;
     input.dataset.pathPickerReady = "1";
-    input.readOnly = true;
-    input.setAttribute("readonly", "");
+    // No readonly here: a typed path is allowed and is checked on save. Fields
+    // that stay read-only (setup, cleanup) carry the attribute in their markup.
 
     const choose = button("Choose folder", "folder-picker-choose");
     const clear = button("Clear", "folder-picker-clear");
@@ -325,5 +341,6 @@ function folderPickerValidSelection(state) {
     validSelection: folderPickerValidSelection,
     open: openBrowser,
     pick,
+    checkPath,
   };
 })();

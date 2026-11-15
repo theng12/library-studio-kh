@@ -31,20 +31,29 @@ addEventListener("DOMContentLoaded", () => {
       libraryPath: state.settings?.libraryPath || ""
     };
     await wait(() => document.querySelector("#settings-tab-general"), "app initialization");
-    const expected = ["#settings-downloadpath", "#settings-librarypath", "#view-cleanup input[name=managedTrashPath]", ...["appDir", "downloadPath", "root.sonarr", "root.radarr", "root.lidarr", "root.whisparr"].map(name => '#view-help input[name="' + name + '"]')];
-    report.pathControls = expected.map(selector => {
+    // Two kinds of path control: the ones that must stay read-only after a pick
+    // (setup, cleanup) and the Settings folders, which take a typed path as well
+    // as the chooser (owner, 2026-11-15). Both must offer a chooser.
+    const pickOnly = ["#view-cleanup input[name=managedTrashPath]", ...["appDir", "downloadPath", "root.sonarr", "root.radarr", "root.lidarr", "root.whisparr"].map(name => '#view-help input[name="' + name + '"]')];
+    const typeable = ["#settings-downloadpath", "#settings-librarypath"];
+    const describe = (selector) => {
       const input = document.querySelector(selector);
       return { selector, readOnly: !!input?.readOnly, chooser: input?.nextElementSibling?.classList.contains("folder-picker-choose") || false };
-    });
+    };
+    report.pathControls = pickOnly.map(describe);
+    report.typeablePaths = typeable.map(describe);
     if (report.pathControls.some(item => !item.readOnly || !item.chooser)) throw new Error("A required path control is editable or lacks a chooser");
+    if (report.typeablePaths.some(item => item.readOnly || !item.chooser)) throw new Error("A settings folder field must offer a chooser and accept a typed path");
     document.querySelector("button[data-view=browse]").click();
     const card = await wait(() => document.querySelector(".libgrid-card, .libgrid-row"), "library fixture");
     card.click();
     const field = await wait(() => document.querySelector(".libgrid-path-box input"), "selectable path field");
     document.querySelector(".libgrid-copy-path").click();
     const status = await wait(() => document.querySelector(".libgrid-path-msg")?.textContent, "clipboard result");
-    report.controls = report.pathControls.length;
-    report.chosen = report.pathControls.filter(item => item.readOnly && item.chooser).length;
+    report.controls = report.pathControls.length + report.typeablePaths.length;
+    report.chosen = [...report.pathControls, ...report.typeablePaths].filter(item => item.chooser).length;
+    report.readOnly = report.pathControls.length;
+    report.typeable = report.typeablePaths.length;
     // Feedback message and a demonstrated clipboard round-trip are separate facts:
     // "Copied." only claims success, and an error message only proves the error path.
     let readbackOk = false;
@@ -79,9 +88,9 @@ addEventListener("DOMContentLoaded", () => {
     await wait(() => !document.querySelector("#folder-picker-dialog").open, "picker completion");
     const picked = document.querySelector("#settings-downloadpath");
     const pickStatus = document.querySelector("#downloadPath-picker-status, #settings-downloadpath-picker-status")?.textContent || "";
-    report.folder = { expected: pickExpected, chosen: picked.value, exact: picked.value === pickExpected, readOnly: picked.readOnly, status: pickStatus };
+    report.folder = { expected: pickExpected, chosen: picked.value, exact: picked.value === pickExpected, typeable: !picked.readOnly, status: pickStatus };
     report.picker = pickStatus;
-    if (!picked.readOnly || !report.folder.exact) throw new Error("Picked folder was not the exact selected directory shown read-only");
+    if (picked.readOnly || !report.folder.exact) throw new Error("Picked folder was not the exact selected directory, or the field was left read-only");
     finish(true);
   })().catch(error => { report.error = error.message; finish(false); });
 });
