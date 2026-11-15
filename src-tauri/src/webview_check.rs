@@ -7,8 +7,6 @@ struct CheckStateInner {
     finished: bool,
     exit_code: i32,
     receipt: Option<PathBuf>,
-    fixture_home: Option<PathBuf>,
-    fixture_identity: Option<String>,
     controls: usize,
     chosen: usize,
     clipboard: Option<String>,
@@ -57,12 +55,18 @@ fn finish(app: &tauri::AppHandle, report: serde_json::Value) {
         if state.finished { let code = state.exit_code; drop(state); app.exit(code); return; }
         state.finished = true;
         let report_ok = report.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+        // The report's own numbers, not the counts this side hard-coded, decide completeness.
+        let controls = report.get("controls").and_then(|v| v.as_u64());
+        let chosen = report.get("chosen").and_then(|v| v.as_u64());
         let complete = report.get("fixture").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty())
-            && report.get("controls").and_then(|v| v.as_u64()).unwrap_or(0) == state.controls as u64
-            && report.get("chosen").and_then(|v| v.as_u64()).unwrap_or(0) == state.chosen as u64
+            && controls == Some(state.controls as u64) && controls == chosen
             && report.get("clipboard").and_then(|v| v.as_str()).is_some()
             && report.get("picker").and_then(|v| v.as_str()).is_some();
         state.exit_code = if report_ok && complete { 0 } else { 1 };
+        state.clipboard = report.get("clipboard").and_then(|v| v.as_str()).map(str::to_string);
+        state.picker = report.get("picker").and_then(|v| v.as_str()).map(str::to_string);
+        state.controls = controls.unwrap_or(0) as usize;
+        state.chosen = chosen.unwrap_or(0) as usize;
         (state.receipt.clone(), state.exit_code)
     };
     if let Some(path) = path.as_ref() {
@@ -86,12 +90,10 @@ pub fn run() -> Result<(), String> {
     let script = include_str!("webview_check.js").replace("__TEST_PASSWORD__", &format!("String.fromCodePoint({codes})"));
     let home_string = home.to_string_lossy().to_string();
     let receipt_string = receipt.display().to_string();
-    let fixture_identity = format!("home={};library.db={}", home.display(), home.join("library.db").display());
-    let fixture_for_state = fixture_identity.clone();
     let controls = 9usize;
     let chosen = 1usize;
     tauri::Builder::default()
-        .manage(CheckState(std::sync::Mutex::new(CheckStateInner { receipt: Some(receipt.clone()), fixture_home: Some(home.clone()), fixture_identity: Some(fixture_for_state), controls, chosen, ..Default::default() })))
+        .manage(CheckState(std::sync::Mutex::new(CheckStateInner { receipt: Some(receipt.clone()), controls, chosen, ..Default::default() })))
         .setup(move |app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
