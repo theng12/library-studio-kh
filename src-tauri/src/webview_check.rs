@@ -95,8 +95,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
     tauri::Builder::default()
         .manage(CheckState(std::sync::Mutex::new(CheckStateInner { receipt: Some(receipt.clone()), controls, chosen, ..Default::default() })))
         .setup(move |app| {
-            #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            // Keep the normal app's activation policy: the packaged app does not use Accessory mode.
             let origin = url.origin();
             let nav_handle = app.handle().clone();
             let nav_home = home_string.clone();
