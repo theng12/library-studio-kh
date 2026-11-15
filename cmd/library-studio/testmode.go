@@ -408,6 +408,26 @@ func runTestMode(seed, serveUI bool) {
 			log.Fatal(err)
 		}
 	}()
+	// The update hold on its shipped fixed port, so a release test proves the address
+	// the feed advertises. KH_TEST_HOLD_PORT moves it for a second concurrent fixture;
+	// "off" skips it.
+	switch hold := strings.TrimSpace(os.Getenv("KH_TEST_HOLD_PORT")); hold {
+	case "off":
+	default:
+		port := holdPort
+		if hold != "" {
+			if n, convErr := strconv.Atoi(hold); convErr == nil && n > 0 && n <= 65535 {
+				port = n
+			}
+		}
+		if hln, hErr := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port))); hErr != nil {
+			log.Printf("update hold not reachable on 127.0.0.1:%d: %v — the test app still runs", port, hErr)
+		} else {
+			hsrv := &http.Server{Handler: s.HoldHandler(), ReadHeaderTimeout: 10 * time.Second}
+			go func() { _ = hsrv.Serve(hln) }()
+			log.Printf("TEST_HOLD_URL=http://127.0.0.1:%d/api/maintenance/hold", port)
+		}
+	}
 	base := "http://" + ln.Addr().String() + "/"
 	// The owner account goes through the same setup call the desktop UI makes.
 	if err := testAccount(base, s.Token); err != nil {

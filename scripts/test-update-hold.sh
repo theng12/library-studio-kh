@@ -58,16 +58,18 @@ start_app() { # start_app LOGNAME
   url="$(wait_line "$work/logs/$1" TEST_URL= "$app_pid")"
   url="${url%/}"
   token="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["token"])' "$work/home/access.json")"
+  # The shipped shape: the hold on its fixed loopback port, the address the feed advertises.
+  # log.Printf prefixes a timestamp, so the marker is not at the start of the line.
+  hold_url="$(sed -n 's/.*TEST_HOLD_URL=//p' "$work/logs/$1" | head -1)"
+  [ -n "$hold_url" ] || fail "the hold did not open on its fixed port (is 8643 already taken?): $(grep -i 'update hold' "$work/logs/$1" || true)"
 }
 
-hold() { # hold TIMEOUT PAUSE -> body on stdout, "code|body" as the last line
+hold() { # hold TIMEOUT PAUSE — against the fixed port, with no token, like the installer
   curl -sS -o "$work/logs/hold.json" -w '%{http_code}' -X POST \
-    "$url/api/maintenance/hold?timeout_s=$1&pause_s=$2" \
-    -H "X-Library-Token: $token"
+    "$hold_url?timeout_s=$1&pause_s=$2"
 }
 resume() {
-  curl -sS -o "$work/logs/resume.json" -w '%{http_code}' -X DELETE "$url/api/maintenance/hold" \
-    -H "X-Library-Token: $token"
+  curl -sS -o "$work/logs/resume.json" -w '%{http_code}' -X DELETE "$hold_url"
 }
 run_code() { # a real work claim: a cleanup pass
   curl -sS -o "$work/logs/run.json" -w '%{http_code}' -X POST "$url/api/cleanup/run" \
@@ -77,6 +79,8 @@ field() { python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get
 
 start_app first.log
 echo "Library up (pid $app_pid): $url"
+[ "$hold_url" = "http://127.0.0.1:8643/api/maintenance/hold" ] || fail "hold must answer on its published address, got $hold_url"
+echo "ok   hold published on the fixed address the feed advertises: $hold_url"
 
 # ---- 1. hold pauses the claim path and reports the real in-flight count ----
 code="$(hold 20 120)"

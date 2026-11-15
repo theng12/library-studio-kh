@@ -1,5 +1,9 @@
 # What's new in Library Studio KH
 
+## 0.7.21 — 2026-11-15
+
+- The update hold now answers on the fixed address the Updater is told to use, so an update can ask Library to pause before it replaces it. It answers only on this computer, and if the address is busy Library still runs — it just cannot be paused for an update.
+
 ## 0.7.20 — 2026-11-15
 
 - Library now answers the update hold, so the Updater can install a new version without cutting off work: it stops taking new jobs, gives what is running a short, bounded time to settle, and says whether a restart is safe right now. Anything still running is named so the next start can pick it up.

@@ -134,6 +134,7 @@ func main() {
 	}
 	platform.LoadVolumeLabel() // name the startup volume once, before any page asks
 	go s.Meta.Watch()          // keeps the metadata-reachability line honest on every page
+	serveHold(s)
 	// The desktop shell reads this exact line.
 	fmt.Printf("LISTENING http://%s/#%s\n", ln.Addr(), s.Token)
 	log.Fatal(serve(s, ln))
@@ -176,6 +177,7 @@ func runService(home string, port int) {
 	}
 	platform.LoadVolumeLabel()
 	go s.Meta.Watch()
+	serveHold(s)
 	info := runtimeInfo{PID: os.Getpid(), Address: ln.Addr().String(), Token: s.Token, Version: librarystudio.Version()}
 	if err := writeRuntime(home, info); err != nil {
 		ln.Close()
@@ -232,6 +234,28 @@ func openServer(home, localAddress string) (*server.Server, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// holdPort is the fixed loopback port the signed feed advertises as holdURL
+// (contract table: library-studio 8643). A port the app picked at launch could never
+// be found by the installer.
+const holdPort = 8643
+
+// serveHold publishes the hold on that fixed port. It fails open: an app that cannot
+// open the port still runs and still does its work, it just cannot be held.
+func serveHold(s *server.Server) {
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(holdPort))
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Printf("update hold not reachable on %s: %v — Library still runs, it just cannot be held for an update", addr, err)
+		return
+	}
+	srv := &http.Server{Handler: s.HoldHandler(), ReadHeaderTimeout: 10 * time.Second}
+	go func() {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			log.Printf("update hold stopped: %v", err)
+		}
+	}()
 }
 
 func serve(s *server.Server, ln net.Listener) error {

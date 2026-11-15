@@ -120,3 +120,28 @@ func TestHoldCeilingAndLoopbackOnly(t *testing.T) {
 		t.Fatalf("non-loopback hold must be refused, got %d", w.Code)
 	}
 }
+
+// The shipped shape: the hold on its own listener, reached with no token, bound to
+// this computer only. This is the address the signed feed advertises.
+func TestHoldHandlerNeedsNoTokenAndStaysOnThisComputer(t *testing.T) {
+	s := holdServer(t)
+	call := func(method, remote string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, "http://127.0.0.1:8643/api/maintenance/hold", nil)
+		r.RemoteAddr = remote
+		w := httptest.NewRecorder()
+		s.HoldHandler().ServeHTTP(w, r)
+		return w
+	}
+	if w := call("POST", "127.0.0.1:51000"); w.Code != 200 {
+		t.Fatalf("the installer has no token; the fixed listener must still answer: %d %s", w.Code, w.Body.String())
+	}
+	if !s.hold.pausedNow() {
+		t.Fatal("a tokenless hold on the fixed listener must actually pause the app")
+	}
+	if w := call("DELETE", "127.0.0.1:51000"); w.Code != 200 || s.hold.pausedNow() {
+		t.Fatalf("resume on the fixed listener: %d", w.Code)
+	}
+	if w := call("POST", "192.0.2.9:51000"); w.Code != http.StatusForbidden {
+		t.Fatalf("the fixed listener must refuse another machine, got %d", w.Code)
+	}
+}

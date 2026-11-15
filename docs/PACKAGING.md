@@ -76,7 +76,7 @@ Packaging and the delivered-DMG signing/launchd check above are still required f
 
 ### Update hold
 
-`scripts/test-update-hold.sh` is the release test for the shared update hold (`_orchestra/youtube-stack/update-hold/CONTRACT.md`). It starts a real headless Library on an isolated home and proves, with live endpoints: the hold answers with the real `in_flight`; a held app refuses new work and says why in plain words; `DELETE` resumes at once; a hold with no `DELETE` expires after `pause_s`; and a restart resumes by itself with no operator step. Run it before any release that touches the hold, dispatch or startup path; a failure is a release blocker.
+`scripts/test-update-hold.sh` is the release test for the shared update hold (`_orchestra/youtube-stack/update-hold/CONTRACT.md`). It starts a real headless Library on an isolated home and proves, with live endpoints: the hold answers with the real `in_flight`; a held app refuses new work and says why in plain words; `DELETE` resumes at once; a hold with no `DELETE` expires after `pause_s`; and a restart resumes by itself with no operator step. It drives the hold on its published fixed address `http://127.0.0.1:8643/api/maintenance/hold` with no token, which is the shape the Updater uses, and fails loudly if that port is taken by something else. Run it before any release that touches the hold, dispatch or startup path; a failure is a release blocker. The release also passes `--hold-url http://127.0.0.1:8643/api/maintenance/hold` to `khu publish` and reads the served `holdURL` back.
 
 ## KH Updater feed
 

@@ -184,6 +184,16 @@ func (s *Server) maintenanceResume(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HoldHandler is the hold on its own listener, the fixed loopback port the signed
+// feed advertises. It carries no token: the installer has none, and the listener is
+// bound to 127.0.0.1, so only this computer can pause the app. The pause expires.
+func (s *Server) HoldHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/maintenance/hold", s.maintenanceHold)
+	mux.HandleFunc("DELETE /api/maintenance/hold", s.maintenanceResume)
+	return mux
+}
+
 // isLoopbackRequest is the hold's own gate: only this computer may pause the app.
 func isLoopbackRequest(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
