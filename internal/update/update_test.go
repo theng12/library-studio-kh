@@ -13,6 +13,27 @@ import (
 	"testing"
 )
 
+// enrolledConfig writes base/config.json the way the KH agent's enrol() does:
+// feedURL and publicKey copied from the publisher kit plus machine/token identity.
+func enrolledConfig(t *testing.T, home, feedURL string, pub ed25519.PublicKey) {
+	t.Helper()
+	dir := filepath.Join(home, "Library", "KHUpdater", "base")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]any{
+		"feedURL": feedURL, "publicKey": base64.StdEncoding.EncodeToString(pub),
+		"machine": "test-mac", "token": strings.Repeat("t", 48),
+		"stateDir": filepath.Join(home, "Library", "KHUpdater", "state"),
+		"stubBase": dir, "apps": map[string]any{}, "intervalMinutes": 5, "once": false,
+	})
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// publisherFile writes the publisher kit's own credentials where an enrolled
+// client must never read them from.
 func publisherFile(t *testing.T, home, feedURL string, pub ed25519.PublicKey) {
 	t.Helper()
 	dir := filepath.Join(home, "Library", "KHUpdater")
@@ -67,7 +88,7 @@ func TestCheckStates(t *testing.T) {
 			srv := feedServer(t, key, tc.feed, tc.schema)
 			defer srv.Close()
 			home := t.TempDir()
-			publisherFile(t, home, srv.URL, pub)
+			enrolledConfig(t, home, srv.URL, pub)
 			got := Check(home, tc.installed, nil)
 			if got.State != tc.want || got.Version != tc.version {
 				t.Fatalf("got %+v, want state %q version %q", got, tc.want, tc.version)
@@ -89,7 +110,7 @@ func TestCheckFailuresAreNeverUpToDate(t *testing.T) {
 	defer srv.Close()
 
 	home := t.TempDir()
-	publisherFile(t, home, srv.URL, pub)
+	enrolledConfig(t, home, srv.URL, pub)
 	badSignature := Check(home, "0.7.8", nil)
 	if badSignature.State != "failed" || !strings.Contains(badSignature.Reason, "signature") {
 		t.Fatalf("bad signature = %+v", badSignature)
@@ -97,12 +118,12 @@ func TestCheckFailuresAreNeverUpToDate(t *testing.T) {
 
 	unconnected := Check(t.TempDir(), "0.7.8", nil)
 	if unconnected.State != "not_checked" || unconnected.Reason == "" {
-		t.Fatalf("missing publisher.json = %+v", unconnected)
+		t.Fatalf("missing client config = %+v", unconnected)
 	}
 
 	closed := httptest.NewServer(http.NotFoundHandler())
 	closed.Close()
-	publisherFile(t, home, closed.URL, pub)
+	enrolledConfig(t, home, closed.URL, pub)
 	if got := Check(home, "0.7.8", nil); got.State != "failed" || got.Reason == "" {
 		t.Fatalf("unreachable feed = %+v", got)
 	}
@@ -111,9 +132,45 @@ func TestCheckFailuresAreNeverUpToDate(t *testing.T) {
 	_, other, _ := ed25519.GenerateKey(rand.Reader)
 	forged := feedServer(t, other, map[string]any{"library": entry("0.7.9")}, 1)
 	defer forged.Close()
-	publisherFile(t, home, forged.URL, pub)
+	enrolledConfig(t, home, forged.URL, pub)
 	if got := Check(home, "0.7.8", nil); got.State != "failed" {
 		t.Fatalf("forged feed = %+v", got)
+	}
+}
+
+func TestDiscoveryReadsOnlyTheEnrolledClientConfig(t *testing.T) {
+	pub, key, _ := ed25519.GenerateKey(rand.Reader)
+	srv := feedServer(t, key, map[string]any{"library": entry("0.7.9")}, 1)
+	defer srv.Close()
+
+	// Publisher kit credentials alone must not connect this Mac, nor leak a fallback.
+	onlyPublisher := t.TempDir()
+	publisherFile(t, onlyPublisher, srv.URL, pub)
+	if got := Check(onlyPublisher, "0.7.8", nil); got.State != "not_checked" {
+		t.Fatalf("publisher-only config = %+v, want not_checked", got)
+	}
+
+	// A malformed enrolled config is an honest failure, never a silent fallback.
+	malformed := t.TempDir()
+	dir := filepath.Join(malformed, "Library", "KHUpdater", "base")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	publisherFile(t, malformed, srv.URL, pub)
+	got := Check(malformed, "0.7.8", nil)
+	if got.State != "not_checked" || !strings.Contains(got.Reason, "could not be read") {
+		t.Fatalf("malformed client config = %+v", got)
+	}
+
+	// With the enrolled config present the same Mac connects and sees the offer.
+	enrolled := t.TempDir()
+	publisherFile(t, enrolled, srv.URL, pub)
+	enrolledConfig(t, enrolled, srv.URL, pub)
+	if got := Check(enrolled, "0.7.8", nil); got.State != "available" || got.Version != "0.7.9" {
+		t.Fatalf("enrolled client = %+v, want available 0.7.9", got)
 	}
 }
 
@@ -139,7 +196,7 @@ func TestInstalledVersionReadsTheBundle(t *testing.T) {
 	}
 }
 
-// TestLiveFeed reads this Mac's real publisher.json and feed; it is opt-in so the
+// TestLiveFeed reads this Mac's real enrolled config and feed; it is opt-in so the
 // suite stays offline.
 func TestLiveFeed(t *testing.T) {
 	if os.Getenv("LIBRARY_LIVE_FEED") == "" {

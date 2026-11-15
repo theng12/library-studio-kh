@@ -17,6 +17,12 @@ After building, run `python3 -I scripts/verify-macos-signing.py '<path-to-delive
 DMG verification uses the operating system's assigned read-only mount point and detaches its exact disk device. Keep the image, isolated launch settings and receipts on ATLAS; macOS refuses mounting inside that external worktree.
 Rename to `Library Studio KH-<version>.dmg` (shared Studio KH name, no architecture suffix) before handing it to the Updater.
 
+### Hidden packaged-webview check
+
+The signing check above starts the packaged server, not its webview. To exercise the packaged webview, start the isolated `scripts/test-ui.sh` fixture through the preview server, then run the app executable with `--webview-check`. Supply `KH_TEST_URL` (the printed bare loopback origin), `KH_TEST_HOME` (the printed existing directory below the local temporary directory) and `KH_TEST_PASSWORD` (the printed fixture password). Use a fresh fixture home for each run. Launch detached, never through a foreground app opener.
+
+This explicit check mode creates one hidden, unfocused, ephemeral webview and never starts or stops the real host. It signs in to the mock-only fixture, clicks Copy path and requires its explicit success/failure message, checks every required path control is read-only with a chooser, and chooses a folder through the in-app remote browser. It writes `native-webview-result.json` below `KH_TEST_HOME`, reports PASS/FAIL and exits within 45 seconds. The receipt records native visibility/focus plus the actual clipboard message. DOM clicks in a hidden webview do not prove native keyboard or trusted user-gesture behavior. The native NSOpenPanel branch remains a separate real-window check on a permitted test machine or agreed quiet point; this mode never opens it.
+
 ## Windows and Linux (plan)
 
 Tauri can't cross-build installers, so each is built on its own OS, the way Music Studio KH's pilot did it:

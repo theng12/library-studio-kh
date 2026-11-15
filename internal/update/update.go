@@ -49,10 +49,10 @@ type feed struct {
 
 var versionPattern = regexp.MustCompile(`^\d{1,9}(\.\d{1,9}){0,5}$`)
 
-// Check reads this Mac's publisher.json, fetches the signed feed and compares the
+// Check reads this Mac's enrolled client config, fetches the signed feed and compares the
 // offered version with installed. A nil client uses a short-timeout default.
 func Check(home, installed string, client *http.Client) Result {
-	pub, result := readPublisher(home)
+	pub, result := readConnection(home)
 	if result != nil {
 		return *result
 	}
@@ -86,8 +86,8 @@ func Check(home, installed string, client *http.Client) Result {
 	return Result{State: "up_to_date"}
 }
 
-func readPublisher(home string) (publisher, *Result) {
-	b, err := os.ReadFile(filepath.Join(home, "Library", "KHUpdater", "publisher.json"))
+func readConnection(home string) (publisher, *Result) {
+	b, err := os.ReadFile(filepath.Join(home, "Library", "KHUpdater", "base", "config.json"))
 	if err != nil {
 		return publisher{}, &Result{State: "not_checked", Reason: "this Mac is not connected to Update Studio KH"}
 	}

@@ -5,6 +5,7 @@ import test from "node:test";
 const picker = readFileSync(new URL("../internal/server/web/folder-picker.js", import.meta.url), "utf8");
 const html = readFileSync(new URL("../internal/server/web/index.html", import.meta.url), "utf8");
 const settings = readFileSync(new URL("../internal/server/web/settings-view.js", import.meta.url), "utf8");
+const nativeCheck = readFileSync(new URL("../src-tauri/src/webview_check.js", import.meta.url), "utf8");
 
 function helper(name) {
   // The pure helpers may call each other, so load them together.
@@ -73,6 +74,16 @@ test("Settings folder fields are rendered as path pickers", () => {
   assert.match(settings, /\{ kind: "path", name: "libraryPath"/);
   assert.match(settings, /"data-path-picker": field\.kind === "path"/);
   assert.match(settings, /readonly: field\.kind === "path"/);
+});
+
+test("packaged webview check requires every chooser and read-only path", () => {
+  for (const name of ["appDir", "downloadPath", "root.sonarr", "root.radarr", "root.lidarr", "root.whisparr"]) {
+    assert.equal(nativeCheck.includes(name), true, "missing native check for " + name);
+  }
+  assert.equal(nativeCheck.includes('document.querySelector("#settings-downloadpath + .folder-picker-choose").click()'), true);
+  assert.equal(nativeCheck.includes("if (report.pathControls.some(item => !item.readOnly || !item.chooser))"), true);
+  assert.equal(nativeCheck.includes('name => \'#view-help input[name="\' + name + \'"]\')'), true);
+  assert.equal(nativeCheck.includes('report.pathControls = expected.map'), true);
 });
 
 test("the picker loads before app and its stylesheet follows the layout", () => {

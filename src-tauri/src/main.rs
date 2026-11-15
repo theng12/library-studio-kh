@@ -8,6 +8,8 @@ use std::sync::Mutex;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
+mod webview_check;
+
 struct Server(Mutex<Option<Child>>);
 
 // The URL the main window shows, kept so a closed window can be rebuilt.
@@ -271,6 +273,13 @@ fn use_local_host(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    if std::env::args().any(|arg| arg == "--webview-check") {
+        if let Err(error) = webview_check::run() {
+            eprintln!("native-webview-check: FAIL ({error})");
+            std::process::exit(1);
+        }
+        return;
+    }
     tauri::Builder::default()
         .setup(|app| {
             build_menu(app)?;
