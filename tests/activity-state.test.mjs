@@ -88,10 +88,18 @@ test("a failed state fetch shows its error instead of a successful empty dashboa
   const node = () => ({ hidden: true, value: "", textContent: "", replaceChildren() {} });
   const $ = (selector) => { if (!elements.has(selector)) elements.set(selector, node()); return elements.get(selector); };
   const rendering = app.slice(app.indexOf("async function load() {"), app.indexOf("/* Downloads: the reconciled table."));
-  const context = { $, AUTH: { authenticated: true }, render: () => { throw Error("render must not run after a failed fetch"); }, api: async () => { throw Error("Mock host unavailable; retry the connection"); }, current: null };
+  const context = { $, AUTH: { authenticated: true }, render: () => { throw Error("render must not run after a failed fetch"); }, api: async () => { throw Error("Mock host unavailable; retry the connection"); }, current: null, plainHostError: (e) => (e?.message || "").replace(/\.$/, "") };
   vm.createContext(context);
   vm.runInContext(rendering, context);
   await context.load();
   assert.match($("#summary").textContent, /Mock host unavailable; retry/);
   assert.equal(context.current, null);
+});
+
+test("Activity host loss names the host instead of leaking the browser's error", () => {
+  const source = app.match(/function plainHostError\(e\) \{[\s\S]*?\n\}/)[0];
+  const context = {};
+  vm.runInNewContext(source + "\nthis.plainHostError = plainHostError;", context);
+  assert.match(context.plainHostError({ message: "Failed to fetch" }), /Could not reach the Library host/);
+  assert.equal(context.plainHostError({ message: "Provider key is missing." }), "Provider key is missing.");
 });

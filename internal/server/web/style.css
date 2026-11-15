@@ -258,7 +258,7 @@ label.check input[type="checkbox"] {
 label.check:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
 input[type=checkbox] { accent-color: var(--accent); width: 1.05rem; height: 1.05rem; margin: 0; }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
-.hint { font-size: 0.8rem; color: var(--muted); }
+.hint { font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
 #arr-fields { display: grid; gap: var(--gap); }
 .actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
 button.primary { border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); padding: 0.6rem 1.5rem; font-weight: 600; }

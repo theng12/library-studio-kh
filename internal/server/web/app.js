@@ -1303,7 +1303,7 @@ document.addEventListener("click", (ev) => {
 async function load() {
   if (!AUTH.authenticated) return;
   try { render(await api("/api/state")); }
-  catch (e) { $("#summary").textContent = e.message; }
+  catch (e) { $("#summary").textContent = plainHostError(e); }
 }
 
 /* Downloads: the reconciled table. Remove takes the torrent out of qBittorrent's
