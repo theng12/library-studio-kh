@@ -1,5 +1,12 @@
 # What's new in Library Studio KH
 
+## 0.7.19 — 2026-11-15
+
+- Every folder field takes a typed path as well as Browse: Settings, Setup and Cleanup. A path that does not open says why under that field and keeps your saved value, so nothing ever runs against a folder that is not there.
+- Every Settings field now has one plain line saying what the app does with it, and the server's address, phone link, port and session live on Settings instead of on the working pages.
+- Turning staged cleanup on no longer needs a folder chosen first. The switch stays where you put it, and the page tells you which folder to set. The waits and limits show their defaults even while the switch is off, so the page is never empty.
+- The Cleanup status folds away behind Show more / Show less, with the actions, the switch and any blocker kept on screen.
+
 ## 0.7.18 — 2026-11-14
 
 - Local media gets real metadata: films and shows in your library folder that no library app imported are listed with a clean title and year from their file name, a Kodi .nfo sidecar, or embedded tags, with facts and a poster from the same keyless sources. A file already managed by Sonarr, Radarr or Lidarr stays that app's row, never a duplicate.
