@@ -28,7 +28,10 @@ addEventListener("DOMContentLoaded", () => {
     const field = await wait(() => document.querySelector(".libgrid-path-box input"), "selectable path field");
     document.querySelector(".libgrid-copy-path").click();
     const status = await wait(() => document.querySelector(".libgrid-path-msg")?.textContent, "clipboard result");
-    report.clipboard = { status, readOnly: field.readOnly, selected: field.selectionEnd - field.selectionStart > 0 };
+    report.fixture = document.querySelector("#local-web-address")?.value || document.querySelector("#remote-link")?.value || "library-fixture";
+    report.controls = report.pathControls.length;
+    report.chosen = report.pathControls.filter(item => item.readOnly && item.chooser).length;
+    report.clipboard = status;
     if (!field.readOnly || !(/Copied\./.test(status) || /^Could not copy — .+/.test(status))) throw new Error("Clipboard action did not report an explicit result");
     document.querySelector("button[data-view=settings]").click();
     document.querySelector("#settings-tab-general").click();
@@ -40,6 +43,7 @@ addEventListener("DOMContentLoaded", () => {
     await wait(() => !document.querySelector("#folder-picker-dialog").open, "picker completion");
     const picked = document.querySelector("#settings-downloadpath");
     report.folder = { valuePresent: !!picked.value, readOnly: picked.readOnly, status: document.querySelector("#downloadPath-picker-status, #settings-downloadpath-picker-status")?.textContent };
+    report.picker = report.folder.status || "chosen";
     if (!report.folder.valuePresent || !report.folder.readOnly) throw new Error("Picked path was not shown read-only");
     finish(true);
   })().catch(error => { report.error = error.message; finish(false); });
