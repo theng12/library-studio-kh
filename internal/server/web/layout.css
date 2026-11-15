@@ -167,6 +167,8 @@
   .tabpanel > .card:only-child { grid-column: 1 / -1; }
   /* Opened Library apps: three across, so every address field fits its value. */
   #arr-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* Three across needs the whole row; in a half- or third-width card each app panel was ~107px and clipped its hints. */
+  .tabpanel > .card:has(#arr-fields) { grid-column: 1 / -1; }
 }
 @media (max-width: 900px) {
   /* Full-width rows inside the disclosure: an address never clips its value. */
