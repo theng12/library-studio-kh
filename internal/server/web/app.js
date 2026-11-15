@@ -762,7 +762,17 @@ function renderLibraryPage() {
         lib.sort = { key, dir: lib.sort.key === key && lib.sort.dir === "asc" ? "desc" : "asc" };
         renderLibraryPage();
       },
-      onSelect: (key) => { lib.selected = key; renderLibraryPage(); },
+      // Back and Close close the detail and reopen the card that was open: without
+      // this the re-render leaves focus on the page body, so a keyboard restarts
+      // from the top. Same target the Escape path uses.
+      onSelect: (key) => {
+        const returning = key === null ? lib.selected : null;
+        lib.selected = key;
+        renderLibraryPage();
+        if (returning) {
+          document.querySelector('#library-host [data-key="' + CSS.escape(returning) + '"]')?.focus();
+        }
+      },
       onToggleSelect: (key) => {
         lib.selection = lib.selection.includes(key)
           ? lib.selection.filter((k) => k !== key)
@@ -1916,6 +1926,9 @@ $("#form").addEventListener("submit", async (ev) => {
 });
 
 async function start() {
+  // A session that ends on its own must say so: arriving at the gate otherwise
+  // reads as "you were never signed in", which is a different fact.
+  const wasSignedIn = AUTH.authenticated;
   const st = await authStatus();
   if (st) {
     AUTH.available = true;
@@ -1934,7 +1947,15 @@ async function start() {
     return;
   }
   fillAuthCopy();
-  if (!AUTH.authenticated) { showGate(AUTH.setupRequired ? "blocked" : "signin"); return; }
+  if (!AUTH.authenticated) {
+    showGate(AUTH.setupRequired ? "blocked" : "signin");
+    const msg = $("#signin-msg");
+    if (wasSignedIn) {
+      msg.hidden = false;
+      msg.textContent = "Your session ended. Sign in to continue.";
+    } else if (!msg.textContent) msg.hidden = true;
+    return;
+  }
   if (AUTH.setupRequired) { showGate("setup"); return; }
   await enterApp();
 }
