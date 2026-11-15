@@ -22,9 +22,20 @@ fn receipt_path(home: &Path) -> Result<PathBuf, String> {
     Ok(home.join("native-webview-result.json"))
 }
 
+/// Refuse a fixture that is not already set up: the hidden check never bootstraps or
+/// resets a Library data folder of its own, so it cannot touch one that is real.
+fn prepared_home(home: &Path) -> Result<(), String> {
+    let entries = std::fs::read_dir(home).map_err(|e| format!("test home could not be read: {e}"))?;
+    for entry in entries.flatten() {
+        if entry.file_name() == "library.db" { return Ok(()); }
+    }
+    Err("KH_TEST_HOME must already hold a fixture library.db".into())
+}
+
 pub fn run() -> Result<(), String> {
     let url = fixture_url(&std::env::var("KH_TEST_URL").map_err(|_| "KH_TEST_URL is required")?)?;
     let receipt = receipt_path(Path::new(&std::env::var("KH_TEST_HOME").map_err(|_| "KH_TEST_HOME is required")?))?;
+    prepared_home(&receipt.parent().map(|p| p.to_path_buf()).unwrap_or_default())?;
     if receipt.exists() { return Err("use a fresh test home; native receipt already exists".into()); }
     let password = std::env::var("KH_TEST_PASSWORD").map_err(|_| "KH_TEST_PASSWORD is required")?;
     let codes = password.chars().map(|ch| (ch as u32).to_string()).collect::<Vec<_>>().join(",");
@@ -76,16 +87,21 @@ pub fn run() -> Result<(), String> {
 mod tests {
     use super::*;
     #[test]
-    fn visible_main_window_starts_only_after_normal_setup() {
-        let visible = std::env::var("KH_TEST_URL").is_err();
-        assert!(visible);
+    fn normal_and_check_builds_are_separate() {
+        let main = include_str!("main.rs");
+        assert!(main.contains("#[cfg(all(test, debug_assertions))]"));
+        let gated = main.split("#[cfg(all(test, debug_assertions))]").nth(1).unwrap_or("");
+        assert!(gated.contains("--webview-check"), "the flag must sit behind the test-only gate");
+        assert!(gated.contains("webview_check::run()"));
+        // A shipped build carries no such entrance at all.
+        assert!(main.matches("webview_check::run()").count() == 1);
+    }
+    #[test]
+    fn hidden_window_and_receipt_are_bounded() {
         let source = include_str!("webview_check.rs");
-        assert!(source.contains("let visible = std::env::var(\"KH_TEST_URL\").is_err();"));
-        assert!(source.contains(".visible(visible).focused(visible).incognito(!visible)"));
-        assert!(source.contains("if !visible { app.set_activation_policy(tauri::ActivationPolicy::Accessory); }"));
-        assert!(source.contains("WindowUrl::new(url.clone(), visible)"));
-        assert!(source.contains("WebviewWindowBuilder::new(app, \"main\""));
-        assert!(source.contains("#[cfg(not(debug_assertions))]"));
+        assert!(source.contains(".visible(false).focused(false).incognito(true)"));
+        assert!(source.contains("ActivationPolicy::Accessory"));
+        assert!(source.contains("handle.exit(if ok && written { 0 } else { 1 })"));
     }
     #[test]
     fn only_bare_loopback_fixture_origins_are_allowed() {

@@ -273,6 +273,9 @@ fn use_local_host(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    // The hidden check must not exist in a shipped build: without the test-only cfg the
+    // flag is an ordinary unknown argument and the normal window path runs.
+    #[cfg(all(test, debug_assertions))]
     if std::env::args().any(|arg| arg == "--webview-check") {
         if let Err(error) = webview_check::run() {
             eprintln!("native-webview-check: FAIL ({error})");
