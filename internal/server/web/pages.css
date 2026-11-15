@@ -715,5 +715,7 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
   #settings-card-help { grid-column: 2; grid-row: 1; }
   #settings-card-dead { grid-column: 1 / span 2; grid-row: 2; }
   #settings-card-connections { grid-column: 3; grid-row: 1 / span 2; align-self: stretch; }
+  /* A third-width column holds the apps two-up; three across left each panel ~107px. */
+  #settings-card-connections #arr-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #settings-card-folders { grid-column: 1 / -1; grid-row: 3; }
 }

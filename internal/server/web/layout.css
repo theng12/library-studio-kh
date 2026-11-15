@@ -126,6 +126,8 @@
 .settings-details-body { display: grid; gap: 0.5rem; padding-top: 0.4rem; }
 #arr-fields fieldset legend { padding: 0 0.25rem; font-size: var(--text-xs); font-weight: 600; }
 #arr-fields fieldset label { gap: 0.2rem; }
+/* The switch label and its hint wrap as one sentence; as flex items the hint shrank to one letter per line. */
+#arr-fields label.check { display: block; }
 #arr-fields fieldset p { margin: 0.2rem 0 0; font-size: var(--text-xs); }
 
 /* Activity: one timestamped line per event, newest first. */
@@ -167,8 +169,6 @@
   .tabpanel > .card:only-child { grid-column: 1 / -1; }
   /* Opened Library apps: three across, so every address field fits its value. */
   #arr-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  /* Three across needs the whole row; in a half- or third-width card each app panel was ~107px and clipped its hints. */
-  .tabpanel > .card:has(#arr-fields) { grid-column: 1 / -1; }
 }
 @media (max-width: 900px) {
   /* Full-width rows inside the disclosure: an address never clips its value. */
