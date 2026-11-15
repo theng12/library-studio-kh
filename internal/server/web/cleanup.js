@@ -6,12 +6,18 @@ const CLEANUP_NUMBERS = {
 };
 const CLEANUP_PHASE_TONES = { staging: "info", managed_trash: "info", native_trash: "info", removed: "muted", restored: "ok" };
 const CLEANUP_PHASES = { staging: "Download folder", managed_trash: "Library’s _trash", native_trash: "macOS Trash", removed: "Removed", restored: "Restored" };
+// What each number shows when nothing is saved: the owner sees a value, never a blank box.
+// Mirrors config.Default() so a field is never blank and never shows a number the
+// engine would not use. tests/cleanup-policy.test.mjs keeps the two in step.
+const CLEANUP_DEFAULTS = { stagedDays: 3, managedTrashDays: 4, nativeTrashDays: 30, pressureFreeGB: 50, seedRatio: 2, seedMinutes: 2880 };
 let cleanupBusy = false;
 let cleanupState = null;
 let cleanupSerial = 0;
 let cleanupFocus = null; // where focus goes after a row action re-renders the table
 let cleanupProofReturn = null; // the Show proof control that opened the dialog
 let cleanupLastResult = "";
+let cleanupSavedPath = ""; // the last saved folder; a typed path that fails its check keeps this one
+const cleanupExpanded = {}; // region id -> expanded, once the owner chooses; a long block starts collapsed
 
 function cleanupPolicy(form) {
   const patch = { stagedCleanupOn: form.elements.stagedCleanupOn.checked, pressureBypassRetention: !!form.elements.pressureBypassRetention?.checked, managedTrashPath: form.elements.managedTrashPath.value.trim() };
@@ -28,11 +34,23 @@ function cleanupPolicy(form) {
 
 function cleanupFill(settings) {
   const form = $("#cleanup-form");
-  for (const key of Object.keys(CLEANUP_NUMBERS)) form.elements[key].value = settings[key] ?? "";
+  for (const [key, fallback] of Object.entries(CLEANUP_DEFAULTS)) {
+    const value = settings[key];
+    form.elements[key].value = value == null || value === "" ? fallback : value;
+  }
   form.elements.stagedCleanupOn.checked = !!settings.stagedCleanupOn;
   form.elements.pressureBypassRetention.checked = !!settings.pressureBypassRetention;
   form.elements.managedTrashPath.value = settings.managedTrashPath || "";
+  cleanupSavedPath = settings.managedTrashPath || "";
+  cleanupLockNumbers();
   cleanupEffect();
+}
+
+// The numbers are the policy behind the switch: always shown, editable only while it is on.
+function cleanupLockNumbers() {
+  const form = $("#cleanup-form");
+  const on = !!form.elements.stagedCleanupOn.checked;
+  for (const key of Object.keys(CLEANUP_DEFAULTS)) form.elements[key].disabled = !on;
 }
 
 // The numbers interact: stages are cumulative days from the verified import.
@@ -99,10 +117,39 @@ function cleanupProof(item, opener) {
   if (!dialog.open) dialog.showModal();
 }
 
+// The long blocks on this page collapse. The owner's choice lasts while the page
+// is open; until then a block that runs long starts collapsed.
+function cleanupRunsLong(region) {
+  if ((region.scrollHeight || 0) > 360) return true; // measured once it is laid out
+  return region.querySelectorAll("dt, tr, label, [data-companion-app]").length > 6; // counted while hidden
+}
+
+function cleanupCollapseApply(button, region) {
+  if (!button || !region) return;
+  const hasContent = (region.childElementCount || 0) > 0;
+  button.hidden = !hasContent; // nothing to collapse → no control to press
+  if (!hasContent) return;
+  const open = cleanupExpanded[region.id] ?? !cleanupRunsLong(region);
+  const active = typeof document !== "undefined" ? document.activeElement : null;
+  const focusInside = !!(active && region.contains && region.contains(active));
+  region.hidden = !open;
+  button.setAttribute("aria-expanded", String(open));
+  button.textContent = open ? "Show less" : "Show more";
+  // A block never collapses out from under focus: it lands on the control that stays.
+  if (!open && focusInside) button.focus();
+}
+
+function cleanupCollapseToggle(button, region) {
+  cleanupExpanded[region.id] = region.hidden; // hidden → open it; showing → collapse it
+  cleanupCollapseApply(button, region);
+}
+
 function cleanupRender(status) {
   cleanupState = status;
   const body = $("#cleanup-status");
+  const blocked = $("#cleanup-blockers"); // a blocker is something to act on: it stays outside the collapse
   body.replaceChildren();
+  blocked.replaceChildren();
   const summary = mediaNode("dl", null, "facts");
   facts(summary, [
     ["Policy", status.enabled ? "On · only proven eligible imports can move" : "Off · no automatic cleanup"],
@@ -119,7 +166,7 @@ function cleanupRender(status) {
   const rawBlockers = [...(status.engineBlocked || []), ...(status.blocked || [])];
   const blockers = typeof groupMessages === "function" ? groupMessages(rawBlockers) : rawBlockers;
   if (!status.engineAvailable && !blockers.length) blockers.push("Staged cleanup is unavailable on this computer.");
-  if (blockers.length) body.append(mediaNode("p", blockers.join(" "), "notice"));
+  if (blockers.length) blocked.append(mediaNode("p", blockers.join(" "), "notice"));
   body.append(mediaNode("p", "Nothing is deleted for good from the download folder or Library’s _trash. Every permanent removal happens only from the system Trash, after its wait, with the library copy checked again first.", "muted"));
 
   const wrap = mediaNode("div", null, "table-wrap");
@@ -199,6 +246,7 @@ function cleanupRender(status) {
   table.append(head, tbody);
   wrap.append(table);
   body.append((status.items || []).length ? wrap : mediaNode("p", "No tracked downloads. Preview checks for eligible verified imports.", "empty"));
+  cleanupCollapseApply($("#cleanup-status-toggle"), body);
   cleanupButtons();
 }
 
@@ -252,6 +300,26 @@ async function cleanupAction(action, request = {}) {
       (target && !target.disabled ? target : $("#cleanup-refresh"))?.focus();
     }
   }
+}
+
+// A typed folder is checked on its own: a bad path never blocks the rest of the save.
+async function cleanupCheckPath(patch) {
+  if (typeof window === "undefined" || !window.folderPicker?.checkPath) return "";
+  const problem = await window.folderPicker.checkPath(patch.managedTrashPath || "");
+  const line = typeof document !== "undefined" ? document.getElementById("managedTrashPath-picker-status") : null;
+  if (problem) {
+    patch.managedTrashPath = cleanupSavedPath; // the saved folder keeps working; the typed one is not stored
+    if (line) {
+      line.textContent = problem;
+      line.dataset.invalid = "1";
+      const owner = line.closest?.("details");
+      if (owner) owner.open = true; // the reason must be visible where the field lives
+    }
+  } else if (line && line.dataset.invalid === "1") {
+    line.textContent = "";
+    delete line.dataset.invalid;
+  }
+  return problem;
 }
 
 $("#cleanup-refresh").addEventListener("click", loadCleanup);
@@ -311,6 +379,24 @@ $("#cleanup-run").addEventListener("click", async () => {
   if (await confirmCleanupRun()) cleanupAction("run");
 });
 $("#cleanup-form").addEventListener("input", cleanupEffect);
+$("#cleanup-form").addEventListener("change", (ev) => {
+  if (ev.target?.name === "stagedCleanupOn") cleanupLockNumbers();
+  // A folder's own reason clears the moment its value changes; Save re-checks it.
+  if (ev.target?.name === "managedTrashPath") {
+    const line = typeof document !== "undefined" ? document.getElementById("managedTrashPath-picker-status") : null;
+    if (line && line.dataset.invalid === "1") { line.textContent = ""; delete line.dataset.invalid; }
+  }
+});
+// One control per long block; the button lives in the card head, outside the region it hides.
+for (const [toggleId, regionId] of [["cleanup-status-toggle", "cleanup-status"], ["cleanup-companions-toggle", "companion-settings"]]) {
+  const button = $("#" + toggleId), region = $("#" + regionId);
+  if (button?.addEventListener && region) button.addEventListener("click", () => cleanupCollapseToggle(button, region));
+}
+// The companions fill in after this script; their default waits for the real content.
+if (typeof MutationObserver === "function") {
+  const box = $("#companion-settings"), toggle = $("#cleanup-companions-toggle");
+  if (box && toggle) new MutationObserver(() => cleanupCollapseApply(toggle, box)).observe(box, { childList: true });
+}
 // A backdrop click must reach the same focus restore as the close control.
 $("#cleanup-proof").__libraryBackdropClose = () => $("#cleanup-proof").close();
 $("#cleanup-proof .close").addEventListener("click", () => $("#cleanup-proof").close());
@@ -336,14 +422,20 @@ $("#cleanup-form").addEventListener("submit", async (ev) => {
   const msg = $("#cleanup-save-msg");
   let patch;
   try { patch = cleanupPolicy(ev.target); } catch (e) { msg.textContent = e.message; return; }
+  // The rest of the policy still saves when the folder typed here is wrong.
+  const typedPath = patch.managedTrashPath;
+  const pathProblem = await cleanupCheckPath(patch);
   cleanupBusy = true; cleanupButtons(); msg.textContent = "Saving…";
   try {
     const result = await api("/api/settings", patch);
-    msg.textContent = (result.problems || []).length ? "Policy saved. " + result.problems.join(" ") : "Cleanup policy saved.";
+    msg.textContent = ((result.problems || []).length ? "Policy saved. " + result.problems.join(" ") : "Cleanup policy saved.")
+      + (pathProblem ? " The folder kept its saved value — the reason sits under it." : "");
     await load();
   } catch (e) { msg.textContent = e.message; }
   finally { cleanupBusy = false; cleanupButtons(); }
   await loadCleanup();
+  // loadCleanup re-fills the saved folder; the typed text and its reason stay on screen.
+  if (pathProblem) $("#cleanup-form").elements.managedTrashPath.value = typedPath;
 });
 
 // One shell with Settings: the same tab row and panel pattern on this page.

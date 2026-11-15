@@ -425,14 +425,10 @@
   /* One column on phones: a long label can never squeeze or widen the card. */
   #cleanup-status .facts { grid-template-columns: minmax(0, 1fr); }
 }
-.cleanup-companions { padding: 0 0.9rem; }
-.cleanup-companions > summary {
-  cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 0.4rem;
-  font-size: 0.95rem; font-weight: 600;
-}
-.cleanup-companions > summary::before { content: "▸"; font-size: 0.8em; }
-.cleanup-companions[open] > summary::before { content: "▾"; }
-.cleanup-companions[open] { padding-bottom: 0.9rem; }
+/* The collapse control rides in the card head, so hiding a long body never hides it. */
+.card-head .collapse-toggle { margin-left: auto; }
+/* An empty blocker slot takes no gap in the card body. */
+#cleanup-blockers:empty { display: none; }
 
 /* Settings cards are native disclosures; their heads are the summaries. */
 .settings-card > summary.card-head { cursor: pointer; }

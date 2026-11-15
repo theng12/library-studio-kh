@@ -319,9 +319,12 @@
       </div>
       <div id="cleanup-tabs">
       <section class="card" id="cleanup-status-card">
-        <div class="card-head"><h2>Cleanup status</h2><p>Preview verifies files and shows the next proposed action without changing them.</p></div>
+        <div class="card-head"><h2>Cleanup status</h2><p>Preview verifies files and shows the next proposed action without changing them.</p>
+          <button type="button" class="small collapse-toggle" id="cleanup-status-toggle" aria-expanded="true" aria-controls="cleanup-status" hidden>Show less</button>
+        </div>
         <div class="card-body">
           <p id="cleanup-msg" role="status"></p>
+          <div id="cleanup-blockers"></div>
           <div id="cleanup-status"></div>
         </div>
       </section>
@@ -330,27 +333,29 @@
         <label class="switch"><input type="checkbox" name="stagedCleanupOn" role="switch"> Enable staged cleanup</label>
         <p>Only downloads with a verified complete import can move. NAS library files and downloads added directly stay untouched. A copy passes through each stage below before it is permanently removed.</p>
         <div class="pair">
-          <label>Days in the download folder <span class="hint">· days 1–365</span><input type="number" name="stagedDays" min="1" max="365" step="1" required inputmode="numeric"></label>
-          <label>Extra days in Library’s _trash <span class="hint">· days 0–365</span><input type="number" name="managedTrashDays" min="0" max="365" step="1" required inputmode="numeric"></label>
+          <label>Days in the download folder <span class="hint">· days 1–365</span><input type="number" name="stagedDays" min="1" max="365" step="1" required inputmode="numeric" value="3" disabled></label>
+          <label>Extra days in Library’s _trash <span class="hint">· days 0–365</span><input type="number" name="managedTrashDays" min="0" max="365" step="1" required inputmode="numeric" value="4" disabled></label>
         </div>
-        <label>Days in macOS Trash before removal <span class="hint">· days 1–3650</span><input type="number" name="nativeTrashDays" min="1" max="3650" step="1" required inputmode="numeric"></label>
-        <label>Free-space threshold <span class="hint">· GB, 0 turns it off</span><input type="number" name="pressureFreeGB" min="0" max="10000000" step="1" required inputmode="numeric"></label>
+        <label>Days in macOS Trash before removal <span class="hint">· days 1–3650</span><input type="number" name="nativeTrashDays" min="1" max="3650" step="1" required inputmode="numeric" value="30" disabled></label>
+        <label>Free-space threshold <span class="hint">· GB, 0 turns it off</span><input type="number" name="pressureFreeGB" min="0" max="10000000" step="1" required inputmode="numeric" value="50" disabled></label>
         <p class="muted">Below this threshold, eligible Library-owned copies in macOS Trash are removed early, oldest verified import first. Set 0 to turn pressure cleanup off.</p>
         <label class="switch"><input type="checkbox" name="pressureBypassRetention" role="switch"> Skip staging waits when space is low</label>
         <p class="muted">Also clear completed, NAS-verified copies still in the download folder or Library’s _trash. This may stop completed seeding early. NAS content is checked again before permanent removal. Active, incomplete, unverified downloads and other Trash stay protected.</p>
         <div class="pair">
-          <label>Stop seeding at ratio <span class="hint">· e.g. 2.0</span><input type="number" name="seedRatio" min="0" max="1000000" step="any" required inputmode="decimal"></label>
-          <label>Or seeding time <span class="hint">· minutes</span><input type="number" name="seedMinutes" min="0" max="5256000" step="1" required inputmode="numeric"></label>
+          <label>Stop seeding at ratio <span class="hint">· e.g. 2.0</span><input type="number" name="seedRatio" min="0" max="1000000" step="any" required inputmode="decimal" value="2" disabled></label>
+          <label>Or seeding time <span class="hint">· minutes</span><input type="number" name="seedMinutes" min="0" max="5256000" step="1" required inputmode="numeric" value="2880" disabled></label>
         </div>
         <p class="muted">Whichever limit is reached first. Library checks proven imports only; qBittorrent’s own limits are edited separately below.</p>
         <details><summary>Local _trash folder</summary>
           <label>Managed folder <input name="managedTrashPath" data-path-picker placeholder="Empty uses _trash inside the download folder"></label>
           <p class="muted">Must stay on this computer. The current resolved folder is shown in the status.</p>
         </details>
-        <p id="cleanup-effect" class="cleanup-effect" role="status">A verified copy leaves the download folder after 3 days, Library’s _trash after 3 more, and the system Trash after 30.</p>
+        <p id="cleanup-effect" class="cleanup-effect" role="status">A verified copy leaves the download folder after 3 days. Library’s _trash after 7 days from import. The system Trash 30 days after that. Only then can it be removed for good. Below 50 GB free it may skip these waits, oldest verified import first.</p>
       </form>
       <section class="card cleanup-companions" id="cleanup-companions">
-        <div class="card-head"><h2>Companion app settings</h2><p>Each companion keeps its own settings; changes here are saved the same way as the policy on the Policy tab.</p></div>
+        <div class="card-head"><h2>Companion app settings</h2><p>Each companion keeps its own settings; changes here are saved the same way as the policy on the Policy tab.</p>
+          <button type="button" class="small collapse-toggle" id="cleanup-companions-toggle" aria-expanded="true" aria-controls="companion-settings" hidden>Show less</button>
+        </div>
         <div class="card-body" id="companion-settings"></div>
       </section>
       </div>
