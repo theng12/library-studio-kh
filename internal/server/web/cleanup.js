@@ -11,6 +11,7 @@ let cleanupState = null;
 let cleanupSerial = 0;
 let cleanupFocus = null; // where focus goes after a row action re-renders the table
 let cleanupProofReturn = null; // the Show proof control that opened the dialog
+let cleanupLastResult = "";
 
 function cleanupPolicy(form) {
   const patch = { stagedCleanupOn: form.elements.stagedCleanupOn.checked, pressureBypassRetention: !!form.elements.pressureBypassRetention?.checked, managedTrashPath: form.elements.managedTrashPath.value.trim() };
@@ -149,7 +150,7 @@ function cleanupRender(status) {
     if ((item.blocked || []).length) proposed.append(mediaNode("p", item.blocked.join(" "), "muted"));
     const actions = mediaNode("td", null, "cleanup-actions");
     actions.dataset.label = "Actions";
-    // One primary action per row; Restore and Remove now sit in the overflow.
+    // Keep recovery visible; the early Remove now action stays in the overflow.
     const proof = mediaNode("button", "Show proof", "small");
     proof.type = "button";
     proof.setAttribute("aria-label", "Show import proof for " + (item.name || "this download"));
@@ -174,13 +175,12 @@ function cleanupRender(status) {
       more.push(removeNow);
     }
     if (["managed_trash", "native_trash"].includes(item.phase)) {
-      const restore = mediaNode("button", null, null);
-      restore.textContent = "Restore";
+      const restore = mediaNode("button", "Restore to download folder", "small");
       restore.type = "button";
       restore.dataset.cleanupRestore = item.hash;
-      restore.setAttribute("aria-label", "Restore the local copy of " + (item.name || "this download"));
+      restore.setAttribute("aria-label", "Restore the local copy of " + (item.name || "this download") + " to the download folder");
       restore.addEventListener("click", () => cleanupAction("restore", { hash: item.hash }));
-      more.push(restore);
+      actions.append(restore);
     }
     if (more.length) {
       const menu = mediaNode("details", null, "row-menu");
@@ -212,10 +212,10 @@ async function loadCleanup() {
     if (serial !== cleanupSerial) return;
     cleanupFill(state.settings);
     cleanupRender(status);
-    $("#cleanup-msg").textContent = "Showing the saved policy. Preview runs a dry run.";
+    $("#cleanup-msg").textContent = cleanupLastResult || "Showing the saved policy. Preview runs a dry run.";
   } catch (e) {
     cleanupState = null;
-    $("#cleanup-msg").textContent = e.message;
+    $("#cleanup-msg").textContent = typeof plainHostError === "function" ? plainHostError(e) : e.message;
   } finally { cleanupBusy = false; cleanupButtons(); }
 }
 
@@ -229,12 +229,16 @@ async function cleanupAction(action, request = {}) {
     cleanupRender(result.status);
     const messages = [...(result.actions || []), ...(result.problems || [])];
     $("#cleanup-msg").textContent = messages.join(" ") || (action === "preview" ? "Preview complete. No changes made." : "Check complete. No changes were needed.");
-    if (action !== "preview") await load(); // Activity and other pages move on too
+    if (action !== "preview") {
+      cleanupLastResult = $("#cleanup-msg").textContent;
+      await load(); // Activity and other pages move on too
+    }
   } catch (e) {
-    $("#cleanup-msg").textContent = e.message;
+    const message = typeof plainHostError === "function" ? plainHostError(e) : e.message;
+    $("#cleanup-msg").textContent = message;
     // Re-read the saved state so the refusal's blocker is visible on the row.
     try { cleanupRender(await api("/api/cleanup/status")); } catch {}
-    $("#cleanup-msg").textContent = e.message;
+    $("#cleanup-msg").textContent = message;
   }
   finally {
     cleanupBusy = false;

@@ -410,8 +410,9 @@ function libraryGridShelves(items) {
     .slice(0, 12)
     .map((row) => row.item);
   if (recent.length) shelves.push({ id: "recent", label: "Recently added", items: recent });
+  const shown = new Set([...active, ...recent].map((item) => libraryGridKey(item)));
   for (const [type, label] of [["Movies", "Movies"], ["TV", "TV"], ["Music", "Music"]]) {
-    const rows = list.filter((item) => libraryGridType(item) === type);
+    const rows = list.filter((item) => libraryGridType(item) === type && !shown.has(libraryGridKey(item)));
     if (rows.length) shelves.push({ id: type.toLocaleLowerCase(), label, items: rows });
   }
   return shelves;

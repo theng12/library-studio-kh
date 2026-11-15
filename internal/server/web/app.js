@@ -261,6 +261,7 @@ function activityEntries() {
   return [...seen.values()];
 }
 
+let activityDetailReturn = null;
 function renderActivity() {
   if (!current) return;
 
@@ -341,7 +342,8 @@ function renderActivity() {
     if (e.stats) {
       title = document.createElement("button");
       title.type = "button"; title.className = "inline title"; title.textContent = e.title;
-      title.addEventListener("click", () => openDetails(e.item));
+      title.dataset.activityKey = JSON.stringify([e.title, e.label, e.detail, e.at]);
+      title.addEventListener("click", () => openDetails(e.item, title));
     }
     const label = document.createElement("span");
     label.className = "timeline-label";
@@ -388,9 +390,17 @@ function dur(s) {
 }
 function bytes(n) {
   for (const [u, v] of [["TB", 1e12], ["GB", 1e9], ["MB", 1e6], ["KB", 1e3]]) if (n >= v) return (n / v).toFixed(n >= 10 * v ? 0 : 1) + " " + u;
-  return n + " B";
+  return Math.round(n) + " B";
 }
 const rate = (n) => bytes(n) + "/s";
+// A transport failure is one plain cause, never the browser's raw error text.
+function plainHostError(e) {
+  const raw = String(e?.message || e || "");
+  if (/failed to fetch|networkerror|err_connection|load failed/i.test(raw)) {
+    return "Could not reach the Library host on this computer. Check that it is still running.";
+  }
+  return raw ? raw.replace(/\.?$/, ".") : "The Library host did not answer.";
+}
 const stamp = (iso) => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
 
 function facts(dl, pairs) {
@@ -404,7 +414,7 @@ function facts(dl, pairs) {
 }
 
 // shortcut: shows the reading from when it was opened; reopen for newer numbers.
-function openDetails(it) {
+function openDetails(it, opener) {
   const s = it.stats, now = Date.now();
   const added = s.added ? new Date(s.added) : null, done = s.completed ? new Date(s.completed) : null;
   const took = added && done ? (done - added) / 1000 : added ? (now - added) / 1000 : 0;
@@ -446,10 +456,22 @@ function openDetails(it) {
     li.append(k, bar, v);
     return li;
   }));
-  $("#details").showModal();
+  if (!$("#details").open) {
+    activityDetailReturn = opener || document.activeElement;
+    activityDetailReturn?.focus();
+    $("#details").showModal();
+  }
 }
 $("#details .close").addEventListener("click", () => $("#details").close());
 $("#details").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); });
+$("#details").addEventListener("close", () => {
+  const back = activityDetailReturn;
+  activityDetailReturn = null;
+  // Polling can replace the timeline row while its dialog is open.
+  const target = back?.isConnected ? back : [...document.querySelectorAll("[data-activity-key]")]
+    .find((node) => node.dataset.activityKey === back?.dataset.activityKey);
+  (target || $("#act-q"))?.focus();
+});
 
 // Torrent files are chosen by picker or drop, listed as named chips, and the
 // Add button stays disabled with its reason until the input is valid.
@@ -741,21 +763,27 @@ function renderLibraryPage() {
       onBulkAction: async (id, keys) => {
         if (id !== "verify" || !keys?.length) return;
         let verified = 0, untracked = 0, failed = 0;
+        const reasons = [];
         for (const key of keys) {
           const item = lib.items.find((row) => libraryGridKey(row) === key);
-          if (!item?.downloadHash) { untracked += 1; continue; }
+          if (!item?.localCopy) { untracked += 1; continue; }
           try {
             await api("/api/cleanup/verify", { hash: item.downloadHash });
             verified += 1;
-          } catch {
+          } catch (e) {
+            if (/isn.t tracked/i.test(e.message)) {
+              untracked += 1;
+              continue;
+            }
             failed += 1;
+            reasons.push(item.title + ": " + e.message);
           }
         }
         await loadLibrary();
         lib.notice = "Verified " + verified + " selected "
           + (verified === 1 ? "copy" : "copies") + "."
           + (untracked ? " " + untracked + " had no tracked local copy." : "")
-          + (failed ? " " + failed + " could not be verified." : "");
+          + (failed ? " " + failed + " could not be verified: " + reasons.join("; ") : "");
         lib.selection = [];
         renderLibraryPage();
       },
@@ -872,7 +900,7 @@ $("#find-form").addEventListener("submit", async (ev) => {
     count.hidden = true;
     msg.hidden = false;
     msg.dataset.state = "error";
-    msg.textContent = "The search didn’t finish: " + e.message + " Try again.";
+    msg.textContent = "The search didn’t finish: " + plainHostError(e) + " Try again.";
   }
 });
 

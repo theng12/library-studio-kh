@@ -638,13 +638,12 @@ test("shelves group Continue, the most recent, and each type", () => {
   assert.deepEqual(Array.from(shelves, (s) => [s.id, s.items.length, s.label]), [
     ["continue", 2, "Continue"],
     ["recent", 2, "Recently added"],
-    ["movies", 3, "Movies"],
-    ["tv", 2, "TV"],
+    ["movies", 1, "Movies"],
   ]);
   assert.deepEqual(titles(shelves[0].items), ["Blade Runner 2049", "Dune"]);
   assert.deepEqual(titles(shelves[1].items), ["Arrival", "Andor"]);
-  // Shelves overlap on purpose: an in-flight title still counts in its type.
-  assert.ok(shelves[3].items.some((i) => i.title === "Dune"));
+  const shelfKeys = shelves.flatMap((shelf) => shelf.items.map((item) => g.libraryGridKey(item)));
+  assert.equal(new Set(shelfKeys).size, shelfKeys.length, "no duplicate shelf cards");
   // An empty shelf is omitted.
   assert.equal(shelves.find((s) => s.id === "music"), undefined);
   // A Local file counts as Movies.
@@ -687,7 +686,7 @@ test("shelves appear only on the unfiltered Show all Cards view", () => {
   assert.equal(byClass(shelvesPage, "libgrid-shelves").length, 1);
   assert.equal(byClass(shelvesPage, "libgrid-grid").length, 0, "no flat grid in shelf mode");
   assert.deepEqual(byClass(shelvesPage, "libgrid-shelf-title").map(text),
-    ["Continue 2", "Recently added 2", "Movies 3", "TV 2"]);
+    ["Continue 2", "Recently added 2", "Movies 1"]);
   const flat = g.libraryGridPage({ items, filters: { query: "e" }, view: "grid", handlers: {} });
   assert.equal(byClass(flat, "libgrid-shelf").length, 0, "a search shows the flat list");
   assert.equal(byClass(flat, "libgrid-grid").length, 1);
