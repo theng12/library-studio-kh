@@ -1693,6 +1693,7 @@ dependencies = [
 name = "library-studio-kh"
 version = "0.7.18"
 dependencies = [
+ "serde_json",
  "tauri",
  "tauri-build",
 ]

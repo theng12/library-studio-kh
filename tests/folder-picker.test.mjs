@@ -83,6 +83,7 @@ test("packaged webview check requires every chooser and read-only path", () => {
   assert.equal(nativeCheck.includes('document.querySelector("#settings-downloadpath + .folder-picker-choose").click()'), true);
   assert.equal(nativeCheck.includes("if (report.pathControls.some(item => !item.readOnly || !item.chooser))"), true);
   assert.equal(nativeCheck.includes('name => \'#view-help input[name="\' + name + \'"]\')'), true);
+  assert.equal(nativeCheck.includes('["appDir", "downloadPath", "root.sonarr", "root.radarr", "root.lidarr", "root.whisparr"].map(name => \'#view-help input[name="\' + name + \'"]\')'), true);
   assert.equal(nativeCheck.includes('report.pathControls = expected.map'), true);
 });
 

@@ -16,7 +16,9 @@ struct Server(Mutex<Option<Child>>);
 struct WindowUrl(Mutex<Option<String>>);
 
 fn open_main_window(app: &tauri::AppHandle, url: &str) -> Result<tauri::WebviewWindow, String> {
-    let target = url.parse().map_err(|e| format!("the server address could not be read: {e}"))?;
+    let target = url
+        .parse()
+        .map_err(|e| format!("the server address could not be read: {e}"))?;
     WebviewWindowBuilder::new(app, "main", WebviewUrl::External(target))
         .title("Library Studio KH")
         .inner_size(1040.0, 780.0)
@@ -42,7 +44,12 @@ fn show_main(app: &tauri::AppHandle) {
         let _ = window.set_focus();
         return;
     }
-    let url = app.state::<WindowUrl>().0.lock().ok().and_then(|saved| saved.clone());
+    let url = app
+        .state::<WindowUrl>()
+        .0
+        .lock()
+        .ok()
+        .and_then(|saved| saved.clone());
     if let Some(url) = url {
         if let Err(e) = open_main_window(app, &url) {
             eprintln!("The Library window could not open: {e}");
@@ -60,7 +67,9 @@ fn open_support() {
     #[cfg(target_os = "linux")]
     let opened = Command::new("xdg-open").arg(SUPPORT_URL).spawn();
     #[cfg(target_os = "windows")]
-    let opened = Command::new("cmd").args(["/C", "start", "", SUPPORT_URL]).spawn();
+    let opened = Command::new("cmd")
+        .args(["/C", "start", "", SUPPORT_URL])
+        .spawn();
     if let Err(e) = opened {
         eprintln!("Could not open the support page: {e}");
     }
@@ -69,7 +78,11 @@ fn open_support() {
 fn server_path() -> Result<PathBuf, String> {
     // Tauri installs the sidecar next to the app executable, without the target suffix.
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let name = if cfg!(windows) { "library-studio-server.exe" } else { "library-studio-server" };
+    let name = if cfg!(windows) {
+        "library-studio-server.exe"
+    } else {
+        "library-studio-server"
+    };
     Ok(exe.with_file_name(name))
 }
 
@@ -78,35 +91,47 @@ fn server_path() -> Result<PathBuf, String> {
 const HOST_PORTS: [u16; 2] = [7881, 7882];
 
 fn another_instance_running() -> bool {
-    HOST_PORTS
-        .iter()
-        .any(|port| std::net::TcpStream::connect_timeout(
+    HOST_PORTS.iter().any(|port| {
+        std::net::TcpStream::connect_timeout(
             &std::net::SocketAddr::from(([127, 0, 0, 1], *port)),
             std::time::Duration::from_millis(200),
-        ).is_ok())
+        )
+        .is_ok()
+    })
 }
 
 fn report_and_exit(reason: &str) -> ! {
     eprintln!("Library Studio KH did not open: {reason}");
     if let Ok(dir) = std::env::var("HOME") {
-        let path = PathBuf::from(dir).join("Library").join("Logs").join("Library Studio KH launch error.txt");
+        let path = PathBuf::from(dir)
+            .join("Library")
+            .join("Logs")
+            .join("Library Studio KH launch error.txt");
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let _ = std::fs::write(&path, format!("Library Studio KH did not open.\n\n{reason}\n"));
+        let _ = std::fs::write(
+            &path,
+            format!("Library Studio KH did not open.\n\n{reason}\n"),
+        );
     }
     std::process::exit(2);
 }
 
 fn start_server() -> Result<(Child, String), String> {
     let mut cmd = Command::new(server_path()?);
-    cmd.arg("-with-shell").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.arg("-with-shell")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console window behind the app
     }
-    let mut child = cmd.spawn().map_err(|e| format!("could not start the server: {e}"))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("could not start the server: {e}"))?;
     let stdout = match child.stdout.take() {
         Some(out) => out,
         None => {
@@ -168,10 +193,28 @@ fn stop_server(app: &tauri::AppHandle) {
 }
 
 fn build_menu(app: &tauri::App) -> tauri::Result<()> {
-    let use_local = MenuItem::with_id(app, "use-local-host", "Use this Mac as host", true, None::<&str>)?;
+    let use_local = MenuItem::with_id(
+        app,
+        "use-local-host",
+        "Use this Mac as host",
+        true,
+        None::<&str>,
+    )?;
     let restart = MenuItem::with_id(app, "restart", "Restart Library", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Library Studio KH", true, Some("CmdOrCtrl+Q"))?;
-    let show = MenuItem::with_id(app, "show-window", "Show Library Studio KH", true, Some("CmdOrCtrl+0"))?;
+    let quit = MenuItem::with_id(
+        app,
+        "quit",
+        "Quit Library Studio KH",
+        true,
+        Some("CmdOrCtrl+Q"),
+    )?;
+    let show = MenuItem::with_id(
+        app,
+        "show-window",
+        "Show Library Studio KH",
+        true,
+        Some("CmdOrCtrl+0"),
+    )?;
     #[cfg(target_os = "macos")]
     let app_menu = Submenu::with_items(
         app,
