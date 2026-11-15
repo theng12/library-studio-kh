@@ -61,6 +61,7 @@ func New(store *config.Store, home string) *Server {
 	s.local = &localMediaCache{}
 	s.data.cond = sync.NewCond(&s.data.mu)
 	s.cleanup = library.NewStagedCleanup(store.Get, home)
+	s.cleanup.Log = log.Printf
 	s.setup = setup.NewManager(home, store)
 	s.initAccess()
 	return s

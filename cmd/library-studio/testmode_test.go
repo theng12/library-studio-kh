@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -228,5 +229,49 @@ func TestReadTestEnvRefusesMissingHome(t *testing.T) {
 	t.Setenv("KH_TEST_HOME", "")
 	if _, err := readTestEnv(); err == nil || !strings.Contains(err.Error(), "KH_TEST_HOME") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestCleanupLogsActionStagesAndSkips(t *testing.T) {
+	e := fixtureEnv(t)
+	store, err := config.Open(e.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trash := t.TempDir()
+	eng := library.NewStagedCleanup(store.Get, e.Home)
+	eng.LocalVolume = func(string) (bool, error) { return true, nil }
+	eng.TrashDir = func() (string, error) { return trash, nil }
+	eng.FreeBytes = func(string) (int64, error) { return 1e12, nil }
+	eng.Source = emptySource{}
+	var logs []string
+	eng.Log = func(format string, args ...any) { logs = append(logs, fmt.Sprintf(format, args...)) }
+	c := store.Get()
+
+	// A Run names the due copy's move queued → progress → result, item by item,
+	// and names each record it leaves alone with the reason (Studio gate #2).
+	if _, err := eng.Run(c); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(logs, "\n")
+	for _, want := range []string{"queued " + testDueName, "moving " + testDueName, "moved " + testDueName} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("run log missing %q:\n%s", want, joined)
+		}
+	}
+	if !strings.Contains(joined, "cleanup: skipped ") {
+		t.Fatalf("run log names no skipped record:\n%s", joined)
+	}
+
+	// Restore is logged the same way, so a brought-back copy is never silent.
+	logs = nil
+	if _, err := eng.Restore(c, testDueHash); err != nil {
+		t.Fatal(err)
+	}
+	joined = strings.Join(logs, "\n")
+	for _, want := range []string{"queued restore of " + testDueName, "restoring " + testDueName, "restored " + testDueName} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("restore log missing %q:\n%s", want, joined)
+		}
 	}
 }

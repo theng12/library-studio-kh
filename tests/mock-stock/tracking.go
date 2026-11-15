@@ -15,7 +15,7 @@ func newTrackingFixture(media map[string]any, library string) func(http.Response
 		for _, item := range media[kind].([]map[string]any) {
 			item["monitored"] = true
 			item["qualityProfileId"] = 1
-			// The two titles the seed writes real files for report that real folder,
+			// The titles the seed writes real files for report that real folder,
 			// so local-media rows and the app's own rows reconcile like production.
 			item["path"] = "/Volumes/NAS/Media/Fixture"
 			if strings.HasSuffix(kind, "/series") && item["id"] == 1 {
@@ -23,6 +23,9 @@ func newTrackingFixture(media map[string]any, library string) func(http.Response
 			}
 			if strings.HasSuffix(kind, "/movie") && item["id"] == 1 {
 				item["path"] = filepath.Join(library, "Example Film (2024)")
+			}
+			if strings.HasSuffix(kind, "/movie") && item["id"] == 2 {
+				item["path"] = filepath.Join(library, "A Quiet Film (1998)")
 			}
 			item["overview"] = "Sample metadata description for this title."
 			item["genres"] = []string{"Drama", "Mystery"}

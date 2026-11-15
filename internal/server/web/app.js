@@ -1133,6 +1133,17 @@ document.addEventListener("keydown", (ev) => {
     }
     return;
   }
+  // Close the library filter box/sheet and put focus back on Filters. The page
+  // handler does this for non-field targets; this covers a focused field inside
+  // the sheet (a checkbox), which the page handler leaves to the host.
+  if (!$("#view-browse").hidden && lib.filtersOpen) {
+    ev.preventDefault();
+    lib.filtersOpen = false;
+    lib.draft = {};
+    renderLibraryPage();
+    document.querySelector(".libgrid-filters-toggle")?.focus();
+    return;
+  }
   // Close a page-level detail pane and put focus back on the row that opened it.
   if (!$("#view-downloads").hidden && dl.openKey) {
     const key = dl.openKey;

@@ -152,8 +152,18 @@ type StagedCleanup struct {
 	TrashDir    func() (string, error)
 	// SaveFile is replaceable in tests to simulate a state write failure.
 	SaveFile func(string, []byte, os.FileMode) error
+	// Log, when set, receives one line per cleanup action and skip so the runtime
+	// record proves the sequence (queued → progress → result) and every skip's
+	// reason. nil disables it; the server wires log.Printf and tests a buffer.
+	Log func(format string, args ...any)
 
 	mu sync.Mutex
+}
+
+func (e *StagedCleanup) logf(format string, args ...any) {
+	if e.Log != nil {
+		e.Log(format, args...)
+	}
 }
 
 func NewStagedCleanup(get func() config.Config, home string) *StagedCleanup {
@@ -369,6 +379,7 @@ func (e *StagedCleanup) plan(c config.Config, execute bool, app string) (Cleanup
 				}
 			}
 			if execute {
+				e.logf("cleanup: tracked whole import of %s (%s)", rec.Name, humanBytes(bytes))
 				res.Actions = append(res.Actions, "Verified whole import of "+rec.Name+" ("+fmt.Sprintf("%s", humanBytes(bytes))+").")
 			} else {
 				res.Actions = append(res.Actions, "Would track "+rec.Name+" from its import at "+rec.ImportedAt.Format(time.RFC3339)+".")
@@ -414,10 +425,12 @@ type settleCtx struct {
 func (x *settleCtx) block(rec *cleanupRecord, reason string) {
 	rec.LastBlocked = reason
 	x.problems = append(x.problems, rec.Name+": "+reason)
+	x.e.logf("cleanup: skipped %s: %s", rec.Name, reason)
 }
 
 func (x *settleCtx) settle(rec *cleanupRecord) {
 	if x.app != "" && rec.App != x.app {
+		x.e.logf("cleanup: skipped %s: outside the %s cleanup scope.", rec.Name, x.app)
 		return
 	}
 	if app, ok := x.queued[strings.ToUpper(rec.Hash)]; ok {
@@ -478,12 +491,14 @@ func (x *settleCtx) settleStaging(rec *cleanupRecord) {
 					return
 				}
 				x.torrents[strings.ToUpper(rec.Hash)] = t
+				x.e.logf("cleanup: stopped seeding %s because its limit is met", rec.Name)
 				x.res.Actions = append(x.res.Actions, "Stopped seeding "+rec.Name+" because its limit is met.")
 			}
 		}
 	}
 	due := rec.ImportedAt.Add(days(x.c.StagedDays))
 	if x.now.Before(due) && !x.skipWait {
+		x.e.logf("cleanup: skipped %s: still inside its %d-day download-folder wait.", rec.Name, x.c.StagedDays)
 		return // the copy stays in the download folder; no premature removal
 	}
 	if err := verifyTree(rec.MoveRoot, rec.Files); err != nil {
@@ -550,17 +565,21 @@ func (x *settleCtx) settleStaging(rec *cleanupRecord) {
 		x.res.Actions = append(x.res.Actions, "Would move "+rec.Name+" into Library's _trash ("+dest+").")
 		return
 	}
+	x.e.logf("cleanup: queued %s (%s) for Library's _trash", rec.Name, shortHash(rec.Hash))
+	x.e.logf("cleanup: moving %s to %s", rec.Name, dest)
 	if err := moveVerified(rec.MoveRoot, dest, rec.Files); err != nil {
 		x.block(rec, "moving to Library's _trash failed: "+err.Error())
 		return
 	}
 	rec.State, rec.ManagedPath, rec.ManagedRoot, rec.StagedAt, rec.LastBlocked = phaseManaged, dest, managedRoot(x.c), x.now, ""
+	x.e.logf("cleanup: moved %s to %s", rec.Name, dest)
 	x.res.Actions = append(x.res.Actions, "Moved "+rec.Name+" into Library's _trash.")
 }
 
 func (x *settleCtx) settleManaged(rec *cleanupRecord) {
 	due := rec.ImportedAt.Add(days(x.c.StagedDays + x.c.ManagedTrashDays))
 	if x.now.Before(due) {
+		x.e.logf("cleanup: skipped %s: still inside its managed _trash wait.", rec.Name)
 		return
 	}
 	if err := verifyTree(rec.ManagedPath, rec.Files); err != nil {
@@ -586,16 +605,20 @@ func (x *settleCtx) settleManaged(rec *cleanupRecord) {
 		x.res.Actions = append(x.res.Actions, "Would move "+rec.Name+" into the system Trash.")
 		return
 	}
+	x.e.logf("cleanup: queued %s (%s) for the system Trash", rec.Name, shortHash(rec.Hash))
+	x.e.logf("cleanup: moving %s to %s", rec.Name, dest)
 	if err := moveVerified(rec.ManagedPath, dest, rec.Files); err != nil {
 		x.block(rec, "moving to the system Trash failed: "+err.Error())
 		return
 	}
 	rec.State, rec.NativeName, rec.NativeAt, rec.ManagedPath, rec.ManagedRoot, rec.LastBlocked = phaseNative, filepath.Base(dest), x.now, "", "", ""
+	x.e.logf("cleanup: moved %s to %s", rec.Name, dest)
 	x.res.Actions = append(x.res.Actions, "Moved "+rec.Name+" into the system Trash.")
 }
 
 func (x *settleCtx) settleNative(rec *cleanupRecord) {
 	if rec.NativeAt.IsZero() || x.now.Before(rec.NativeAt.Add(days(x.c.NativeTrashDays))) {
+		x.e.logf("cleanup: skipped %s: still inside its system Trash wait.", rec.Name)
 		return
 	}
 	x.purgeOne(rec, fmt.Sprintf("its %d-day system Trash retention ended", x.c.NativeTrashDays))
@@ -744,12 +767,15 @@ func (x *settleCtx) purgeOne(rec *cleanupRecord, why string) {
 		x.res.Actions = append(x.res.Actions, "Would permanently remove "+rec.Name+" from the system Trash because "+why+".")
 		return
 	}
+	x.e.logf("cleanup: queued %s (%s) for permanent removal", rec.Name, shortHash(rec.Hash))
+	x.e.logf("cleanup: removing %s from %s", rec.Name, path)
 	if err := removeVerifiedCopy(path, rec.Files, verifyImported); err != nil {
 		x.block(rec, "the system Trash entry could not be removed: "+err.Error())
 		return
 	}
 	rec.State, rec.RemovedAt, rec.LastBlocked = phaseRemoved, x.now, ""
 	x.res.Purged++
+	x.e.logf("cleanup: removed %s from the system Trash (%s)", rec.Name, why)
 	x.res.Actions = append(x.res.Actions, "Permanently removed "+rec.Name+" from the system Trash because "+why+".")
 }
 
@@ -950,6 +976,7 @@ func (e *StagedCleanup) Restore(c config.Config, hash string) (CleanupResult, er
 	default:
 		return res, errors.New("that item isn't in Library's _trash or the system Trash")
 	}
+	e.logf("cleanup: queued restore of %s (%s)", rec.Name, shortHash(rec.Hash))
 	if _, err := os.Lstat(rec.MoveRoot); err == nil {
 		if verifyTree(rec.MoveRoot, rec.Files) != nil {
 			return res, errors.New("its original download location already exists with different content; nothing was overwritten")
@@ -964,6 +991,7 @@ func (e *StagedCleanup) Restore(c config.Config, hash string) (CleanupResult, er
 			return res, serr
 		}
 		rec.State, rec.RestoredAt, rec.ManagedPath, rec.ManagedRoot, rec.NativeName, rec.LastBlocked = phaseRestore, now, "", "", "", ""
+		e.logf("cleanup: finished restoring %s to %s", rec.Name, rec.MoveRoot)
 		res.Actions = append(res.Actions, "Finished restoring "+rec.Name+" to "+rec.MoveRoot+".")
 		if err := e.save(recs); err != nil {
 			return res, err
@@ -977,10 +1005,12 @@ func (e *StagedCleanup) Restore(c config.Config, hash string) (CleanupResult, er
 	if err := verifyTree(src, rec.Files); err != nil {
 		return res, fmt.Errorf("the stored copy can't be verified: %w", err)
 	}
+	e.logf("cleanup: restoring %s to %s", rec.Name, rec.MoveRoot)
 	if err := moveVerified(src, rec.MoveRoot, rec.Files); err != nil {
 		return res, err
 	}
 	rec.State, rec.RestoredAt, rec.ManagedPath, rec.ManagedRoot, rec.NativeName, rec.LastBlocked = phaseRestore, now, "", "", "", ""
+	e.logf("cleanup: restored %s to %s", rec.Name, rec.MoveRoot)
 	res.Actions = append(res.Actions, "Restored "+rec.Name+" to "+rec.MoveRoot+".")
 	if err := e.save(recs); err != nil {
 		return res, err

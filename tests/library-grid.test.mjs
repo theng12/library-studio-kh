@@ -359,6 +359,26 @@ test("search, view, selection and the Filters panel call their handlers", () => 
   assert.deepEqual(calls.shift(), ["reset"]);
 });
 
+test("Escape closes the open filter box and returns focus to Filters, before any selection", () => {
+  let focused = null;
+  const filtersButton = { focus() { focused = "filters"; } };
+  const context = {
+    document: { ...fakeDocument(), querySelector: (sel) => (sel === ".libgrid-filters-toggle" ? filtersButton : null) },
+    setTimeout, clearTimeout,
+  };
+  runInNewContext(source, context);
+  const calls = [];
+  const page = context.libraryGridPage({
+    items, filters: {}, filtersOpen: true, selection: ["Sonarr:2"],
+    handlers: { onToggleFilters: () => calls.push("toggle"), onClearSelection: () => calls.push("clear") },
+  });
+  let prevented = 0;
+  page.fire("keydown", { key: "Escape", target: { tagName: "DIV" }, preventDefault: () => { prevented += 1; } });
+  assert.deepEqual(calls, ["toggle"], "the open filter box closes before the selection behind it");
+  assert.equal(prevented, 1);
+  assert.equal(focused, "filters", "focus returns to the Filters control");
+});
+
 test("the Filters panel shows a draft that differs from the applied filters", () => {
   const g = load();
   const page = g.libraryGridPage({ items, filters: {}, draft: { status: "Missing" }, filtersOpen: true, handlers: {} });

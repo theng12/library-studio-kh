@@ -1132,6 +1132,14 @@ function libraryGridPage(options = {}) {
     const tag = String(event.target?.tagName || "").toUpperCase();
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || event.target?.isContentEditable) return;
     if (document.querySelector?.("dialog[open]")) return;
+    // An open filter box/sheet is the top layer here: Escape closes it and puts
+    // focus back on Filters, before any selection or detail behind it.
+    if (options.filtersOpen) {
+      event.preventDefault?.();
+      handlers.onToggleFilters?.();
+      document.querySelector?.(".libgrid-filters-toggle")?.focus?.();
+      return;
+    }
     if (selection.length) {
       event.preventDefault?.();
       handlers.onClearSelection?.();
