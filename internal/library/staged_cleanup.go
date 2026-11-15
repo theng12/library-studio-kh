@@ -1048,7 +1048,7 @@ func (e *StagedCleanup) baseStatus(c config.Config) CleanupStatus {
 	}
 	st.ManagedTrashLocal = st.ManagedTrashPath != "" && pathIsLocal(e.LocalVolume, st.ManagedTrashPath)
 	if c.DownloadPath == "" && st.ManagedTrashPath == "" {
-		st.Blocked = append(st.Blocked, "Set the local download folder so Library's _trash can live beside the staging copy.")
+		st.Blocked = append(st.Blocked, "Choose a download folder in Settings → Folders. Cleanup waits until it has one.")
 	}
 	if st.ManagedTrashPath != "" && !st.ManagedTrashLocal {
 		st.Blocked = append(st.Blocked, "Library's _trash must be on a local volume, never the NAS library.")

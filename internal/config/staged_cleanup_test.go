@@ -26,11 +26,18 @@ func TestStagedCleanupValidation(t *testing.T) {
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("enabled policy with a library folder must validate: %v", err)
 	}
+	// The owner turns the switch on before he has chosen a folder, and the save must
+	// go through: the cleanup status names the folder instead of refusing the save.
+	noFolder := valid
+	noFolder.DownloadPath = ""
+	noFolder.ManagedTrashPath = ""
+	if err := noFolder.Validate(); err != nil {
+		t.Fatalf("an enabled policy without a folder must still save: %v", err)
+	}
 	cases := []struct {
 		name string
 		edit func(*Config)
 	}{
-		{"enabled without local download or managed trash", func(c *Config) { c.DownloadPath = ""; c.ManagedTrashPath = "" }},
 		{"staged days", func(c *Config) { c.StagedDays = 0 }},
 		{"managed days", func(c *Config) { c.ManagedTrashDays = -1 }},
 		{"native days", func(c *Config) { c.NativeTrashDays = 0 }},

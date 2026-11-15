@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 )
 
@@ -111,9 +110,9 @@ func (c Config) Validate() error {
 	if c.SeedMinutes < 0 || c.SeedMinutes > 5_256_000 {
 		return errors.New("seed minutes must be between 0 and 5256000")
 	}
-	if c.StagedCleanupOn && c.DownloadPath == "" && strings.TrimSpace(c.ManagedTrashPath) == "" {
-		return errors.New("set the local download folder or a managed _trash folder before turning staged cleanup on")
-	}
+	// Turning staged cleanup on without a folder is a choice the owner may make and
+	// correct later: the save is accepted and the cleanup status names the folder to
+	// set. Refusing it flipped the switch back off and left the page looking empty.
 	for name, u := range map[string]string{"qBittorrent": c.QBit.URL, "Sonarr": c.Sonarr.URL, "Radarr": c.Radarr.URL, "Lidarr": c.Lidarr.URL, "Prowlarr": c.Prowlarr.URL, "Bazarr": c.Bazarr.URL, "Whisparr": c.Whisparr.URL} {
 		if name == "Bazarr" && !c.BazarrOn {
 			continue
