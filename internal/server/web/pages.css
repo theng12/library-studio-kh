@@ -394,6 +394,11 @@
 .downloads-panel .dlp-actions { white-space: nowrap; }
 .downloads-panel .dlp-actions button { padding: 0 0.45rem; }
 
+/* The result line names the destination, which is the proof of the action: it
+   must wrap inside the card at 375 instead of being clipped by the card's own
+   overflow. A path has no spaces to break at, so anywhere is required. */
+#cleanup-msg { overflow-wrap: anywhere; }
+
 /* Cleanup: the Actions column stays on screen while the table scrolls, and the
    status facts never push the card wider than its column. */
 @media (min-width: 901px) {

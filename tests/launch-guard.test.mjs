@@ -16,7 +16,8 @@ test("a taken port or a second copy never panics the app", () => {
 });
 
 test("the window is reachable from the menu and the Dock after it closes", () => {
-  assert.match(rust, /"show-window", "Show Library Studio KH"/);
+  // The id and its label are one call, laid out over several lines by rustfmt.
+  assert.match(rust, /"show-window",\s*"Show Library Studio KH"/);
   assert.match(rust, /fn show_main\(app: &tauri::AppHandle\)/);
   assert.match(rust, /if let Some\(window\) = app\.get_webview_window\("main"\)/);
   assert.match(rust, /open_main_window\(app, &url\)/, "a closed window is rebuilt on demand");

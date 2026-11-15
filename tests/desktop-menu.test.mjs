@@ -34,7 +34,8 @@ test("Window menu uses the Tauri window submenu id and conventional window comma
 });
 
 test("app menu keeps its own local actions and all three submenus are installed", () => {
-  assert.match(source, /MenuItem::with_id\(app, "use-local-host", "Use this Mac as host"/);
+  // rustfmt lays this call out over several lines; the id and label are still one call.
+  assert.match(source, /MenuItem::with_id\(\s*app,\s*"use-local-host",\s*"Use this Mac as host",/);
   assert.match(source, /MenuItem::with_id\(app, "restart", "Restart Library"/);
   const installed = [...source.matchAll(/Menu::with_items\(\s*app,\s*&\[([^\]]*)\]\s*,?\s*\)/g)].at(-1)[1];
   assert.match(installed, /&app_menu/);

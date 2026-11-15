@@ -585,7 +585,11 @@ $("#torrent-form").addEventListener("submit", async (ev) => {
   finally { btn.disabled = false; }
 });
 for (const id of ["#act-q", "#act-app", "#act-outcome"]) $(id).addEventListener("input", activityFilterInput);
-$("#act-refresh").addEventListener("click", () => load());
+$("#act-refresh").addEventListener("click", () => {
+  // A manual refresh is the one place a failed poster may be tried again.
+  if (typeof libraryGridForgetFailedPosters === "function") libraryGridForgetFailedPosters();
+  load();
+});
 
 function titleCell(m) {
   const box = document.createElement("div");
@@ -1944,15 +1948,22 @@ function publicHelpCopy(source) {
   return copy;
 }
 
+// The help overlay is not a <dialog>, so it owns its own return-focus path:
+// closing it must land back on the control that opened it, like every dialog.
+let publicHelpOpener = null;
 $("#open-public-help").addEventListener("click", () => {
+  publicHelpOpener = document.activeElement?.isConnected ? document.activeElement : $("#open-public-help");
   $("#public-help-content").replaceChildren(publicHelpCopy($("#view-help")));
   $("#gate").hidden = true;
   $("#public-help").hidden = false;
   $("#close-public-help").focus();
 });
 $("#close-public-help").addEventListener("click", () => {
+  const back = publicHelpOpener || $("#open-public-help");
+  publicHelpOpener = null;
   $("#public-help").hidden = true;
   start();
+  if (back?.isConnected) back.focus();
 });
 
 // Settings is four tabs of self-contained cards; the module owns the markup.

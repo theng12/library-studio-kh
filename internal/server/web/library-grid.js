@@ -459,15 +459,26 @@ function libraryGridPosterPlaceholder(label, match) {
   return span;
 }
 
+// A poster URL that failed once is not fetched again for the rest of the session:
+// every state poll would otherwise re-request a known-403 file. Session-scoped on
+// purpose, and cleared on a manual refresh, so a transient failure can recover.
+const libraryGridFailedPosters = new Set();
+function libraryGridForgetFailedPosters() { libraryGridFailedPosters.clear(); }
+
 function libraryGridPosterBox(poster, className, match) {
   const box = libraryGridNode("span", null, "libgrid-poster" + (className ? " " + className : ""));
-  if (poster.src) {
+  if (poster.src && libraryGridFailedPosters.has(poster.src)) {
+    box.append(libraryGridPosterPlaceholder(poster.label, match));
+  } else if (poster.src) {
     const img = document.createElement("img");
     img.src = poster.src;
     img.alt = "";
     img.loading = "lazy";
     // A poster file that vanished reads as a placeholder, not a broken image.
-    img.addEventListener("error", () => img.replaceWith(libraryGridPosterPlaceholder(poster.label, match)));
+    img.addEventListener("error", () => {
+      libraryGridFailedPosters.add(poster.src);
+      img.replaceWith(libraryGridPosterPlaceholder(poster.label, match));
+    });
     box.append(img);
   } else box.append(libraryGridPosterPlaceholder(poster.label, match));
   return box;
