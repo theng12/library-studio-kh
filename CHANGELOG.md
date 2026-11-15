@@ -1,5 +1,10 @@
 # What's new in Library Studio KH
 
+## 0.7.20 — 2026-11-15
+
+- Library now answers the update hold, so the Updater can install a new version without cutting off work: it stops taking new jobs, gives what is running a short, bounded time to settle, and says whether a restart is safe right now. Anything still running is named so the next start can pick it up.
+- The pause lasts only a couple of minutes and ends by itself, so an install that is abandoned cannot leave Library refusing to work; a restart always resumes with nothing to click.
+
 ## 0.7.19 — 2026-11-15
 
 - Every folder field takes a typed path as well as Browse: Settings, Setup and Cleanup. A path that does not open says why under that field and keeps your saved value, so nothing ever runs against a folder that is not there.

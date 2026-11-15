@@ -47,6 +47,7 @@ type Server struct {
 	access      accessState
 	cleanup     *library.StagedCleanup
 	setup       *setup.Manager
+	hold        holdState
 }
 
 type lastRun struct {
@@ -100,6 +101,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/host-proof", s.hostProof)
 	mux.HandleFunc("GET /api/poster", s.poster)
+	mux.HandleFunc("POST /api/maintenance/hold", s.maintenanceHold)
+	mux.HandleFunc("DELETE /api/maintenance/hold", s.maintenanceResume)
 	mux.HandleFunc("GET /api/update/check", s.updateCheck)
 	mux.HandleFunc("POST /api/update/open", s.openUpdater)
 	static, _ := fs.Sub(web, "web")
@@ -122,6 +125,11 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, 200, map[string]any{"items": items, "problems": errs})
 	})
 	mux.HandleFunc("POST /api/add", func(w http.ResponseWriter, r *http.Request) {
+		release, ok := s.claimWork(w, "add-result")
+		if !ok {
+			return
+		}
+		defer release()
 		var req struct {
 			App string          `json:"app"`
 			Raw json.RawMessage `json:"raw"`
@@ -146,6 +154,11 @@ const maxTorrentUpload = 32 << 20
 
 // addTorrents takes pasted links (one per line) and .torrent files, single or many, and passes them to qBittorrent.
 func (s *Server) addTorrents(w http.ResponseWriter, r *http.Request) {
+	release, ok := s.claimWork(w, "add-torrents")
+	if !ok {
+		return
+	}
+	defer release()
 	r.Body = http.MaxBytesReader(w, r.Body, maxTorrentUpload)
 	if err := r.ParseMultipartForm(maxTorrentUpload); err != nil {
 		writeJSON(w, 400, map[string]string{"error": "That was too big or couldn't be read. Add up to 32 MB of torrent files at a time."})

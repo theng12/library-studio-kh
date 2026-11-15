@@ -30,6 +30,11 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 		writeJSON(w, 200, res)
 	})
 	mux.HandleFunc("POST /api/cleanup/run", func(w http.ResponseWriter, r *http.Request) {
+		release, ok := s.claimWork(w, "cleanup-run")
+		if !ok {
+			return
+		}
+		defer release()
 		res, err := s.cleanup.RunApp(s.Store.Get(), r.URL.Query().Get("app"))
 		if errors.Is(err, library.ErrCleanupApp) {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
@@ -69,6 +74,11 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 		writeJSON(w, 200, res)
 	})
 	mux.HandleFunc("POST /api/cleanup/remove-now", func(w http.ResponseWriter, r *http.Request) {
+		release, ok := s.claimWork(w, "cleanup-remove-now")
+		if !ok {
+			return
+		}
+		defer release()
 		var req struct {
 			Hash string `json:"hash"`
 		}
@@ -88,6 +98,11 @@ func (s *Server) registerCleanup(mux *http.ServeMux) {
 		writeJSON(w, 200, res)
 	})
 	mux.HandleFunc("POST /api/cleanup/restore", func(w http.ResponseWriter, r *http.Request) {
+		release, ok := s.claimWork(w, "cleanup-restore")
+		if !ok {
+			return
+		}
+		defer release()
 		var req struct {
 			Hash string `json:"hash"`
 		}

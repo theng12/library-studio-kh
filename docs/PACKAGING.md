@@ -74,6 +74,10 @@ Packaging and the delivered-DMG signing/launchd check above are still required f
 
 `scripts/test-settings-survive-update.sh` is the release test for the owner's settings across an update: it writes non-default values through the running headless server's own `POST /api/settings`, stops that server, starts a second build over the same isolated home and reads every value back through `GET /api/state`, printing one line per checked value and exiting non-zero if any dropped. It runs before any release that touches settings or the update path; a failure is a release blocker, not a warning. `go test ./internal/config/` holds the same guarantee at the loader: non-default values read back unchanged after reopening, opening never rewrites `settings.json`, and a partial Settings-form save keeps every omitted field.
 
+### Update hold
+
+`scripts/test-update-hold.sh` is the release test for the shared update hold (`_orchestra/youtube-stack/update-hold/CONTRACT.md`). It starts a real headless Library on an isolated home and proves, with live endpoints: the hold answers with the real `in_flight`; a held app refuses new work and says why in plain words; `DELETE` resumes at once; a hold with no `DELETE` expires after `pause_s`; and a restart resumes by itself with no operator step. Run it before any release that touches the hold, dispatch or startup path; a failure is a release blocker.
+
 ## KH Updater feed
 
 Follow the Updater lead's route: build the DMG, record its path, SHA-256, version and one-line description, and hand that to the Updater lead. They publish with `khu publish --description` (current + one previous) only after Developer gives the go. This repo never publishes itself.
