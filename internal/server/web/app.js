@@ -1182,10 +1182,7 @@ document.addEventListener("settings:tab", (ev) => {
     const msg = $(id);
     if (msg) msg.textContent = "";
   }
-  // One Save for the whole form; it stays available on every tab. Its badges,
-  // not tab visibility, say whether a change is pending.
-  const status = $("#settings-status");
-  if (status) status.textContent = "Changes apply when you save.";
+  // Changing tabs preserves the form's unsaved status until Save succeeds.
   settingsCardsForPhone();
 });
 
