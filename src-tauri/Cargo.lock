@@ -1694,6 +1694,7 @@ name = "library-studio-kh"
 version = "0.7.18"
 dependencies = [
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
 ]

@@ -8,6 +8,7 @@ use std::sync::Mutex;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
+#[cfg(feature = "webview-check")]
 mod webview_check;
 
 fn app_context() -> tauri::Context<tauri::Wry> { tauri::generate_context!() }
@@ -318,15 +319,33 @@ fn use_local_host(app: &tauri::AppHandle) {
 }
 
 fn main() {
-    // The hidden check must not exist in a shipped build: without the test-only cfg the
-    // flag is an ordinary unknown argument and the normal window path runs.
-    #[cfg(all(test, debug_assertions))]
+    // Fail closed first: --webview-check never reaches app_context, Tauri setup,
+    // HOME, host, window, menu or server work unless this build opted in with
+    // --features webview-check. A flag it cannot run is never a normal launch.
     if std::env::args().any(|arg| arg == "--webview-check") {
-        if let Err(error) = webview_check::run(app_context()) {
-            eprintln!("native-webview-check: FAIL ({error})");
+        #[cfg(feature = "webview-check")]
+        {
+            // start() isolates the environment and writes the startup marker
+            // before app_context()/WebKit can exist.
+            if let Err(error) = webview_check::start() {
+                eprintln!("native-webview-check: FAIL ({error})");
+                std::process::exit(1);
+            }
+            if let Err(error) = webview_check::run(app_context()) {
+                eprintln!("native-webview-check: FAIL ({error})");
+                std::process::exit(1);
+            }
+            return;
+        }
+        #[cfg(not(feature = "webview-check"))]
+        {
+            eprintln!(
+                "native-webview-check: REFUSED — this build has no webview-check feature; \
+                 ordinary and release builds never run --webview-check \
+                 (rebuild with --features webview-check for verification)"
+            );
             std::process::exit(1);
         }
-        return;
     }
     tauri::Builder::default()
         .setup(|app| {
