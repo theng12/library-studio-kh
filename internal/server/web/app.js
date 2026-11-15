@@ -462,8 +462,15 @@ function openDetails(it, opener) {
     $("#details").showModal();
   }
 }
+// A dialog can register its own close path, so a backdrop click restores focus
+// exactly like its Escape and Close controls instead of dropping it on the page.
+function dialogBackdropClose(dialog) {
+  if (typeof dialog.__libraryBackdropClose === "function") dialog.__libraryBackdropClose();
+  else dialog.close();
+}
 $("#details .close").addEventListener("click", () => $("#details").close());
 $("#details").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); });
+$("#details").__libraryBackdropClose = () => $("#details").close();
 $("#details").addEventListener("close", () => {
   const back = activityDetailReturn;
   activityDetailReturn = null;
@@ -1041,6 +1048,8 @@ function openLocalMatch(detail, opener) {
   $("#local-match-name").focus();
   $("#local-match-name").select?.();
 }
+// A backdrop click must land on the same focus restore as Cancel and Escape.
+$("#local-match-dialog").__libraryBackdropClose = () => $("#local-match-dialog").close();
 $("#local-match-cancel").addEventListener("click", () => $("#local-match-dialog").close());
 $("#local-match-dialog .close").addEventListener("click", () => $("#local-match-dialog").close());
 $("#local-match-dialog").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); });
@@ -1264,11 +1273,12 @@ document.addEventListener("click", (ev) => {
   const dialog = ev.target;
   if (dialog?.tagName === "DIALOG" && dialog.open) {
     const r = dialog.getBoundingClientRect();
-    if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) {
+    // A dialog whose own element handler already handled this backdrop click is
+    // closed by now; only a dialog still open needs this path.
+    if (dialog.open && (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom)) {
       // Escape's dialog branch hands focus back through the dialog's own close
-      // handler; the backdrop path has to do the same.
-      if (dialog.id === "details") closeActivityDetail();
-      else dialog.close();
+      // handler; the backdrop path has to do the same, for every dialog.
+      dialogBackdropClose(dialog);
       return;
     }
   }
@@ -1464,6 +1474,9 @@ $("#downloads-detail").addEventListener("close", () => {
   });
 });
 
+// Downloads' proof dialog hands focus back from its own close handler; a backdrop
+// click has to reach that same restore.
+$("#downloads-detail").__libraryBackdropClose = () => $("#downloads-detail").close();
 // Remove and Clear change qBittorrent's list, so they ask in Library's own
 // dialog first (a native confirm is a silent no-op inside the app window).
 // Files are never deleted; Keep it leaves everything as it was.

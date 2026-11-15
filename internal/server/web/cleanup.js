@@ -311,6 +311,8 @@ $("#cleanup-run").addEventListener("click", async () => {
   if (await confirmCleanupRun()) cleanupAction("run");
 });
 $("#cleanup-form").addEventListener("input", cleanupEffect);
+// A backdrop click must reach the same focus restore as the close control.
+$("#cleanup-proof").__libraryBackdropClose = () => $("#cleanup-proof").close();
 $("#cleanup-proof .close").addEventListener("click", () => $("#cleanup-proof").close());
 // Native restoration can land inside a dialog whose row was re-rendered; put
 // focus back on the control that opened it, now and after the frame settles.
