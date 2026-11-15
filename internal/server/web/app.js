@@ -395,7 +395,9 @@ function bytes(n) {
 const rate = (n) => bytes(n) + "/s";
 // A transport failure is one plain cause, never the browser's raw error text.
 function plainHostError(e) {
-  const raw = String(e?.message || e || "");
+  // Only a real Error-like message or a plain string is text: anything else
+  // stringifies to "[object Object]", which is an implementation leak.
+  const raw = String(e?.message || (typeof e === "string" ? e : "") || "");
   if (/failed to fetch|networkerror|err_connection|load failed/i.test(raw)) {
     return "Could not reach the Library host on this computer. Check that it is still running.";
   }

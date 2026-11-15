@@ -100,6 +100,10 @@ test("Activity host loss names the host instead of leaking the browser's error",
   const source = app.match(/function plainHostError\(e\) \{[\s\S]*?\n\}/)[0];
   const context = {};
   vm.runInNewContext(source + "\nthis.plainHostError = plainHostError;", context);
-  assert.match(context.plainHostError({ message: "Failed to fetch" }), /Could not reach the Library host/);
-  assert.equal(context.plainHostError({ message: "Provider key is missing." }), "Provider key is missing.");
+  const plain = context.plainHostError;
+  assert.match(plain({ message: "Failed to fetch" }), /Could not reach the Library host/);
+  assert.equal(plain({ message: "Provider key is missing." }), "Provider key is missing.");
+  // An object with no usable message is not text: it must never render as [object Object].
+  assert.equal(plain({}), "The Library host did not answer.");
+  assert.equal(plain(undefined), "The Library host did not answer.");
 });
