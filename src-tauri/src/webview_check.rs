@@ -288,13 +288,11 @@ fn webview_report_complete(w: &serde_json::Value, expect: &Expect) -> bool {
         && under_work(str_at(w, &["fixtureBinding", "libraryPath"]));
     let controls = field(w, &["controls"]).and_then(|v| v.as_u64());
     let chosen = field(w, &["chosen"]).and_then(|v| v.as_u64());
-    // Every path control offers a chooser; the setup/cleanup ones stay read-only and
-    // the Settings folders accept a typed path (owner, 2026-11-15).
-    let read_only = field(w, &["readOnly"]).and_then(|v| v.as_u64());
+    // Every path control offers a chooser and accepts a typed path (owner, 2026-11-15).
     let typeable = field(w, &["typeable"]).and_then(|v| v.as_u64());
     let counts_ok = controls == Some(expect.controls as u64)
         && controls == chosen
-        && read_only.zip(typeable).is_some_and(|(r, t)| r + t == expect.controls as u64 && r > 0 && t > 0);
+        && typeable == Some(expect.controls as u64);
     let clipboard_ok = str_at(w, &["clipboard", "state"]) == Some("ok")
         && field(w, &["clipboard", "readbackOk"]).and_then(|v| v.as_bool()) == Some(true);
     let folder_ok = field(w, &["folder", "exact"]).and_then(|v| v.as_bool()) == Some(true)
@@ -470,8 +468,7 @@ mod tests {
             "fixtureBinding": {"localUrl": URL, "downloadPath": fx.downloads, "libraryPath": fx.library},
             "controls": 9,
             "chosen": 9,
-            "readOnly": 7,
-            "typeable": 2,
+            "typeable": 9,
             "clipboard": {"feedback": "Copied.", "state": "ok", "readbackOk": true, "readbackError": null},
             "folder": {"expected": dir, "chosen": dir, "exact": true, "typeable": true, "status": format!("Chose {}", dir.display())},
             "picker": format!("Chose {}", dir.display())

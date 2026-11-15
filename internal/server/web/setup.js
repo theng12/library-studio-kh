@@ -233,6 +233,29 @@ function setupField(name) {
   return setupForm && setupForm.elements.namedItem(name);
 }
 
+// A typed folder is checked before a plan runs: the reason sits under that field
+// and nothing plans from a folder that does not open.
+const SETUP_PATH_FIELDS = ["appDir", "downloadPath", ...SETUP_ROOT_IDS.map((id) => "root." + id)];
+
+async function setupCheckPaths() {
+  const bad = {};
+  if (!window.folderPicker?.checkPath) return bad;
+  for (const name of SETUP_PATH_FIELDS) {
+    const input = setupField(name);
+    if (!input) continue;
+    const reason = await window.folderPicker.checkPath(input.value);
+    let line = input.nextElementSibling;
+    if (!line || !line.classList?.contains("setup-path-reason")) {
+      line = setupNode("p", "", "hint setup-path-reason");
+      input.insertAdjacentElement("afterend", line);
+    }
+    line.textContent = reason;
+    line.hidden = !reason;
+    if (reason) bad[name] = reason;
+  }
+  return bad;
+}
+
 function setupSetField(name, value) {
   const field = setupField(name);
   if (!field) return;
@@ -712,6 +735,13 @@ if (setupForm) {
     const msg = document.querySelector("#setup-form-msg");
     const button = setupForm.querySelector("button.primary");
     if (msg) msg.hidden = true;
+    // A folder that does not open stops the plan and names itself, rather than
+    // planning work against a path that cannot be written.
+    const badPaths = await setupCheckPaths();
+    if (Object.keys(badPaths).length) {
+      if (msg) { msg.hidden = false; msg.textContent = "Check the folder marked below, then review the plan again."; }
+      return;
+    }
     let request;
     try { request = setupRequest(readSetupForm(), setupDefaults || {}); }
     catch (e) { if (msg) { msg.hidden = false; msg.textContent = e.message; } return; }

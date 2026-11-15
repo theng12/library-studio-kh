@@ -60,12 +60,12 @@ test("a selection is a usable folder only when it is absolute", () => {
   assert.equal(valid(null), false);
 });
 
-test("every path field is read-only and picker-driven", () => {
+test("every path field is picker-driven and takes a typed path", () => {
   const fields = [...html.matchAll(/<input[^>]*\bname="(?:managedTrashPath|appDir|downloadPath|root\.[a-z]+)"[^>]*>/g)].map((m) => m[0]);
   assert.equal(fields.length, 7, "Cleanup 1 + Setup 6 path fields are expected");
   for (const field of fields) {
     assert.match(field, /data-path-picker/, field);
-    assert.match(field, /\breadonly\b/, field);
+    assert.doesNotMatch(field, /\breadonly\b/, field);
   }
 });
 
@@ -76,18 +76,16 @@ test("Settings folder fields are rendered as path pickers", () => {
   assert.doesNotMatch(settings, /readonly: field\.kind === "path"/, "the owner types a path as well as browsing for it");
 });
 
-test("packaged webview check requires every chooser and read-only path", () => {
+test("packaged webview check requires a chooser and a typed path on every path control", () => {
   for (const name of ["appDir", "downloadPath", "root.sonarr", "root.radarr", "root.lidarr", "root.whisparr"]) {
     assert.equal(nativeCheck.includes(name), true, "missing native check for " + name);
   }
   assert.equal(nativeCheck.includes('document.querySelector("#settings-downloadpath + .folder-picker-choose").click()'), true);
-  assert.equal(nativeCheck.includes("if (report.pathControls.some(item => !item.readOnly || !item.chooser))"), true);
   assert.equal(nativeCheck.includes('name => \'#view-help input[name="\' + name + \'"]\')'), true);
   assert.equal(nativeCheck.includes('["appDir", "downloadPath", "root.sonarr", "root.radarr", "root.lidarr", "root.whisparr"].map(name => \'#view-help input[name="\' + name + \'"]\')'), true);
-  assert.equal(nativeCheck.includes('report.pathControls = pickOnly.map(describe)'), true);
-  // The Settings folders accept a typed path too; setup and cleanup stay read-only.
-  assert.equal(nativeCheck.includes("report.typeablePaths = typeable.map(describe)"), true);
-  assert.equal(nativeCheck.includes('if (report.typeablePaths.some(item => item.readOnly || !item.chooser))'), true);
+  assert.equal(nativeCheck.includes('report.pathControls = expected.map(selector =>'), true);
+  // Every path control accepts a typed path as well as offering the chooser.
+  assert.equal(nativeCheck.includes('if (report.pathControls.some(item => !item.typeable || !item.chooser))'), true);
 });
 
 test("the picker loads before app and its stylesheet follows the layout", () => {

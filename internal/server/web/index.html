@@ -344,7 +344,7 @@
         </div>
         <p class="muted">Whichever limit is reached first. Library checks proven imports only; qBittorrent’s own limits are edited separately below.</p>
         <details><summary>Local _trash folder</summary>
-          <label>Managed folder <input name="managedTrashPath" data-path-picker readonly placeholder="Empty uses _trash inside the download folder"></label>
+          <label>Managed folder <input name="managedTrashPath" data-path-picker placeholder="Empty uses _trash inside the download folder"></label>
           <p class="muted">Must stay on this computer. The current resolved folder is shown in the status.</p>
         </details>
         <p id="cleanup-effect" class="cleanup-effect" role="status">A verified copy leaves the download folder after 3 days, Library’s _trash after 3 more, and the system Trash after 30.</p>
@@ -445,13 +445,13 @@
             <p id="whisparr-setup-note" class="muted">Whisparr is off by default. Its installation and first-run compatibility remain unverified. Review its setup checks before use; an unavailable package or failed connection blocks its setup. You can connect an existing app in Settings.</p>
             <fieldset class="setup-fieldset">
               <legend>Folders</legend>
-              <label>App install folder <input name="appDir" autocomplete="off" data-path-picker readonly placeholder="Choose a folder on this computer"></label>
-              <label>Download folder <input name="downloadPath" autocomplete="off" data-path-picker readonly placeholder="Where downloads are saved"></label>
+              <label>App install folder <input name="appDir" autocomplete="off" data-path-picker placeholder="Choose a folder on this computer"></label>
+              <label>Download folder <input name="downloadPath" autocomplete="off" data-path-picker placeholder="Where downloads are saved"></label>
               <div class="setup-grid">
-                <label>Sonarr library folder <input name="root.sonarr" autocomplete="off" data-path-picker readonly></label>
-                <label>Radarr library folder <input name="root.radarr" autocomplete="off" data-path-picker readonly></label>
-                <label>Lidarr library folder <input name="root.lidarr" autocomplete="off" data-path-picker readonly></label>
-                <label>Whisparr library folder <span class="hint">· only when selected</span><input name="root.whisparr" autocomplete="off" data-path-picker readonly></label>
+                <label>Sonarr library folder <input name="root.sonarr" autocomplete="off" data-path-picker></label>
+                <label>Radarr library folder <input name="root.radarr" autocomplete="off" data-path-picker></label>
+                <label>Lidarr library folder <input name="root.lidarr" autocomplete="off" data-path-picker></label>
+                <label>Whisparr library folder <span class="hint">· only when selected</span><input name="root.whisparr" autocomplete="off" data-path-picker></label>
               </div>
             </fieldset>
             <fieldset class="setup-fieldset">
