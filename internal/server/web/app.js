@@ -1962,8 +1962,23 @@ $("#close-public-help").addEventListener("click", () => {
   const back = publicHelpOpener || $("#open-public-help");
   publicHelpOpener = null;
   $("#public-help").hidden = true;
-  start();
-  if (back?.isConnected) back.focus();
+  // start() is async and repaints the gate, so restore focus once that settles.
+  start().then(() => {
+    // The element that opened help can be detached or hidden by then (a signed-in
+    // close lands in the app), so aim at its live control instead.
+    const gateIsOpen = !$("#gate").hidden && getComputedStyle($("#gate")).display !== "none";
+    const live = gateIsOpen && back?.isConnected ? back
+      : $("#menu-toggle") || $("#open-public-help");
+    // If the opener is inside a gate the app then hides, focus would land on a
+    // hidden node: settle once more after that layout change.
+    const settle = () => {
+      const again = gateIsOpen && back?.isConnected && getComputedStyle($("#gate")).display !== "none"
+        ? back : $("#menu-toggle") || $("#open-public-help");
+      if (again?.isConnected && again.getClientRects().length) again.focus();
+    };
+    live?.focus();
+    requestAnimationFrame(settle);
+  });
 });
 
 // Settings is four tabs of self-contained cards; the module owns the markup.
