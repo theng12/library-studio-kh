@@ -1,5 +1,11 @@
 # What's new in Library Studio KH
 
+## 0.7.22 — 2026-11-17
+
+- Library no longer stops by itself a moment after it opens. Until now My library, Downloads and the update check all read "Load failed" a second or two after launch, with nothing in the grid.
+- If the app's background program really has stopped, the page now says so in plain words and tells you to quit Library and open it again, instead of showing a browser error.
+- A pause request from the Updater no longer shuts Library down, so an update can slide in without cutting off what it was doing.
+
 ## 0.7.21 — 2026-11-15
 
 - The update hold now answers on the fixed address the Updater is told to use, so an update can ask Library to pause before it replaces it. It answers only on this computer, and if the address is busy Library still runs — it just cannot be paused for an update.
