@@ -359,8 +359,11 @@ pub fn run(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
             let nav_handle = app.handle().clone();
             let nav_home = home_string.clone();
             let nav_receipt = receipt_string.clone();
+            // The owner approved a brief visible window on this Mac so the clipboard
+            // grant can be measured against a focused page. Off unless asked for.
+            let visible_mode = std::env::var("LIBRARY_CHECK_VISIBLE").is_ok_and(|v| v == "1");
             let window = WebviewWindowBuilder::new(app, "native-check", WebviewUrl::External(url.clone()))
-                .visible(false).focused(false).incognito(true)
+                .visible(visible_mode).focused(visible_mode).incognito(true)
                 .initialization_script(script.clone())
                 .on_new_window(|_, _| tauri::webview::NewWindowResponse::<tauri::Wry>::Deny)
                 .on_navigation(move |target| {
@@ -370,13 +373,15 @@ pub fn run(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
                     let webview = params.get("report").and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
                     let hidden = nav_handle.get_webview_window("native-check").and_then(|w| w.is_visible().ok()).is_some_and(|visible| !visible);
                     let unfocused = nav_handle.get_webview_window("native-check").and_then(|w| w.is_focused().ok()).is_some_and(|focused| !focused);
-                    let ok = params.get("ok").is_some_and(|v| v == "1") && hidden && unfocused;
+                    let ok = params.get("ok").is_some_and(|v| v == "1")
+                        && if visible_mode { !hidden } else { hidden && unfocused };
                     // The receipt keeps the page's raw report: every distinguished
                     // field (nonce, binding, clipboard, folder) stays as evidence.
                     let report = serde_json::json!({
                         "ok": ok,
                         "hidden": hidden,
                         "unfocused": unfocused,
+                        "visibleMode": visible_mode,
                         "home": nav_home,
                         "receipt": nav_receipt,
                         "webview": webview.unwrap_or(serde_json::Value::Null),
