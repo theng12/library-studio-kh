@@ -85,7 +85,7 @@ function folderPickerValidSelection(state) {
       await readDirs(p);
       return "";
     } catch (e) {
-      return e.message || "That folder can't be opened.";
+      return plainHostError(e);
     }
   }
 

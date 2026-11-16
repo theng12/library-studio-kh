@@ -23,3 +23,24 @@ test("transport failures name the unreachable host; server refusals keep their c
   assert.equal(context.plainHostError({ message: "Provider refused the request." }), "Provider refused the request.");
   assert.equal(context.plainHostError(""), "The Library host did not answer.");
 });
+
+// Every page reads through api(), so a stopped host is named in plain words there
+// instead of leaving the browser's raw "Load failed" on the library and downloads.
+const apiSource = source.slice(source.indexOf("async function api("), source.indexOf("\nconst day = (iso)"));
+const page = { token: "", AUTH: { available: false }, signedOut() {} };
+runInNewContext(source.slice(start, end), page);
+runInNewContext(apiSource, page);
+
+test("a stopped host reaches the page as a plain sentence, not the browser's error", async () => {
+  page.fetch = async () => {
+    throw new TypeError("Load failed");
+  };
+  await assert.rejects(() => page.api("/api/state"), {
+    message: "Could not reach the Library host on this computer. Check that it is still running.",
+  });
+});
+
+test("a server refusal keeps its own reason", async () => {
+  page.fetch = async () => ({ ok: false, status: 502, json: async () => ({ error: "qBittorrent did not answer" }) });
+  await assert.rejects(() => page.api("/api/downloads"), { message: "qBittorrent did not answer" });
+});

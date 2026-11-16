@@ -26,6 +26,13 @@ test("the window is reachable from the menu and the Dock after it closes", () =>
   assert.match(rust, /open_main_window\(app\.handle\(\), &url\)/, "launch opens the main window");
 });
 
+test("the shell never closes the server's pipes once it is running", () => {
+  // A closed stderr read end is SIGPIPE for the server's first log line, which
+  // ends it and leaves the window on a dead address.
+  assert.match(rust, /let mut stderr = child\.stderr\.take\(\)/);
+  assert.match(rust, /std::io::copy\(&mut pipe, &mut std::io::sink\(\)\)/, "the server's stderr is closed after launch");
+});
+
 test("the server explains a busy port in plain words", () => {
   assert.match(go, /BLOCKED %s/);
   assert.match(go, /Another Library Studio KH is already running on this Mac\./);

@@ -142,12 +142,20 @@ fn start_server() -> Result<(Child, String), String> {
             return Err("the server did not report its address".into());
         }
     };
-    let stderr = child.stderr.take();
+    let mut stderr = child.stderr.take();
     let mut lines = BufReader::new(stdout).lines();
     while let Some(Ok(line)) = lines.next() {
         if let Some(url) = line.strip_prefix("LISTENING ") {
             let url = url.to_string();
             std::thread::spawn(move || lines.for_each(drop)); // keep the pipe drained
+            // Dropping stderr here kills the server: Go turns a write to a pipe
+            // with no reader into SIGPIPE, so the first log line after launch ends
+            // it and the window is left pointing at a dead address. Keep reading.
+            if let Some(mut pipe) = stderr.take() {
+                std::thread::spawn(move || {
+                    let _ = std::io::copy(&mut pipe, &mut std::io::sink());
+                });
+            }
             return Ok((child, url));
         }
         if let Some(reason) = line.strip_prefix("BLOCKED ") {

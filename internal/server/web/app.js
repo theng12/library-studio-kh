@@ -30,12 +30,18 @@ async function api(path, body, write) {
   const headers = token ? { "X-Library-Token": token } : {};
   if (body) headers["Content-Type"] = "application/json";
   if (write || body) headers["X-Library-Request"] = "1";
-  const r = await fetch(path, {
-    method: write || body ? "POST" : "GET",
-    headers,
-    credentials: "same-origin",
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let r;
+  try {
+    r = await fetch(path, {
+      method: write || body ? "POST" : "GET",
+      headers,
+      credentials: "same-origin",
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    // A stopped host reaches every page as the browser's bare "Load failed".
+    throw new Error(plainHostError(e));
+  }
   const data = await r.json().catch(() => ({}));
   // The API guard answers 403 when a session is missing or expired; auth forms handle their own errors.
   if ((r.status === 401 || (r.status === 403 && AUTH.available)) && !AUTH_FORM_PATHS.has(path)) signedOut();
