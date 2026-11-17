@@ -1,5 +1,11 @@
 # What's new in Library Studio KH
 
+## 0.7.24 — 2026-11-17
+
+- An update no longer leaves Library's background service stopped. Before this, Library could open without it, and the updater then reported the update as unhealthy and kept both versions while it waited for a clean try.
+- If Library's background service is already saved exactly as it should be, Library now just starts it instead of replacing it, so it can no longer undo the update's own restart.
+- When that background service really is down, Library's log now says so in plain words, so the reason is visible without reading the source.
+
 ## 0.7.23 — 2026-11-17
 
 - Library now opens even when its own background service is already running. Before, it could say another Library Studio KH was running and quit without showing a window — which is what happened on this Mac with the background service set up.

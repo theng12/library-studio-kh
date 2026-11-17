@@ -99,15 +99,22 @@ func main() {
 		exe, _ := os.Executable()
 		if st.Supported && st.Installed {
 			// A login job is wanted: start it and wait for its proof instead of
-			// silently starting another desktop server.
+			// silently starting another desktop server. An install can leave the job
+			// stopped for a moment longer than a cold start, so one retry is allowed.
 			spec.Exe = exe
-			started, startErr := svc.Start(spec)
-			if startErr == nil {
-				if info, err = waitForHost(home, 10*time.Second); err == nil {
-					fmt.Printf("LISTENING http://%s/#%s\n", info.Address, info.Token)
-					waitShell(os.Stdin)
-					return
+			var startErr error
+			var started platform.HostServiceStatus
+			for attempt := 0; attempt < 2; attempt++ {
+				before := time.Now()
+				started, startErr = svc.Start(spec)
+				if startErr == nil {
+					if info, err = waitForHost(home, 30*time.Second); err == nil {
+						fmt.Printf("LISTENING http://%s/#%s\n", info.Address, info.Token)
+						waitShell(os.Stdin)
+						return
+					}
 				}
+				log.Printf("Library Studio KH: background host attempt %d did not become ready after %s (%v)", attempt+1, time.Since(before).Round(time.Second), firstNonNil(startErr, err))
 			}
 			detail := ""
 			switch {
@@ -118,9 +125,9 @@ func main() {
 			default:
 				detail = err.Error()
 			}
-			// The app still opens: this session runs its own server. If the host is
-			// really alive the configuration-home lock below refuses it in plain words.
-			log.Printf("Library Studio KH: its background host did not start (%s) — running this session's own server", detail)
+			// The app still opens: this session runs its own server. This line is the
+			// only thing an installer's next run can see, so it says what is wrong.
+			log.Printf("Library Studio KH: BACKGROUND HOST IS DOWN — %s; running this session's own server, so Library's login job is not serving until it is started again", detail)
 		}
 		// No background host configured: the old desktop lifecycle.
 		go func() { waitShell(os.Stdin); os.Exit(0) }()
@@ -156,6 +163,16 @@ func main() {
 func blocked(reason string) {
 	fmt.Printf("BLOCKED %s\n", reason)
 	os.Exit(3)
+}
+
+// firstNonNil names the real reason in one log line when two steps can fail.
+func firstNonNil(errs ...error) error {
+	for _, e := range errs {
+		if e != nil {
+			return e
+		}
+	}
+	return nil
 }
 
 func listenProblem(addr string, err error) string {

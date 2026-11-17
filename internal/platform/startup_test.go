@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeRunner struct {
@@ -560,5 +561,59 @@ func TestUninstallRemovesTheJobAndPlist(t *testing.T) {
 	}
 	if _, err := os.Stat(spec.Home); err != nil {
 		t.Fatalf("uninstall removed the user's Library folder: %v", err)
+	}
+}
+
+// An installer can load Library's job and then have its restore undone by a bootout
+// from the app itself. When the saved definition is already correct the app must kick
+// the job, never unload it.
+func TestStartKicksAJobWhoseSavedDefinitionAlreadyMatches(t *testing.T) {
+	notRunning := func(string) error { return errors.New("the host is not answering") }
+	r := &fakeRunner{}
+	svc, spec := newTestService(t, r, notRunning)
+	if _, err := svc.Install(spec); err != nil {
+		t.Fatal(err)
+	}
+	r.calls = nil
+	svc2 := NewHostService(r, notRunning)
+	svc2.agentDir = svc.agentDir
+	if _, err := svc2.Start(spec); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(r.calls, ",")
+	if !strings.Contains(joined, "kickstart") {
+		t.Fatalf("start did not kick the running-definition job: %v", r.calls)
+	}
+	if strings.Contains(joined, "bootout") {
+		t.Fatalf("start unloaded a job whose definition already matched: %v", r.calls)
+	}
+}
+
+// The old host can hold the configuration folder for a moment after an installer
+// stops it. Start waits briefly instead of asking the owner to hand over by hand.
+func TestStartWaitsForTheOldHostToLetGo(t *testing.T) {
+	r := &fakeRunner{}
+	svc, spec := newTestService(t, r, nil)
+	if _, err := svc.Install(spec); err != nil {
+		t.Fatal(err)
+	}
+	r.loaded = false // the installer unloaded the job
+	release, err := LockConfigHome(spec.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+		release()
+	}()
+	st, err := svc.Start(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.State == HostServiceNeedsRestart {
+		t.Fatalf("start gave up while the old host was still letting go: %+v", st)
+	}
+	if !strings.Contains(strings.Join(r.calls, ","), "bootstrap") {
+		t.Fatalf("start did not bootstrap the job after the wait: %v", r.calls)
 	}
 }

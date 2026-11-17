@@ -9,6 +9,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -598,8 +599,18 @@ func (s *HostService) Start(spec HostServiceSpec) (HostServiceStatus, error) {
 	}
 	retireHelperCopy(spec.Home)
 	loaded := s.isLoaded()
-	if loaded && loadedConfigMatches(path) && (s.verify == nil || s.isRunning(spec.Home)) {
-		return s.Status(spec), nil
+	if loaded && loadedConfigMatches(path) {
+		// The saved job is already exactly what this app wants. Kick it instead of
+		// booting it out: an installer that has just loaded this job would have its
+		// own restore undone here, leaving the job down and an update unhealthy.
+		if s.verify != nil && s.isRunning(spec.Home) {
+			return s.Status(spec), nil
+		}
+		if err := s.launchctl("kickstart", serviceDomain()+"/"+HostServiceLabel); err != nil {
+			return blockedStatus("The background host could not be started. Check host.err.log in the configuration folder."), err
+		}
+		log.Printf("Library Studio KH: background host was already saved as configured — kicked it, job definition left alone")
+		return s.finish(spec), nil
 	}
 	if loaded {
 		// Reload from disk so changed settings take effect; a kickstart would
@@ -607,6 +618,11 @@ func (s *HostService) Start(spec HostServiceSpec) (HostServiceStatus, error) {
 		if err := s.launchctl("bootout", serviceDomain()+"/"+HostServiceLabel); err != nil {
 			return blockedStatus("The old background host could not be stopped; the loaded job was not changed."), err
 		}
+	}
+	// An installer stopping the old host can hold this folder for a moment; give it
+	// a bounded wait instead of reporting a hand-over the owner would have to do.
+	for i := 0; i < 20 && configHomeBusy(spec.Home); i++ {
+		time.Sleep(250 * time.Millisecond)
 	}
 	if configHomeBusy(spec.Home) {
 		return needsRestartStatus("The background host is installed, but Library Studio KH is already running its own server. Quit and reopen it to hand over."), nil
