@@ -29,6 +29,10 @@ The check creates one hidden, unfocused, ephemeral webview against the fixture o
 
 Still **not checked** by this mode: DOM clicks in a hidden webview prove no native keyboard or trusted user-gesture behavior; the native `NSOpenPanel` branch stays a separate real-window check on a permitted test machine or an agreed quiet point; clipboard readback unavailable in a hidden WKWebView makes the check **fail** with that reason — a harness limitation, never a product pass, a product defect or a waiver; and packaged-app window rendering and focus remain separate evidence.
 
+### Window lifecycle check
+
+`scripts/test-window-lifecycle.sh` proves the native window behaviour on a real but hidden, unfocused window with the same `--features webview-check` build (`--window-lifecycle-check`; the release build refuses that flag like `--webview-check`). It starts its own server and mock stock on an isolated home, publishes the hold on 18643 so the owner's live hold on 8643 is untouched, and proves in one receipt: the window starts hidden; the shipped close handler hides it and the window itself survives (a destroyed window would fail, so this is hide, not quit-and-rebuild); the shared Show action makes that same window visible again; and the update hold answers `200` while no window is visible. It never opens a visible window and never reads the owner's credential file.
+
 ## Windows and Linux (plan)
 
 Tauri can't cross-build installers, so each is built on its own OS, the way Music Studio KH's pilot did it:
@@ -92,7 +96,7 @@ Finish the normal release flow after Updater installation and intended-machine v
 
 The release lead writes a trusted `schema: 1` pin document with `apps: [{app, project, releases}]`. Set `app` to `Library Studio KH` and `project` to the canonical real project directory, even when running the command from an ATLAS worktree. Each of the one to three `releases` entries supplies the exact accepted `version`, absolute `.dmg` `source`, verified `sha256`, positive `bytes` and non-empty `evidence` pointing to its installed/verified acceptance receipts. Sources may have any basename, including a feed's hash-prefixed name. Match the source's actual bytes to the accepted release receipt; never infer acceptance from the latest feed, the build folder or `package.json`. A missing older source is a recorded dependency, not permission to replace it with an unaccepted candidate.
 
-Before invoking retention, check dependencies and active jobs, preserve evidence, and obtain the existing quiet point if retirement is needed. The helper has no dry-run and does not establish acceptance. Keep the newest **three** verified builds (**0.7.11, 0.7.10 and 0.7.9** as of 2026-11-12), matching the three kept in 1301's feed artifacts; older installers rotate to `_trash` automatically. After a later version is verified, pin that exact version and its two previous verified versions.
+Before invoking retention, check dependencies and active jobs, preserve evidence, and obtain the existing quiet point if retirement is needed. The helper has no dry-run and does not establish acceptance. Keep the newest verified build and the one before it — two artifacts, matching the owner's settled retention (2026-11-16) and the two kept on 1301's feed; older installers rotate to `_trash` with a manifest. After a later version is verified, pin that exact version and its one previous verified version.
 
 ```bash
 npm run retain:accepted -- /absolute/coordination/library-accepted-dist-pins.json
@@ -102,7 +106,7 @@ Record the pin document, helper source hash, JSON result and resulting `dist/.re
 
 Retention is automatic (owner, 2026-11-12). `npm run retain:accepted -- <pins>` runs the shared portfolio helper directly, which adopts the pinned pair, copies it under the shared versioned names and retires only files its ledger owns (recoverable, never overwritten). `scripts/release-retain.py` remains as the older wrapper for a manual rotation; the normal release uses the shared helper. No hand step: a version older than the latest three never needs a person.
 
-Three is a depth, not a quota (owner, 2026-11-12): the three come from new releases only. When fewer verified versions exist, keep what exists and never restore an older installer to fill a slot. Current depth is three — 0.7.11, 0.7.10 and 0.7.9.
+Two is a depth, not a quota (owner, 2026-11-16): the two come from new releases only. When fewer verified versions exist, keep what exists and never restore an older installer to fill a slot. Current depth is two — 0.7.26 and 0.7.25.
 
 Guards: a version named by the live or previous feed release (`feed/release.json`, `feed/previous-release.json`), the dist ledger, `feed/artifact-retention.json`, the updater's state or rollback records, a queued publish job, or a `base/versions` runtime is never moved. Every move is logged in the receipt with its version, SHA-256, byte size and destination; skipped versions are logged with the reason. Swap the wrapper for the shared helper once Updater ships one; the behaviour stays the same.
 

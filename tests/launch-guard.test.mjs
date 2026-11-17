@@ -23,7 +23,7 @@ test("the window is reachable from the menu and the Dock after it closes", () =>
   assert.match(rust, /fn show_main\(app: &tauri::AppHandle\)/);
   assert.match(rust, /if let Some\(window\) = app\.get_webview_window\("main"\)/);
   assert.match(rust, /open_main_window\(app, &url\)/, "a closed window is rebuilt on demand");
-  assert.match(rust, /event\.id\(\) == "show-window"/);
+  assert.match(rust, /"show-window" => show_main\(app\)/, "the show action still shows the window");
   assert.match(rust, /RunEvent::Reopen/);
   assert.match(rust, /open_main_window\(app\.handle\(\), &url\)/, "launch opens the main window");
 });

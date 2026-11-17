@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 #[cfg(feature = "webview-check")]
 mod webview_check;
@@ -16,7 +16,7 @@ fn app_context() -> tauri::Context<tauri::Wry> { tauri::generate_context!() }
 struct Server(Mutex<Option<Child>>);
 
 // The URL the main window shows, kept so a closed window can be rebuilt.
-struct WindowUrl(Mutex<Option<String>>);
+pub(crate) struct WindowUrl(pub(crate) Mutex<Option<String>>);
 
 fn open_main_window(app: &tauri::AppHandle, url: &str) -> Result<tauri::WebviewWindow, String> {
     let target = url
@@ -39,7 +39,7 @@ fn open_main_window(app: &tauri::AppHandle, url: &str) -> Result<tauri::WebviewW
 }
 
 // A window click must never do nothing: show the window, or rebuild it if it was
-// closed, from the application menu or the Dock.
+// closed, from the tray, the application menu or the Dock.
 fn show_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -58,6 +58,45 @@ fn show_main(app: &tauri::AppHandle) {
             eprintln!("The Library window could not open: {e}");
         }
     }
+}
+
+// Closing the window hides it instead of quitting: downloads, imports, the server
+// and the update hold keep running. Only Quit stops Library.
+pub(crate) fn hide_on_close(window: &tauri::Window, event: &WindowEvent) {
+    if let WindowEvent::CloseRequested { api, .. } = event {
+        api.prevent_close();
+        let _ = window.hide();
+    }
+}
+
+// One action table for the app menu and the menu bar item.
+pub(crate) fn run_action(app: &tauri::AppHandle, id: &str) {
+    match id {
+        "use-local-host" => use_local_host(app),
+        "restart" => {
+            stop_server(app);
+            app.restart();
+        }
+        "show-window" => show_main(app),
+        "quit" => app.exit(0),
+        _ => {}
+    }
+}
+
+// The menu bar item, so the window can always come back with the app out of sight.
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    let open = MenuItem::with_id(app, "show-window", "Show Library Studio KH", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Library Studio KH", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let mut tray = tauri::tray::TrayIconBuilder::with_id("library-tray")
+        .tooltip("Library Studio KH")
+        .menu(&menu)
+        .on_menu_event(|app, event| run_action(app, event.id().as_ref()));
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(app)?;
+    Ok(())
 }
 
 // The only external page this app opens. Kept in step with the link in the
@@ -172,7 +211,7 @@ fn start_server() -> Result<(Child, String), String> {
 }
 
 // Quitting stops the background host too, so no Library Studio KH Helper keeps
-// running behind an app that is gone. Closing the window keeps macOS's app alive.
+// running behind an app that is gone. Closing the window only hides it.
 fn stop_host() {
     let Ok(exe) = server_path() else { return };
     match Command::new(exe)
@@ -322,10 +361,14 @@ fn use_local_host(app: &tauri::AppHandle) {
 }
 
 fn main() {
-    // Fail closed first: --webview-check never reaches app_context, Tauri setup,
-    // HOME, host, window, menu or server work unless this build opted in with
-    // --features webview-check. A flag it cannot run is never a normal launch.
-    if std::env::args().any(|arg| arg == "--webview-check") {
+    // Fail closed first: --webview-check and --window-lifecycle-check never reach
+    // app_context, Tauri setup, HOME, host, window, menu or server work unless this
+    // build opted in with --features webview-check. A flag it cannot run is never a
+    // normal launch.
+    if let Some(flag) = std::env::args()
+        .find(|arg| arg == "--webview-check" || arg == "--window-lifecycle-check")
+    {
+        let lifecycle = flag == "--window-lifecycle-check";
         #[cfg(feature = "webview-check")]
         {
             // start() isolates the environment and writes the startup marker
@@ -334,7 +377,12 @@ fn main() {
                 eprintln!("native-webview-check: FAIL ({error})");
                 std::process::exit(1);
             }
-            if let Err(error) = webview_check::run(app_context()) {
+            let checked = if lifecycle {
+                webview_check::run_lifecycle(app_context())
+            } else {
+                webview_check::run(app_context())
+            };
+            if let Err(error) = checked {
                 eprintln!("native-webview-check: FAIL ({error})");
                 std::process::exit(1);
             }
@@ -344,15 +392,21 @@ fn main() {
         {
             eprintln!(
                 "native-webview-check: REFUSED — this build has no webview-check feature; \
-                 ordinary and release builds never run --webview-check \
+                 ordinary and release builds never run --webview-check or \
+                 --window-lifecycle-check \
                  (rebuild with --features webview-check for verification)"
             );
             std::process::exit(1);
         }
     }
     tauri::Builder::default()
+        .on_window_event(hide_on_close)
         .setup(|app| {
             build_menu(app)?;
+            // The menu bar item is a convenience: a platform without one still opens.
+            if let Err(e) = build_tray(app) {
+                eprintln!("The menu bar item could not open: {e}");
+            }
             let (child, url) = match start_server() {
                 Ok(started) => started,
                 Err(reason) => report_and_exit(&reason),
@@ -364,21 +418,16 @@ fn main() {
             }
             Ok(())
         })
-        .on_menu_event(|app, event| {
-            if event.id() == "use-local-host" {
-                use_local_host(app);
-            } else if event.id() == "restart" {
-                stop_server(app);
-                app.restart();
-            } else if event.id() == "show-window" {
-                show_main(app);
-            } else if event.id() == "quit" {
-                app.exit(0);
-            }
-        })
+        .on_menu_event(|app, event| run_action(app, event.id().as_ref()))
         .build(app_context())
         .expect("Library Studio KH could not start")
         .run(|app, event| {
+            // No window left is not a quit either: only Quit, Cmd+Q or Restart exits.
+            if let RunEvent::ExitRequested { code, api, .. } = &event {
+                if code.is_none() {
+                    api.prevent_exit();
+                }
+            }
             #[cfg(target_os = "macos")]
             if let RunEvent::Reopen { has_visible_windows, .. } = &event {
                 // Clicking the Dock icon with no window open brings the window back.

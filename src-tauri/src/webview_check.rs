@@ -424,6 +424,189 @@ pub fn run(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
     Ok(())
 }
 
+// Window lifecycle check (--window-lifecycle-check): a real, hidden, unfocused
+// window runs the shipped close and reopen paths. Closing must hide the same
+// window rather than quitting, the menu action must show it again, and the update
+// hold must still answer while no window is visible. Never packaged.
+fn finish_lifecycle(app: &tauri::AppHandle, report: serde_json::Value) {
+    let state = app.state::<CheckState>();
+    let (path, code) = {
+        let mut state = state.lock();
+        if state.finished {
+            let code = state.exit_code;
+            drop(state);
+            app.exit(code);
+            return;
+        }
+        state.finished = true;
+        state.exit_code = if report.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) { 0 } else { 1 };
+        (state.receipt.clone(), state.exit_code)
+    };
+    let mut report = report;
+    if let Some(expect) = START.get() {
+        report["runId"] = serde_json::json!(expect.nonce);
+        report["fixtureOrigin"] = serde_json::json!(expect.url);
+        report["fixtureHome"] = serde_json::json!(expect.home.display().to_string());
+    }
+    if let Some(path) = path.as_ref() {
+        if write_receipt(path, &report).is_err() {
+            app.exit(1);
+            return;
+        }
+    }
+    app.exit(code);
+}
+
+/// The window's visibility and URL, or nothing when it no longer exists.
+fn window_state(app: &tauri::AppHandle) -> (bool, Option<String>) {
+    match app.get_webview_window("main") {
+        Some(window) => (
+            window.is_visible().unwrap_or(false),
+            window.url().ok().map(|url| url.to_string()),
+        ),
+        None => (false, None),
+    }
+}
+
+/// One real hold request against the fixture's published address, the same call
+/// the installer makes. The token comes from the fixture's own 0600 file.
+fn hold_request() -> Result<u16, String> {
+    use std::io::{Read, Write};
+    use std::net::{TcpStream, ToSocketAddrs};
+    let url = std::env::var("KH_HOLD_URL").map_err(|_| "KH_HOLD_URL is required".to_string())?;
+    let token_file = std::env::var("KH_HOLD_TOKEN_FILE")
+        .map_err(|_| "KH_HOLD_TOKEN_FILE is required with KH_HOLD_URL".to_string())?;
+    let token = std::fs::read_to_string(&token_file).map_err(|e| format!("hold token: {e}"))?;
+    let parsed: tauri::Url = url.parse().map_err(|e| format!("hold URL: {e}"))?;
+    let host = parsed.host_str().ok_or("hold URL has no host")?.to_string();
+    let port = parsed.port().ok_or("hold URL has no port")?;
+    let addr = (host.as_str(), port)
+        .to_socket_addrs()
+        .map_err(|e| format!("hold address: {e}"))?
+        .next()
+        .ok_or("hold address did not resolve")?;
+    let mut stream = TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(5))
+        .map_err(|e| format!("hold connect: {e}"))?;
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(10))).ok();
+    write!(
+        stream,
+        "POST {} HTTP/1.1\r\nHost: {}:{}\r\nX-Hub-Token: {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        parsed.path(),
+        host,
+        port,
+        token.trim()
+    )
+    .map_err(|e| format!("hold request: {e}"))?;
+    let mut response = String::new();
+    stream.read_to_string(&mut response).map_err(|e| format!("hold response: {e}"))?;
+    response
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|status| status.parse::<u16>().ok())
+        .ok_or_else(|| "the hold did not answer with an HTTP status".to_string())
+}
+
+pub fn run_lifecycle(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
+    let expect = START.get().ok_or("startup marker was not written; refusing to start the check")?;
+    let url = fixture_url(&expect.url)?;
+    let deadline = expect.deadline;
+    let built = tauri::Builder::default()
+        .on_window_event(crate::hide_on_close)
+        .manage(CheckState(std::sync::Mutex::new(CheckStateInner {
+            receipt: Some(expect.receipt.clone()),
+            ..Default::default()
+        })))
+        .manage(crate::WindowUrl(std::sync::Mutex::new(Some(expect.url.clone()))))
+        .setup(move |app| {
+            // Hidden and unfocused: a check never takes the screen.
+            let built = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.clone()))
+                .visible(false)
+                .focused(false)
+                .on_new_window(|_, _| tauri::webview::NewWindowResponse::<tauri::Wry>::Deny)
+                .build();
+            if let Err(error) = built {
+                finish_lifecycle(
+                    app.handle(),
+                    serde_json::json!({"ok": false, "phase": "construction", "error": format!("window creation: {error}")}),
+                );
+            }
+            Ok(())
+        })
+        .build(context);
+    CONSTRUCTED.store(true, Ordering::SeqCst);
+    let app = built.map_err(|error| format!("tauri build: {error}"))?;
+    let handle = app.handle().clone();
+    let timeout = handle.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(deadline.saturating_duration_since(std::time::Instant::now()));
+        finish_lifecycle(
+            &timeout,
+            serde_json::json!({"ok": false, "phase": "lifecycle", "error": "the window lifecycle check timed out"}),
+        );
+    });
+    let runner = handle.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(1500)); // let the page load
+        // WebKit construction can outlast the sleep; wait for the window, never guess.
+        let mut waited = 0;
+        while runner.get_webview_window("main").is_none() && waited < 200 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            waited += 1;
+        }
+        let (visible_before, url_before) = window_state(&runner);
+        let report = match runner.get_webview_window("main") {
+            None => {
+                let labels: Vec<String> = runner.webview_windows().keys().cloned().collect();
+                serde_json::json!({"ok": false, "phase": "lifecycle", "error": "the window was never created", "windows": labels})
+            }
+            Some(window) => {
+                let closed = window.close();
+                std::thread::sleep(std::time::Duration::from_millis(800));
+                let (visible_after_close, url_after_close) = window_state(&runner);
+                let window_survived = url_after_close.is_some();
+                let hid = window_survived && !visible_after_close;
+                let hold = hold_request();
+                // The app stays hidden while the check drives the show path, so the
+                // test window can never paint on the owner's screen: a hidden app
+                // orders its windows in without displaying them.
+                #[cfg(target_os = "macos")]
+                let _ = runner.hide();
+                crate::run_action(&runner, "show-window");
+                std::thread::sleep(std::time::Duration::from_millis(800));
+                let (visible_reopened, url_reopened) = window_state(&runner);
+                if let Some(window) = runner.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+                let ok = !visible_before
+                    && closed.is_ok()
+                    && hid
+                    && visible_reopened
+                    && url_reopened == url_before
+                    && hold == Ok(200);
+                serde_json::json!({
+                    "ok": ok,
+                    "phase": "lifecycle",
+                    "lifecycle": {
+                        "pid": std::process::id(),
+                        "startedHidden": !visible_before,
+                        "close": if closed.is_ok() { "requested" } else { "failed" },
+                        "windowSurvivedClose": window_survived,
+                        "hiddenAfterClose": !visible_after_close,
+                        "reopenedVisible": visible_reopened,
+                        "sameUrlAfterReopen": url_reopened == url_before,
+                        "holdWhileHidden": match &hold { Ok(status) => serde_json::json!(status), Err(_) => serde_json::Value::Null },
+                        "holdError": match &hold { Ok(_) => serde_json::Value::Null, Err(e) => serde_json::json!(e) },
+                    },
+                })
+            }
+        };
+        finish_lifecycle(&runner, report);
+    });
+    app.run(|_, _| {});
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,7 +622,13 @@ mod tests {
     }
 
     fn fixture() -> Fixture {
-        let root = std::env::temp_dir().join(format!("library-check-test-{}", std::process::id()));
+        // One directory per call: parallel tests used to delete each other's fixture.
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "library-check-test-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
         let _ = std::fs::remove_dir_all(&root);
         let home = root.join("home");
         let downloads = root.join("downloads");

@@ -1,5 +1,11 @@
 # What's new in Library Studio KH
 
+## 0.7.26 — 2026-11-17
+
+- Closing the Library window no longer quits the app. Downloads, imports and the update pause keep working in the background; only Quit stops it.
+- The window comes back from the menu bar item, the Dock icon and the app menu. The menu bar item offers Show Library Studio KH and Quit Library Studio KH.
+- One short line at the bottom of the window says closing it keeps Library running, and that Quit stops it.
+
 ## 0.7.25 — 2026-11-17
 
 - Only the updater can now pause Library for an update. Before this, any program on this Mac that found the pause address could stop Library taking new work; now it has to prove it is the updater, and one that cannot is turned away without changing anything.

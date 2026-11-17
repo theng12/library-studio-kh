@@ -44,8 +44,10 @@ test("app menu keeps its own local actions and all three submenus are installed"
 });
 
 test("editing commands stay with the focused responder, not the app menu handler", () => {
-  const handlerStart = source.indexOf(".on_menu_event");
-  const handler = source.slice(handlerStart, source.indexOf(".build(", handlerStart));
-  assert.deepEqual([...handler.matchAll(/event\.id\(\) == "([^"]+)"/g)].map(match => match[1]), ["use-local-host", "restart", "show-window", "quit"]);
+  // The app menu and the menu bar item share one action table.
+  const actions = source.slice(source.indexOf("fn run_action"), source.indexOf("fn build_tray"));
+  assert.deepEqual([...actions.matchAll(/"([a-z-]+)" =>/g)].map(match => match[1]), ["use-local-host", "restart", "show-window", "quit"]);
+  assert.match(source, /\.on_menu_event\(\|app, event\| run_action\(app, event\.id\(\)\.as_ref\(\)\)\)/);
+  assert.match(source, /\.on_menu_event\(\|app, event\| run_action\(app, event\.id\(\)\.as_ref\(\)\)\)[\s\S]*?tray\.build\(app\)/, "the tray routes to the same actions");
   assert.doesNotMatch(source, /\.accelerator\(|keydown|execCommand|on_keyboard/i);
 });
