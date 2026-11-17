@@ -17,7 +17,7 @@ const (
 )
 
 // HostServiceLabel is the only launch job this manager ever writes.
-const HostServiceLabel = "kh.librarystudio.host"
+var HostServiceLabel = "kh.librarystudio.host"
 
 // HostServiceSpec is everything the manager needs. Paths are absolute; the
 // configuration home is the same folder the desktop and background host use.
