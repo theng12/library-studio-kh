@@ -1,5 +1,10 @@
 # What's new in Library Studio KH
 
+## 0.7.23 — 2026-11-17
+
+- Library now opens even when its own background service is already running. Before, it could say another Library Studio KH was running and quit without showing a window — which is what happened on this Mac with the background service set up.
+- If that background service was stopped or crashed, Library now says so and starts anyway, instead of refusing to open until a file is deleted by hand.
+
 ## 0.7.22 — 2026-11-17
 
 - Library no longer stops by itself a moment after it opens. Until now My library, Downloads and the update check all read "Load failed" a second or two after launch, with nothing in the grid.
