@@ -89,20 +89,15 @@ fn server_path() -> Result<PathBuf, String> {
     Ok(exe.with_file_name(name))
 }
 
-// A second copy or an orphaned helper holding the host ports must never turn into a
-// panic: say so plainly and exit, so macOS shows a clean quit instead of an abort.
-const HOST_PORTS: [u16; 2] = [7881, 7882];
-
-fn another_instance_running() -> bool {
-    HOST_PORTS.iter().any(|port| {
-        std::net::TcpStream::connect_timeout(
-            &std::net::SocketAddr::from(([127, 0, 0, 1], *port)),
-            std::time::Duration::from_millis(200),
-        )
-        .is_ok()
-    })
-}
-
+// A server that cannot start must never turn into a panic: the server says why in
+// plain words and this shows it, so macOS gets a clean quit instead of an abort.
+//
+// This used to probe the background host's ports first and refuse as "another
+// Library Studio KH is already running" — but a running background host IS this
+// app's own service, which the server attaches to, so that probe refused to open
+// the app on every Mac with the login job installed (an install over it left the
+// app closed). A second real copy is refused by the server's configuration-home
+// lock instead, which prints its own plain message.
 fn report_and_exit(reason: &str) -> ! {
     eprintln!("Library Studio KH did not open: {reason}");
     if let Ok(dir) = std::env::var("HOME") {
@@ -358,11 +353,6 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             build_menu(app)?;
-            // A second bundle or an orphaned helper holding the host ports is a
-            // plain message and a clean exit, never a panic inside an Apple Event.
-            if another_instance_running() {
-                report_and_exit("Another Library Studio KH is already running on this Mac. Quit it, then open this one again.");
-            }
             let (child, url) = match start_server() {
                 Ok(started) => started,
                 Err(reason) => report_and_exit(&reason),

@@ -5,10 +5,12 @@ import { readFileSync } from "node:fs";
 const rust = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
 const go = readFileSync(new URL("../cmd/library-studio/main.go", import.meta.url), "utf8");
 
-test("a taken port or a second copy never panics the app", () => {
-  assert.match(rust, /fn another_instance_running/);
-  assert.match(rust, /const HOST_PORTS: \[u16; 2\] = \[7881, 7882\]/);
-  assert.match(rust, /if another_instance_running\(\)/);
+test("a server that cannot start explains itself instead of panicking", () => {
+  // The shell must not refuse to open just because its own background host is
+  // listening: that host is the service this app attaches to, and refusing there
+  // left the app closed after an install on every Mac with the login job installed.
+  assert.ok(!rust.includes("another_instance_running"), "the port probe that blocked the app is back");
+  assert.ok(!rust.includes("HOST_PORTS"), "the background host's ports are probed again");
   assert.match(rust, /Err\(reason\) => report_and_exit\(&reason\)/);
   assert.ok(!rust.includes("let (child, url) = start_server()?"), "the setup hook still aborts on a server failure");
   assert.ok(!rust.match(/\.lock\(\)\.unwrap\(\)/), "a poisoned lock can still panic the exit path");

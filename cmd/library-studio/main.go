@@ -83,9 +83,14 @@ func main() {
 			waitShell(os.Stdin)
 			return
 		}
-		if !errors.Is(err, errNoHost) {
+		// Only a host this app must not attach to (wrong version, an unsafe file)
+		// stops the app. A descriptor left behind by a host that is gone is
+		// recovered below: the installed job is started again, or this desktop runs
+		// its own server. A stale file must never mean a Library that will not open.
+		if errors.Is(err, errHostVersion) || errors.Is(err, errHostUnsafe) {
 			log.Fatal(err)
 		}
+		log.Printf("Library Studio KH: %v", err)
 		// Only the installed job is started here; it may use a different port
 		// or executable than this process's flags.
 		spec := platform.HostServiceSpec{Home: home}
@@ -97,19 +102,25 @@ func main() {
 			// silently starting another desktop server.
 			spec.Exe = exe
 			started, startErr := svc.Start(spec)
-			if startErr != nil {
-				log.Fatalf("Library Studio KH could not start its background host: %v", startErr)
-			}
-			info, err = waitForHost(home, 10*time.Second)
-			if err != nil {
-				if started.State == platform.HostServiceNeedsRestart {
-					log.Fatalf("Library Studio KH's background host did not start cleanly. Another Library Studio KH server may already be using %s. Quit it, then reopen Library Studio KH.", home)
+			if startErr == nil {
+				if info, err = waitForHost(home, 10*time.Second); err == nil {
+					fmt.Printf("LISTENING http://%s/#%s\n", info.Address, info.Token)
+					waitShell(os.Stdin)
+					return
 				}
-				log.Fatalf("Library Studio KH's background host did not become ready: %v", err)
 			}
-			fmt.Printf("LISTENING http://%s/#%s\n", info.Address, info.Token)
-			waitShell(os.Stdin)
-			return
+			detail := ""
+			switch {
+			case startErr != nil:
+				detail = startErr.Error()
+			case started.State == platform.HostServiceNeedsRestart:
+				detail = "another Library Studio KH server may already be using " + home
+			default:
+				detail = err.Error()
+			}
+			// The app still opens: this session runs its own server. If the host is
+			// really alive the configuration-home lock below refuses it in plain words.
+			log.Printf("Library Studio KH: its background host did not start (%s) — running this session's own server", detail)
 		}
 		// No background host configured: the old desktop lifecycle.
 		go func() { waitShell(os.Stdin); os.Exit(0) }()
