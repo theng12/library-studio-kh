@@ -1,10 +1,14 @@
 package server
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -185,13 +189,89 @@ func (s *Server) maintenanceResume(w http.ResponseWriter, r *http.Request) {
 }
 
 // HoldHandler is the hold on its own listener, the fixed loopback port the signed
-// feed advertises. It carries no token: the installer has none, and the listener is
-// bound to 127.0.0.1, so only this computer can pause the app. The pause expires.
+// feed advertises. Being on loopback is not enough on its own: anything running as
+// this user could pause the app, so the installer proves itself with the credential
+// it owns. The pause expires.
 func (s *Server) HoldHandler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/maintenance/hold", s.maintenanceHold)
-	mux.HandleFunc("DELETE /api/maintenance/hold", s.maintenanceResume)
+	mux.HandleFunc("POST /api/maintenance/hold", s.requireHoldToken(s.maintenanceHold))
+	mux.HandleFunc("DELETE /api/maintenance/hold", s.requireHoldToken(s.maintenanceResume))
 	return mux
+}
+
+// The Launcher's own update-hold credential, the same handoff Printer, Media and Hub
+// take: a 0600 file in the Launcher's data folder, never Library's, read fresh on every
+// request so an atomic Launcher rotation needs no restart.
+const (
+	holdTokenFileEnv  = "LIBRARY_STUDIO_HOLD_TOKEN_FILE"
+	holdTokenEnv      = "KHU_HOLD_TOKEN_FILE"
+	holdTokenMaxBytes = 4096
+)
+
+func (s *Server) holdTokenPath() string {
+	if p := strings.TrimSpace(os.Getenv(holdTokenFileEnv)); p != "" {
+		return p
+	}
+	if p := strings.TrimSpace(os.Getenv(holdTokenEnv)); p != "" {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "Library", "KHUpdater", "state", "hold-token")
+}
+
+// readHoldToken returns the Launcher's current credential, or "" when this Mac has no
+// usable one. A missing, empty, world-readable, symlinked or oversized file is simply no
+// credential, and the caller then refuses the hold: an installer that cannot prove itself
+// must change nothing rather than be trusted for being on this computer.
+func readHoldToken(path string) string {
+	if path == "" {
+		return ""
+	}
+	info, err := os.Lstat(path) // Lstat, so a symlink is refused rather than followed
+	if err != nil || !info.Mode().IsRegular() || info.Size() > holdTokenMaxBytes {
+		return ""
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+		return ""
+	}
+	b, err := os.ReadFile(path)
+	if err != nil || len(b) > holdTokenMaxBytes {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// presentedHoldToken reads the one shape the Launcher sends: a header, never a query
+// value or a cookie.
+func presentedHoldToken(r *http.Request) string {
+	if t := strings.TrimSpace(r.Header.Get("X-Hub-Token")); t != "" {
+		return t
+	}
+	if a := r.Header.Get("Authorization"); len(a) > 7 && strings.EqualFold(a[:7], "Bearer ") {
+		return strings.TrimSpace(a[7:])
+	}
+	return ""
+}
+
+// requireHoldToken gates the two hold routes. A web page never drives an update, so an
+// Origin-bearing request is refused outright; anything else must carry the file's value.
+func (s *Server) requireHoldToken(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Origin") != "" {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "The update hold only answers the updater on this Mac, not a web page."})
+			return
+		}
+		want := readHoldToken(s.holdTokenPath())
+		got := presentedHoldToken(r)
+		if want == "" || got == "" || subtle.ConstantTimeCompare([]byte(want), []byte(got)) != 1 {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "The update hold needs the updater's own credential on this Mac."})
+			return
+		}
+		next(w, r)
+	}
 }
 
 // isLoopbackRequest is the hold's own gate: only this computer may pause the app.

@@ -49,8 +49,17 @@ echo "Building into $work/bin ..." >&2
 stock_pid=$!
 stock="$(wait_line "$work/logs/mock-stock.log" MOCK_STOCK= "$stock_pid")"
 
+# The installer's own credential, in the test's work dir — never the owner's real file.
+# The shipped default is ~/Library/KHUpdater/state/hold-token; the override keeps this
+# test off it entirely.
+hold_token_file="$work/hold-token"
+hold_token="$(python3 -I -c 'import secrets; print(secrets.token_urlsafe(24))')"
+printf '%s\n' "$hold_token" >"$hold_token_file"
+chmod 600 "$hold_token_file"
+
 export KH_TEST_HOME="$work/home" KH_TEST_STOCK="$stock" KH_TEST_DOWNLOADS="$work/downloads" \
-  KH_TEST_LIBRARY="$work/library" KH_TEST_METADATA=offline KH_TEST_PORT=0
+  KH_TEST_LIBRARY="$work/library" KH_TEST_METADATA=offline KH_TEST_PORT=0 \
+  KHU_HOLD_TOKEN_FILE="$hold_token_file"
 
 start_app() { # start_app LOGNAME
   "$work/bin/library-studio" --test-mode >"$work/logs/$1" 2>&1 &
@@ -64,12 +73,13 @@ start_app() { # start_app LOGNAME
   [ -n "$hold_url" ] || fail "the hold did not open on its fixed port (is 8643 already taken?): $(grep -i 'update hold' "$work/logs/$1" || true)"
 }
 
-hold() { # hold TIMEOUT PAUSE — against the fixed port, with no token, like the installer
+hold() { # hold TIMEOUT PAUSE — against the fixed port, with the installer's credential
   curl -sS -o "$work/logs/hold.json" -w '%{http_code}' -X POST \
-    "$hold_url?timeout_s=$1&pause_s=$2"
+    -H "X-Hub-Token: $hold_token" "$hold_url?timeout_s=$1&pause_s=$2"
 }
 resume() {
-  curl -sS -o "$work/logs/resume.json" -w '%{http_code}' -X DELETE "$hold_url"
+  curl -sS -o "$work/logs/resume.json" -w '%{http_code}' -X DELETE \
+    -H "X-Hub-Token: $hold_token" "$hold_url"
 }
 run_code() { # a real work claim: a cleanup pass
   curl -sS -o "$work/logs/run.json" -w '%{http_code}' -X POST "$url/api/cleanup/run" \
@@ -81,6 +91,41 @@ start_app first.log
 echo "Library up (pid $app_pid): $url"
 [ "$hold_url" = "http://127.0.0.1:8643/api/maintenance/hold" ] || fail "hold must answer on its published address, got $hold_url"
 echo "ok   hold published on the fixed address the feed advertises: $hold_url"
+
+# ---- 0. only the installer's own credential may hold or release the app ----
+code="$(curl -sS -o "$work/logs/hold-notoken.json" -w '%{http_code}' -X POST "$hold_url?timeout_s=0&pause_s=60")"
+[ "$code" = 401 ] || fail "a hold with no credential must be refused, got $code"
+echo "ok   a hold without the installer's credential -> 401"
+
+code="$(curl -sS -o "$work/logs/hold-wrongtoken.json" -w '%{http_code}' -X POST \
+  -H 'X-Hub-Token: not-the-installer-token' "$hold_url?timeout_s=0&pause_s=60")"
+[ "$code" = 401 ] || fail "a hold with a wrong credential must be refused, got $code"
+echo "ok   a hold with the wrong credential -> 401"
+
+code="$(curl -sS -o "$work/logs/hold-cookie.json" -w '%{http_code}' -X POST \
+  -H "Cookie: hold_token=$hold_token" "$hold_url?timeout_s=0&pause_s=60")"
+[ "$code" = 401 ] || fail "a credential in a cookie must not count, got $code"
+echo "ok   a credential in a cookie is not the handoff -> 401"
+
+code="$(curl -sS -o "$work/logs/run-open.json" -w '%{http_code}' -X POST "$url/api/cleanup/run" \
+  -H 'X-Library-Request: 1' -H "X-Library-Token: $token")"
+[ "$code" != 503 ] || fail "a refused hold must not have paused the app"
+echo "ok   a refused hold leaves the app working ($code)"
+
+# The Launcher rotates the file atomically and Library reads it per request, no restart.
+old_token="$hold_token"
+hold_token="$(python3 -I -c 'import secrets; print(secrets.token_urlsafe(24))')"
+printf '%s\n' "$hold_token" >"$hold_token_file.rotating"
+chmod 600 "$hold_token_file.rotating"
+mv "$hold_token_file.rotating" "$hold_token_file"
+code="$(curl -sS -o "$work/logs/hold-oldtoken.json" -w '%{http_code}' -X POST \
+  -H "X-Hub-Token: $old_token" "$hold_url?timeout_s=0&pause_s=60")"
+[ "$code" = 401 ] || fail "the rotated-away credential must stop working at once, got $code"
+code="$(hold 0 60)"
+[ "$code" = 200 ] || fail "the new credential must work with no restart, got $code: $(cat "$work/logs/hold.json")"
+code="$(resume)"
+[ "$code" = 200 ] || fail "resume after a rotation answered $code"
+echo "ok   the credential is read per request: rotated file, no restart"
 
 # ---- 1. hold pauses the claim path and reports the real in-flight count ----
 code="$(hold 20 120)"

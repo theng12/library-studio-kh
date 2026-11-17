@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -121,27 +123,126 @@ func TestHoldCeilingAndLoopbackOnly(t *testing.T) {
 	}
 }
 
-// The shipped shape: the hold on its own listener, reached with no token, bound to
-// this computer only. This is the address the signed feed advertises.
-func TestHoldHandlerNeedsNoTokenAndStaysOnThisComputer(t *testing.T) {
+// The shipped shape: the hold on its own listener, bound to this computer and opened
+// only by the updater's own credential. This is the address the signed feed advertises.
+func TestHoldHandlerNeedsTheInstallerTokenAndStaysOnThisComputer(t *testing.T) {
 	s := holdServer(t)
-	call := func(method, remote string) *httptest.ResponseRecorder {
+	tokenFile := filepath.Join(t.TempDir(), "hold-token")
+	if err := os.WriteFile(tokenFile, []byte("launcher-token-0123456789abcdef\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(holdTokenFileEnv, tokenFile)
+	call := func(method, remote string, header, value string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://127.0.0.1:8643/api/maintenance/hold", nil)
 		r.RemoteAddr = remote
+		if header != "" {
+			r.Header.Set(header, value)
+		}
 		w := httptest.NewRecorder()
 		s.HoldHandler().ServeHTTP(w, r)
 		return w
 	}
-	if w := call("POST", "127.0.0.1:51000"); w.Code != 200 {
-		t.Fatalf("the installer has no token; the fixed listener must still answer: %d %s", w.Code, w.Body.String())
+	const token = "launcher-token-0123456789abcdef\n"
+	// Being on this computer is not proof of being the installer.
+	for _, c := range []struct{ name, header, value string }{
+		{"no credential", "", ""},
+		{"wrong credential", "X-Hub-Token", "not-the-token"},
+		{"a cookie", "Cookie", "kh_hub_token=" + token},
+	} {
+		if w := call("POST", "127.0.0.1:51000", c.header, c.value); w.Code != http.StatusUnauthorized {
+			t.Fatalf("%s must be refused, got %d", c.name, w.Code)
+		}
+		if s.hold.pausedNow() {
+			t.Fatalf("%s must not have paused the app", c.name)
+		}
+	}
+	if w := call("POST", "127.0.0.1:51000", "X-Hub-Token", token); w.Code != 200 {
+		t.Fatalf("the installer's credential must be accepted: %d %s", w.Code, w.Body.String())
 	}
 	if !s.hold.pausedNow() {
-		t.Fatal("a tokenless hold on the fixed listener must actually pause the app")
+		t.Fatal("an accepted hold must actually pause the app")
 	}
-	if w := call("DELETE", "127.0.0.1:51000"); w.Code != 200 || s.hold.pausedNow() {
-		t.Fatalf("resume on the fixed listener: %d", w.Code)
+	if w := call("DELETE", "127.0.0.1:51000", "Authorization", "Bearer "+token); w.Code != 200 || s.hold.pausedNow() {
+		t.Fatalf("resume with a bearer credential: %d", w.Code)
 	}
-	if w := call("POST", "192.0.2.9:51000"); w.Code != http.StatusForbidden {
+	// A web page never drives an update, whatever it presents.
+	r := httptest.NewRequest("POST", "http://127.0.0.1:8643/api/maintenance/hold", nil)
+	r.RemoteAddr = "127.0.0.1:51000"
+	r.Header.Set("X-Hub-Token", token)
+	r.Header.Set("Origin", "http://127.0.0.1:7881")
+	w := httptest.NewRecorder()
+	s.HoldHandler().ServeHTTP(w, r)
+	if w.Code != http.StatusUnauthorized || s.hold.pausedNow() {
+		t.Fatalf("an Origin-bearing hold must be refused, got %d", w.Code)
+	}
+	// Even with the right credential, another machine gets nothing.
+	if w := call("POST", "192.0.2.9:51000", "X-Hub-Token", token); w.Code != http.StatusForbidden {
 		t.Fatalf("the fixed listener must refuse another machine, got %d", w.Code)
+	}
+}
+
+// The credential is read per request, so the Launcher can rotate it without a restart,
+// and a file that is not a usable secret is no credential at all.
+func TestHoldTokenIsReadFreshAndRefusedWhenNotPrivate(t *testing.T) {
+	s := holdServer(t)
+	tokenFile := filepath.Join(t.TempDir(), "hold-token")
+	t.Setenv(holdTokenFileEnv, tokenFile)
+	call := func(method, token string) int {
+		r := httptest.NewRequest(method, "http://127.0.0.1:8643/api/maintenance/hold", nil)
+		r.RemoteAddr = "127.0.0.1:51000"
+		if token != "" {
+			r.Header.Set("X-Hub-Token", token)
+		}
+		w := httptest.NewRecorder()
+		s.HoldHandler().ServeHTTP(w, r)
+		return w.Code
+	}
+	if call("POST", "anything") != http.StatusUnauthorized {
+		t.Fatal("a missing token file must refuse the hold")
+	}
+	if err := os.WriteFile(tokenFile, []byte("   \n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if call("POST", "anything") != http.StatusUnauthorized {
+		t.Fatal("a blank token file must refuse the hold")
+	}
+	if err := os.WriteFile(tokenFile, []byte("first-token-0123456789abcdef\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if call("POST", "first-token-0123456789abcdef") != 200 {
+		t.Fatal("the first token must open the hold")
+	}
+	// Rotate on disk without restarting: the old value stops working at once.
+	if err := os.WriteFile(tokenFile, []byte("second-token-0123456789abcde\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if call("DELETE", "first-token-0123456789abcdef") != http.StatusUnauthorized {
+		t.Fatal("the rotated-away token must be refused")
+	}
+	if call("DELETE", "second-token-0123456789abcde") != 200 {
+		t.Fatal("the new token must work with no restart")
+	}
+	// World-readable, then symlinked: neither is a credential.
+	if err := os.Chmod(tokenFile, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if call("POST", "second-token-0123456789abcde") != http.StatusUnauthorized {
+		t.Fatal("a world-readable token file must be refused")
+	}
+	if err := os.Chmod(tokenFile, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	real := filepath.Join(t.TempDir(), "real-token")
+	if err := os.WriteFile(real, []byte("second-token-0123456789abcde\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(tokenFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, tokenFile); err != nil {
+		t.Fatal(err)
+	}
+	if call("POST", "second-token-0123456789abcde") != http.StatusUnauthorized {
+		t.Fatal("a symlinked token file must be refused")
 	}
 }

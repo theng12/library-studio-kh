@@ -1,5 +1,10 @@
 # What's new in Library Studio KH
 
+## 0.7.25 — 2026-11-17
+
+- Only the updater can now pause Library for an update. Before this, any program on this Mac that found the pause address could stop Library taking new work; now it has to prove it is the updater, and one that cannot is turned away without changing anything.
+- The updater's key is re-read every time it is used, so a fresh key takes effect straight away with no restart of Library.
+
 ## 0.7.24 — 2026-11-17
 
 - An update no longer leaves Library's background service stopped. Before this, Library could open without it, and the updater then reported the update as unhealthy and kept both versions while it waited for a clean try.
