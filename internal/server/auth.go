@@ -405,10 +405,9 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	delete(s.access.attempts, peer)
-	// A Tailscale peer arrives through the remote listener (remoteOriginHostKey);
-	// its cookie is HTTPS-only, while the local desktop flow stays unchanged.
-	_, remote := r.Context().Value(remoteOriginHostKey{}).(string)
-	cookie := &http.Cookie{Name: sessionCookie, Value: secret, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil || remote}
+	// Secure only over TLS: the Tailscale listener is plain HTTP inside WireGuard, and a
+	// Secure cookie there would be dropped by the browser, breaking phone sign-in.
+	cookie := &http.Cookie{Name: sessionCookie, Value: secret, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil}
 	if req.Remember {
 		cookie.MaxAge = int(lifetime.Seconds())
 		cookie.Expires = now.Add(lifetime)

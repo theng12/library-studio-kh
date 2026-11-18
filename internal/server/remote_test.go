@@ -10,9 +10,10 @@ import (
 	"librarystudio/internal/config"
 )
 
-// A tailnet peer's session cookie must never travel over plain HTTP, while the
-// local desktop sign-in keeps its cookie working on the loopback listener.
-func TestTailnetSessionCookieIsSecure(t *testing.T) {
+// The session cookie is Secure only when the request arrived over TLS. The
+// tailnet listener is plain HTTP inside WireGuard, so marking its cookie Secure
+// would make the browser drop it and break phone sign-in.
+func TestSessionCookieIsSecureOnlyOverTLS(t *testing.T) {
 	home := t.TempDir()
 	store, err := config.Open(home)
 	if err != nil {
@@ -20,19 +21,19 @@ func TestTailnetSessionCookieIsSecure(t *testing.T) {
 	}
 	s := New(store, home)
 	const address = "100.88.1.2:7882"
-	signIn := func(h http.Handler, host, peer string) *http.Cookie {
-		r := httptest.NewRequest("POST", "http://"+host+"/api/auth/login", strings.NewReader(`{"username":"owner","password":"test passphrase only"}`))
+	signIn := func(h http.Handler, scheme, host, peer string) *http.Cookie {
+		r := httptest.NewRequest("POST", scheme+"://"+host+"/api/auth/login", strings.NewReader(`{"username":"owner","password":"test passphrase only"}`))
 		r.RemoteAddr = peer
 		r.Header.Set("Content-Type", "application/json")
 		r.Header.Set("X-Library-Request", "1")
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		if w.Code != 200 {
-			t.Fatalf("sign-in over %s returned %d: %s", host, w.Code, w.Body)
+			t.Fatalf("sign-in over %s returned %d: %s", scheme, w.Code, w.Body)
 		}
 		cookies := w.Result().Cookies()
 		if len(cookies) != 1 {
-			t.Fatalf("sign-in over %s set %d cookies", host, len(cookies))
+			t.Fatalf("sign-in over %s set %d cookies", scheme, len(cookies))
 		}
 		return cookies[0]
 	}
@@ -46,11 +47,27 @@ func TestTailnetSessionCookieIsSecure(t *testing.T) {
 	if setupW.Code != 200 {
 		t.Fatalf("owner account setup returned %d: %s", setupW.Code, setupW.Body)
 	}
-	if !signIn(s.remoteHandler(address, nil), address, "100.90.1.4:1234").Secure {
-		t.Fatal("tailnet session cookie is not Secure")
-	}
-	if signIn(s.Handler(), "localhost:7881", "127.0.0.1:8000").Secure {
-		t.Fatal("loopback session cookie must not be Secure")
+	remote := s.remoteHandler(address, nil)
+	for _, tc := range []struct {
+		name, scheme string
+		h            http.Handler
+		host, peer   string
+		want         bool
+	}{
+		{"tailnet peer over TLS", "https", remote, address, "100.90.1.4:1234", true},
+		{"tailnet peer over plain HTTP", "http", remote, address, "100.90.1.4:1234", false},
+		{"loopback over TLS", "https", s.Handler(), "localhost:7881", "127.0.0.1:8000", true},
+		{"loopback over plain HTTP", "http", s.Handler(), "localhost:7881", "127.0.0.1:8000", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cookie := signIn(tc.h, tc.scheme, tc.host, tc.peer)
+			if cookie.Secure != tc.want {
+				t.Fatalf("Secure = %v, want %v", cookie.Secure, tc.want)
+			}
+			if !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode {
+				t.Fatal("HttpOnly and SameSite must hold on every path")
+			}
+		})
 	}
 }
 

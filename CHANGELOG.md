@@ -3,7 +3,7 @@
 ## 0.7.27 — 2026-11-18
 
 - The program files no longer contain this Mac's username or the folders it was built in, so a copy of Library gives nothing away about the Mac it came from. Every build now checks itself for those paths and stops if one gets back in.
-- A sign-in from a Tailscale device is marked secure, so its browser never sends that session over a plain, unencrypted connection. The desktop app on this Mac keeps working the same way; a phone keeps its sign-in only over an HTTPS link.
+- A sign-in is marked secure whenever Library is served over HTTPS, so a browser never sends that session over an unencrypted connection. Tailscale already encrypts phone traffic itself, so signing in from your phone works as before.
 
 ## 0.7.26 — 2026-11-17
 
