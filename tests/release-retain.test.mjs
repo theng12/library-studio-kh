@@ -62,11 +62,14 @@ test("a version named by the ledger is never moved", () => {
   assert.ok(readdirSync(f.dist).includes(`${APP}-1.2.0.dmg`));
 });
 
-test("the default destination is the project _trash with the date and what", () => {
+test("the default destination is the Desktop trash with the date and what", () => {
   const f = fixture(["1.2.0", "1.2.1", "1.2.2", "1.2.3"]);
-  const out = execFileSync("python3", ["-I", script, "--rotate-only", "--dist", f.dist, "--project", f.root, "--prefix", APP], { encoding: "utf8" });
+  const home = mkdtempSync(join(tmpdir(), "library-home-"));
+  const out = execFileSync("python3", ["-I", script, "--rotate-only", "--dist", f.dist, "--project", f.root, "--prefix", APP], { encoding: "utf8", env: { ...process.env, HOME: home } });
   const rotation = JSON.parse(out).rotation;
-  assert.match(rotation.trash, /_trash\/\d{4}-\d{2}-\d{2} library dist rotation$/);
+  const last = rotation.trash.split("/").pop();
+  assert.equal(rotation.trash, join(home, "Desktop/_trash/library-studio-kh", last));
+  assert.match(last, /^\d{4}-\d{2}-\d{2} library dist rotation$/);
   assert.equal(rotation.moved.length, 1);
   assert.equal(readFileSync(rotation.moved[0].to, "utf8"), "1.2.0");
 });

@@ -2,8 +2,9 @@
 """Retain the accepted dist pair and rotate older installers automatically.
 
 Calls the shared portfolio helper (release-dist.py) with the pin document, then
-moves any remaining Library DMG older than the newest three into this project's
-`_trash/<date> <what>/`, so keeping the latest three never needs a hand step.
+moves any remaining Library DMG older than the newest three into
+`~/Desktop/_trash/library-studio-kh/<date> <what>/`, so keeping the latest three
+never needs a hand step.
 
 Guards: a version named by the live or previous feed release, the dist ledger,
 artifact retention, rollback/state records, a queued publish job or the
@@ -114,9 +115,9 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def default_trash(project, today=None):
+def default_trash(today=None):
     day = today or datetime.date.today().isoformat()
-    return os.path.join(project, "_trash", f"{day} library dist rotation")
+    return os.path.expanduser(f"~/Desktop/_trash/library-studio-kh/{day} library dist rotation")
 
 
 def rotate(dist, trash, prefix, keep, protected=None):
@@ -151,8 +152,8 @@ def main():
     parser.add_argument("pins", nargs="?", help="pin document for the shared release-dist helper")
     parser.add_argument("--rotate-only", action="store_true", help="skip the helper and only rotate dist")
     parser.add_argument("--dist", default=os.path.join(project, "dist"))
-    parser.add_argument("--project", default=project, help="project whose _trash receives retired installers")
-    parser.add_argument("--trash", default=None, help="default: <project>/_trash/<date> library dist rotation")
+    parser.add_argument("--project", default=project, help="project whose dist/ is rotated by default")
+    parser.add_argument("--trash", default=None, help="default: ~/Desktop/_trash/library-studio-kh/<date> library dist rotation")
     parser.add_argument("--prefix", default=APP_NAME)
     parser.add_argument("--keep", type=int, default=3)
     args = parser.parse_args()
@@ -168,7 +169,7 @@ def main():
             sys.stderr.write(result.stdout + result.stderr)
             sys.exit(result.returncode)
         helper = json.loads(result.stdout) if result.stdout.strip() else {}
-    trash = args.trash or default_trash(args.project)
+    trash = args.trash or default_trash()
     rotation = rotate(args.dist, trash, args.prefix, args.keep, protected_versions(args.dist))
     rotation["trash"] = trash
     print(json.dumps({"helper": helper, "rotation": rotation}, indent=2))
