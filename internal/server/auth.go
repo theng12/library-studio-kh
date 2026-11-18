@@ -405,7 +405,10 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	delete(s.access.attempts, peer)
-	cookie := &http.Cookie{Name: sessionCookie, Value: secret, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil}
+	// A Tailscale peer arrives through the remote listener (remoteOriginHostKey);
+	// its cookie is HTTPS-only, while the local desktop flow stays unchanged.
+	_, remote := r.Context().Value(remoteOriginHostKey{}).(string)
+	cookie := &http.Cookie{Name: sessionCookie, Value: secret, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil || remote}
 	if req.Remember {
 		cookie.MaxAge = int(lifetime.Seconds())
 		cookie.Expires = now.Add(lifetime)

@@ -1,12 +1,12 @@
 {
   "name": "library-studio-kh",
   "private": true,
-  "version": "0.7.26",
+  "version": "0.7.27",
   "scripts": {
     "tauri": "tauri",
     "build:server": "node scripts/build-server.mjs",
     "desktop": "npm run build:server && tauri dev",
-    "build:desktop": "npm run build:server && tauri build",
+    "build:desktop": "node scripts/build-desktop.mjs",
     "retain:accepted": "python3 -I \"$HOME/Developer/Shared Tools/portfolio/tools/release-dist.py\""
   },
   "devDependencies": {

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"strings"
@@ -8,6 +9,50 @@ import (
 
 	"librarystudio/internal/config"
 )
+
+// A tailnet peer's session cookie must never travel over plain HTTP, while the
+// local desktop sign-in keeps its cookie working on the loopback listener.
+func TestTailnetSessionCookieIsSecure(t *testing.T) {
+	home := t.TempDir()
+	store, err := config.Open(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(store, home)
+	const address = "100.88.1.2:7882"
+	signIn := func(h http.Handler, host, peer string) *http.Cookie {
+		r := httptest.NewRequest("POST", "http://"+host+"/api/auth/login", strings.NewReader(`{"username":"owner","password":"test passphrase only"}`))
+		r.RemoteAddr = peer
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("X-Library-Request", "1")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != 200 {
+			t.Fatalf("sign-in over %s returned %d: %s", host, w.Code, w.Body)
+		}
+		cookies := w.Result().Cookies()
+		if len(cookies) != 1 {
+			t.Fatalf("sign-in over %s set %d cookies", host, len(cookies))
+		}
+		return cookies[0]
+	}
+	setup := httptest.NewRequest("POST", "http://localhost:7881/api/auth/setup", strings.NewReader(`{"username":"owner","password":"test passphrase only"}`))
+	setup.RemoteAddr = "127.0.0.1:8000"
+	setup.Header.Set("Content-Type", "application/json")
+	setup.Header.Set("X-Library-Token", s.Token)
+	setup.Header.Set("X-Library-Request", "1")
+	setupW := httptest.NewRecorder()
+	s.Handler().ServeHTTP(setupW, setup)
+	if setupW.Code != 200 {
+		t.Fatalf("owner account setup returned %d: %s", setupW.Code, setupW.Body)
+	}
+	if !signIn(s.remoteHandler(address, nil), address, "100.90.1.4:1234").Secure {
+		t.Fatal("tailnet session cookie is not Secure")
+	}
+	if signIn(s.Handler(), "localhost:7881", "127.0.0.1:8000").Secure {
+		t.Fatal("loopback session cookie must not be Secure")
+	}
+}
 
 func TestRemoteGuard(t *testing.T) {
 	store, err := config.Open(t.TempDir())
