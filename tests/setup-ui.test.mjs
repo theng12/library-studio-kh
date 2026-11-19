@@ -127,26 +127,38 @@ test("connection checks use passed/failed/unknown, never connected-as-success", 
 
 test("client navigation accepts only a host root and clears local access before leaving", async () => {
   const context = helpers();
-  assert.equal(context.setupClientTarget("http://100.64.0.10:8080"), "http://100.64.0.10:8080/");
+  assert.equal(context.setupClientTarget("http://203.0.113.10:8080"), "http://203.0.113.10:8080/");
   assert.equal(context.setupClientTarget("https://library.example.invalid/"), "https://library.example.invalid/");
   for (const bad of ["http://host:8080/page", "http://host:8080/?x=1", "http://host:8080/#token", "http://user:secret@host:8080/", "ftp://host/"]) {
     assert.throws(() => context.setupClientTarget(bad));
   }
   const steps = [];
   let cleared = false;
-  const target = await context.setupClientGo("http://100.64.0.10:8080", {
-    api: async (path, body) => { steps.push(["api", path, body]); assert.equal(cleared, false); return { url: "http://100.64.0.10:8080/" }; },
+  const target = await context.setupClientGo("http://203.0.113.10:8080", {
+    api: async (path, body) => { steps.push(["api", path, body]); assert.equal(cleared, false); return { url: "http://203.0.113.10:8080/" }; },
     clearToken: () => { cleared = true; steps.push(["clear"]); },
     navigate: (url) => { assert.equal(cleared, true); steps.push(["go", url]); },
   });
-  assert.equal(target, "http://100.64.0.10:8080/");
+  assert.equal(target, "http://203.0.113.10:8080/");
   assert.deepEqual(JSON.parse(JSON.stringify(steps)), [
-    ["api", "/api/setup/client", { url: "http://100.64.0.10:8080/" }],
+    ["api", "/api/setup/client", { url: "http://203.0.113.10:8080/" }],
     ["clear"],
-    ["go", "http://100.64.0.10:8080/"],
+    ["go", "http://203.0.113.10:8080/"],
   ]);
   assert.equal(steps[2][1].includes("token"), false);
   assert.equal(steps[2][1].includes("#"), false);
+});
+
+test("the setup example is a documentation address, never someone's real network", () => {
+  // 203.0.113.0/24 is reserved for documentation (RFC 5737); a public download must
+  // not show an address shape that could be a real private or tailnet address.
+  for (const [name, source] of [["index.html", html], ["setup.js", setup]]) {
+    const addresses = source.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g) || [];
+    assert.ok(addresses.length > 0, name + " shows an example address");
+    for (const address of addresses) {
+      assert.match(address, /^203\.0\.113\.\d{1,3}$/, name + " example " + address + " is not in the documentation range");
+    }
+  }
 });
 
 test("public Help strips owner setup forms before removing ids", () => {

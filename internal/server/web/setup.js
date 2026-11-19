@@ -17,7 +17,7 @@ function setupClientTarget(value) {
   const raw = String(value == null ? "" : value).trim();
   if (!raw) throw new Error("Enter the other computer's web address.");
   let url;
-  try { url = new URL(raw); } catch { throw new Error("Enter a full web address, like http://100.64.0.10:8080."); }
+  try { url = new URL(raw); } catch { throw new Error("Enter a full web address, like http://203.0.113.10:8080."); }
   if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("Use an http:// or https:// address.");
   if (url.username || url.password) throw new Error("Remove the username or password from the address.");
   if ((url.pathname && url.pathname !== "/") || url.search || url.hash) throw new Error("Use only the host's web address, with no page, query or key.");

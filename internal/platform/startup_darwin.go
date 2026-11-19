@@ -498,6 +498,20 @@ func configHomeBusy(home string) bool {
 	return false
 }
 
+// reloadJob makes launchd drop a job's cached code requirement by reading the job
+// again: bootout, enable, bootstrap. A refused spawn leaves the label disabled, and
+// bootstrap alone then fails with "Input/output error", so the enable is not optional.
+func (s *HostService) reloadJob(path string) error {
+	if err := s.launchctl("bootout", serviceDomain()+"/"+HostServiceLabel); err != nil {
+		return err
+	}
+	_ = s.launchctl("enable", serviceDomain()+"/"+HostServiceLabel)
+	if err := s.bootstrap(path); err != nil {
+		return err
+	}
+	return markLoaded(path)
+}
+
 // finish briefly waits for a newly started job to prove itself, then reports
 // the honest state. A slow host is "loaded", never assumed healthy.
 func (s *HostService) finish(spec HostServiceSpec) HostServiceStatus {
@@ -606,10 +620,22 @@ func (s *HostService) Start(spec HostServiceSpec) (HostServiceStatus, error) {
 		if s.verify != nil && s.isRunning(spec.Home) {
 			return s.Status(spec), nil
 		}
-		if err := s.launchctl("kickstart", serviceDomain()+"/"+HostServiceLabel); err != nil {
+		kickErr := s.launchctl("kickstart", serviceDomain()+"/"+HostServiceLabel)
+		if kickErr == nil {
+			log.Printf("Library Studio KH: background host was already saved as configured — kicked it, job definition left alone")
+			if st := s.finish(spec); s.verify == nil || st.Running {
+				return st, nil
+			}
+			kickErr = errors.New("the kicked job did not start")
+		}
+		// launchd keeps the code requirement of the binary a job was loaded with
+		// (LWCR). After an install replaces this app, kickstart still exits 0 while
+		// launchd refuses the spawn (OS_REASON_CODESIGNING, measured 2026-11-19).
+		// Reloading is the only thing that makes it read the new signature.
+		log.Printf("Library Studio KH: the saved login job did not start (%v) — reloading it so launchd reads this app's signature", kickErr)
+		if err := s.reloadJob(path); err != nil {
 			return blockedStatus("The background host could not be started. Check host.err.log in the configuration folder."), err
 		}
-		log.Printf("Library Studio KH: background host was already saved as configured — kicked it, job definition left alone")
 		return s.finish(spec), nil
 	}
 	if loaded {

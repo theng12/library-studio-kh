@@ -1,5 +1,10 @@
 # What's new in Library Studio KH
 
+## 0.7.28 — 2026-11-19
+
+- The example address on the setup page is now a documentation address (203.0.113.10) instead of one that looks like a real home network. A public download never shows an address that could be someone's own.
+- After an update replaces Library, its background part starts again by itself. macOS used to keep the previous copy's identity on the login job and quietly refuse to start the new one until someone fixed it by hand.
+
 ## 0.7.27 — 2026-11-18
 
 - The program files no longer contain this Mac's username or the folders it was built in, so a copy of Library gives nothing away about the Mac it came from. Every build now checks itself for those paths and stops if one gets back in.

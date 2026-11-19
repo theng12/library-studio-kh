@@ -17,6 +17,8 @@ type fakeRunner struct {
 	fail       string
 	bundleID   string
 	executable string
+	spawned    bool // the job came up after its last kickstart or bootstrap
+	stale      bool // launchd still holds the replaced binary's code requirement
 }
 
 func (f *fakeRunner) Run(name string, args ...string) ([]byte, error) {
@@ -53,16 +55,22 @@ func (f *fakeRunner) Run(name string, args ...string) ([]byte, error) {
 			return []byte("bad plist"), errors.New("exit 1")
 		}
 		f.loaded = true
+		f.stale = false // a reload makes launchd read the binary again
+		f.spawned = true
 	case "bootout":
 		if f.fail == "bootout" {
 			return []byte("still running"), errors.New("exit 1")
 		}
 		f.loaded = false
+		f.spawned = false
 	case "kickstart":
 		if f.fail == "kickstart" {
 			return []byte("broken"), errors.New("exit 1")
 		}
 		f.loaded = true
+		if !f.stale { // a stale requirement refuses the spawn but still exits 0
+			f.spawned = true
+		}
 	}
 	return nil, nil
 }
@@ -568,14 +576,20 @@ func TestUninstallRemovesTheJobAndPlist(t *testing.T) {
 // from the app itself. When the saved definition is already correct the app must kick
 // the job, never unload it.
 func TestStartKicksAJobWhoseSavedDefinitionAlreadyMatches(t *testing.T) {
-	notRunning := func(string) error { return errors.New("the host is not answering") }
 	r := &fakeRunner{}
-	svc, spec := newTestService(t, r, notRunning)
+	verify := func(string) error {
+		if r.spawned {
+			return nil
+		}
+		return errors.New("the host is not answering")
+	}
+	svc, spec := newTestService(t, r, verify)
 	if _, err := svc.Install(spec); err != nil {
 		t.Fatal(err)
 	}
+	r.spawned = false // the job is loaded but stopped; a kickstart must bring it back
 	r.calls = nil
-	svc2 := NewHostService(r, notRunning)
+	svc2 := NewHostService(r, verify)
 	svc2.agentDir = svc.agentDir
 	if _, err := svc2.Start(spec); err != nil {
 		t.Fatal(err)
@@ -586,6 +600,44 @@ func TestStartKicksAJobWhoseSavedDefinitionAlreadyMatches(t *testing.T) {
 	}
 	if strings.Contains(joined, "bootout") {
 		t.Fatalf("start unloaded a job whose definition already matched: %v", r.calls)
+	}
+}
+
+// An install that replaces this app leaves launchd holding the old binary's code
+// requirement: the job stays loaded, the definition still matches, and kickstart
+// exits 0 while launchd refuses the spawn (OS_REASON_CODESIGNING, measured
+// 2026-11-19). The app must reload the job rather than leave it down for a person.
+func TestStartReloadsAJobStillHoldingTheReplacedBinarysRequirement(t *testing.T) {
+	r := &fakeRunner{}
+	verify := func(string) error {
+		if r.spawned {
+			return nil
+		}
+		return errors.New("the host is not answering")
+	}
+	svc, spec := newTestService(t, r, verify)
+	if _, err := svc.Install(spec); err != nil {
+		t.Fatal(err)
+	}
+	r.spawned, r.stale = false, true
+	r.calls = nil
+	svc2 := NewHostService(r, verify)
+	svc2.agentDir = svc.agentDir
+	st, err := svc2.Start(spec)
+	if err != nil {
+		t.Fatalf("start did not recover the refused job: %v", err)
+	}
+	if st.State != HostServiceRunning || !st.Running {
+		t.Fatalf("status after the reload = %+v", st)
+	}
+	order := ","
+	order += strings.Join(r.calls, ",")
+	kick := strings.Index(order, "kickstart")
+	boot := strings.Index(order, "bootout")
+	enable := strings.Index(order, "enable")
+	again := strings.Index(order, "bootstrap")
+	if kick < 0 || boot < kick || enable < boot || again < enable {
+		t.Fatalf("start did not reload the job after the refused kickstart: %v", r.calls)
 	}
 }
 
