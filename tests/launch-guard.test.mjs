@@ -57,7 +57,7 @@ test("uninstalling removes the app, its helper and the login job but keeps setti
   assert.match(platform, /func \(s \*HostService\) Uninstall\(home string\)/);
   assert.match(platform, /moveToTrash\(path, "kh\.librarystudio\.host\.plist/);
   assert.match(control, /case "uninstall":/);
-  assert.match(control, /use install, start, stop, uninstall or status/);
+  assert.match(control, /use install, start, stop, halt, uninstall or status/);
   assert.match(uninstall, /-host-control uninstall/);
   assert.match(uninstall, /\.Trash/);
   assert.match(uninstall, /Library Studio KH\.app/);

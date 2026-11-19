@@ -1,5 +1,9 @@
 # What's new in Library Studio KH
 
+## 0.7.29 — 2026-11-20
+
+- Updates can install over Library again. Before this, quitting the app unloaded Library's background login job, so the updater found the job gone instead of stopped, called the stop unsafe, and retried every 79 seconds forever. Quit now stops the background process but leaves the login job in place, loaded but not running — the state the updater stops it from cleanly — so Library can also come straight back. Uninstall is unchanged: it still removes the login job for good.
+
 ## 0.7.28 — 2026-11-19
 
 - The example address on the setup page is now a documentation address (203.0.113.10) instead of one that looks like a real home network. A public download never shows an address that could be someone's own.

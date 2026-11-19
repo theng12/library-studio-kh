@@ -45,6 +45,16 @@ func runHostControl(command string, svc *platform.HostService, spec platform.Hos
 		} else {
 			st, err = svc.Stop()
 		}
+	case "halt":
+		// Stops the process but keeps the login job loaded, so an installer can
+		// unload it itself instead of finding it gone and refusing (issues row
+		// 20261120-139). This is what Quit uses.
+		checked := svc.Status(platform.HostServiceSpec{Home: spec.Home})
+		if checked.State == platform.HostServiceBlocked {
+			st, err = checked, fmt.Errorf("%s", checked.Detail)
+		} else {
+			st, err = svc.Halt()
+		}
 	case "uninstall":
 		st, err = svc.Uninstall(spec.Home)
 	case "status":
@@ -53,7 +63,7 @@ func runHostControl(command string, svc *platform.HostService, spec platform.Hos
 		return hostControlOutput{
 			Supported: true,
 			State:     platform.HostServiceBlocked,
-			Error:     fmt.Sprintf("unknown host-control command %q; use install, start, stop, uninstall or status", command),
+			Error:     fmt.Sprintf("unknown host-control command %q; use install, start, stop, halt, uninstall or status", command),
 		}, 1
 	}
 	out := hostControlOutput{

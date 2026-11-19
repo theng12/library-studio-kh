@@ -29,6 +29,10 @@ func (s *HostService) Stop() (HostServiceStatus, error) {
 	return unsupportedStatus(), errHostServiceUnsupported
 }
 
+func (s *HostService) Halt() (HostServiceStatus, error) {
+	return unsupportedStatus(), errHostServiceUnsupported
+}
+
 func (s *HostService) Uninstall(string) (HostServiceStatus, error) {
 	return unsupportedStatus(), errHostServiceUnsupported
 }

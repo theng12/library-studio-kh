@@ -698,6 +698,72 @@ func (s *HostService) Stop() (HostServiceStatus, error) {
 	}, nil
 }
 
+// jobRunning reports whether launchd currently has a live pid for Library's job.
+// `launchctl print` names `pid = N` only while the process runs.
+func (s *HostService) jobRunning() bool {
+	out, err := s.runner.Run("launchctl", "print", serviceDomain()+"/"+HostServiceLabel)
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "pid = ") {
+			return true
+		}
+	}
+	return false
+}
+
+// Halt stops the running background host but leaves its login job loaded, so an
+// installer that stops this app finds the job "loaded, no pid" and unloads it
+// itself. Booting it out here leaves the job absent, which an installer reads as
+// "did not stop safely" and refuses to install over, retrying forever (issues
+// row 20261120-139). Quit still stops the work; the job starts again at the next
+// login or app launch. Uninstall still uses Stop(), which really unloads it.
+func (s *HostService) Halt() (HostServiceStatus, error) {
+	path, err := s.plistPath()
+	if err != nil {
+		return blockedStatus("The background host folder could not be found."), err
+	}
+	ours, exists, err := inspectExisting(path)
+	if err != nil {
+		return blockedStatus(err.Error()), err
+	}
+	if !exists {
+		return HostServiceStatus{
+			Supported: true,
+			State:     HostServiceNotInstalled,
+			Label:     HostServiceLabel,
+			Detail:    "The background host is not installed; nothing to stop.",
+		}, nil
+	}
+	if !ours {
+		err := errors.New("refusing to stop another login job")
+		return blockedStatus(err.Error()), err
+	}
+	if s.jobRunning() {
+		if err := s.launchctl("kill", "SIGTERM", serviceDomain()+"/"+HostServiceLabel); err != nil {
+			return blockedStatus("The background host could not be stopped."), err
+		}
+		// The helper exits 0 on SIGTERM; a bounded wait confirms the process is
+		// gone while the job stays loaded. A host that will not stop is reported,
+		// not assumed stopped.
+		for i := 0; i < 50 && s.jobRunning(); i++ {
+			time.Sleep(100 * time.Millisecond)
+		}
+		if s.jobRunning() {
+			return blockedStatus("The background host did not stop; its login job is kept."), errors.New("background host still running after SIGTERM")
+		}
+	}
+	return HostServiceStatus{
+		Supported: true,
+		State:     HostServiceLoaded,
+		Label:     HostServiceLabel,
+		Installed: true,
+		Loaded:    true,
+		Detail:    "The background host was stopped and starts again at the next login or app launch; its login job is kept loaded.",
+	}, nil
+}
+
 // Uninstall stops the host, removes its login job and retires any loose helper
 // copy. Library's settings and library stay where they are.
 func (s *HostService) Uninstall(home string) (HostServiceStatus, error) {

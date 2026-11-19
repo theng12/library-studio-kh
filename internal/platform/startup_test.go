@@ -18,6 +18,7 @@ type fakeRunner struct {
 	bundleID   string
 	executable string
 	spawned    bool // the job came up after its last kickstart or bootstrap
+	running    bool // launchd reports a live pid for the job
 	stale      bool // launchd still holds the replaced binary's code requirement
 }
 
@@ -50,6 +51,10 @@ func (f *fakeRunner) Run(name string, args ...string) ([]byte, error) {
 		if !f.loaded {
 			return []byte("Could not find service"), errors.New("exit 113")
 		}
+		if f.running {
+			return []byte("gui/501/kh.librarystudio.host = {\n\tstate = running\n\tpid = 4242\n}\n"), nil
+		}
+		return []byte("gui/501/kh.librarystudio.host = {\n\tstate = not running\n}\n"), nil
 	case "bootstrap":
 		if f.fail == "bootstrap" {
 			return []byte("bad plist"), errors.New("exit 1")
@@ -57,12 +62,19 @@ func (f *fakeRunner) Run(name string, args ...string) ([]byte, error) {
 		f.loaded = true
 		f.stale = false // a reload makes launchd read the binary again
 		f.spawned = true
+		f.running = true
 	case "bootout":
 		if f.fail == "bootout" {
 			return []byte("still running"), errors.New("exit 1")
 		}
 		f.loaded = false
 		f.spawned = false
+		f.running = false
+	case "kill":
+		if f.fail == "kill" {
+			return []byte("no such process"), errors.New("exit 1")
+		}
+		f.running = false // SIGTERM stops the process; the job stays loaded
 	case "kickstart":
 		if f.fail == "kickstart" {
 			return []byte("broken"), errors.New("exit 1")
@@ -70,6 +82,7 @@ func (f *fakeRunner) Run(name string, args ...string) ([]byte, error) {
 		f.loaded = true
 		if !f.stale { // a stale requirement refuses the spawn but still exits 0
 			f.spawned = true
+			f.running = true
 		}
 	}
 	return nil, nil
@@ -377,6 +390,37 @@ func TestStopKeepsPlistAndOnlyTouchesOwnJob(t *testing.T) {
 	}
 	if r.loaded {
 		t.Fatal("job is still loaded after stop")
+	}
+}
+
+// Halt (used by the desktop's Quit) must stop the process but leave the login job
+// loaded, so an installer finds "loaded, no pid" and unloads it itself. Booting it
+// out here is what made installs refuse with "did not stop safely" (20261120-139).
+func TestHaltStopsProcessButKeepsJobLoaded(t *testing.T) {
+	r := &fakeRunner{}
+	svc, spec := newTestService(t, r, nil)
+	if _, err := svc.Install(spec); err != nil {
+		t.Fatal(err)
+	}
+	st, err := svc.Halt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.State != HostServiceLoaded || !st.Installed || !st.Loaded {
+		t.Fatalf("halt status = %+v", st)
+	}
+	joined := strings.Join(r.calls, ",")
+	if !strings.Contains(joined, "kill") {
+		t.Fatalf("halt did not SIGTERM the job: %v", r.calls)
+	}
+	if strings.Contains(joined, "bootout") {
+		t.Fatalf("halt must not unload the job (that is what the installer refuses): %v", r.calls)
+	}
+	if !r.loaded {
+		t.Fatal("halt unloaded the job; it must stay loaded")
+	}
+	if r.running {
+		t.Fatal("halt left the process running")
 	}
 }
 

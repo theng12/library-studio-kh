@@ -210,12 +210,16 @@ fn start_server() -> Result<(Child, String), String> {
     Err(detail.unwrap_or_else(|| "the server stopped before it was ready".into()))
 }
 
-// Quitting stops the background host too, so no Library Studio KH Helper keeps
-// running behind an app that is gone. Closing the window only hides it.
+// Quitting stops the background host process, so no Library Studio KH Helper keeps
+// running behind an app that is gone. It keeps the login job loaded though: an
+// installer that stops this app must find the job "loaded, no pid" and unload it
+// itself. Unloading it here (the old "stop") leaves the job absent, which the
+// updater reads as "did not stop safely" and retries forever (issues row
+// 20261120-139). Closing the window only hides it.
 fn stop_host() {
     let Ok(exe) = server_path() else { return };
     match Command::new(exe)
-        .args(["-host-control", "stop"])
+        .args(["-host-control", "halt"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
