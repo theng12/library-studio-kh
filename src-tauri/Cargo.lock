@@ -1691,7 +1691,7 @@ dependencies = [
 
 [[package]]
 name = "library-studio-kh"
-version = "0.7.28"
+version = "0.7.29"
 dependencies = [
  "serde_json",
  "sha2",
