@@ -13,11 +13,15 @@ import (
 	"librarystudio/internal/config"
 )
 
-// holdRequest drives the maintenance endpoint from loopback, the only place it answers.
+const holdTestToken = "{{SECRET_1w2jpgp9}}"
+
+// holdRequest drives the maintenance endpoint from loopback with the installer's
+// credential, the only way it answers.
 func holdRequest(t *testing.T, s *Server, method, path string, remote string) (*httptest.ResponseRecorder, map[string]any) {
 	t.Helper()
 	r := httptest.NewRequest(method, "http://127.0.0.1:7000"+path, nil)
 	r.Header.Set("X-Library-Token", s.Token)
+	r.Header.Set("X-Hub-Token", holdTestToken)
 	r.RemoteAddr = remote
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)
@@ -33,6 +37,11 @@ func holdServer(t *testing.T) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
+	tokenFile := filepath.Join(t.TempDir(), "hold-token")
+	if err := os.WriteFile(tokenFile, []byte(holdTestToken), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(holdTokenFileEnv, tokenFile)
 	return New(store, home)
 }
 
@@ -120,6 +129,47 @@ func TestHoldCeilingAndLoopbackOnly(t *testing.T) {
 	// A request from another machine is refused outright.
 	if w, _ := holdRequest(t, s, "POST", "/api/maintenance/hold", "192.0.2.9:5000"); w.Code != http.StatusForbidden {
 		t.Fatalf("non-loopback hold must be refused, got %d", w.Code)
+	}
+}
+
+// The dashboard listener registers the same hold path for the app's own page. It must
+// ask for the installer's credential too: being on this computer, or signed in to the
+// page, is never permission to pause the app.
+func TestDashboardHoldRouteNeedsTheInstallerToken(t *testing.T) {
+	s := holdServer(t)
+	call := func(method, remote string, headers map[string]string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, "http://127.0.0.1:7881/api/maintenance/hold", nil)
+		r.Header.Set("X-Library-Token", s.Token) // past the page's own sign-in gate
+		r.RemoteAddr = remote
+		for k, v := range headers {
+			r.Header.Set(k, v)
+		}
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		return w
+	}
+	if w := call("POST", "127.0.0.1:5000", nil); w.Code != http.StatusUnauthorized {
+		t.Fatalf("a dashboard hold with no hold credential must get 401, got %d %s", w.Code, w.Body.String())
+	}
+	if s.hold.pausedNow() {
+		t.Fatal("an uncredentialed dashboard hold must not pause the app")
+	}
+	if w := call("POST", "127.0.0.1:5000", map[string]string{"X-Hub-Token": "not-the-token"}); w.Code != http.StatusUnauthorized || s.hold.pausedNow() {
+		t.Fatalf("a wrong hold credential must be refused: %d", w.Code)
+	}
+	// A web page never drives an update, even with the right credential.
+	if w := call("POST", "127.0.0.1:5000", map[string]string{"X-Hub-Token": holdTestToken, "Origin": "http://127.0.0.1:7881"}); w.Code != http.StatusUnauthorized || s.hold.pausedNow() {
+		t.Fatalf("an Origin-bearing dashboard hold must be refused: %d", w.Code)
+	}
+	// The updater's own credential still works here exactly as on the published listener.
+	if w := call("POST", "127.0.0.1:5000", map[string]string{"X-Hub-Token": holdTestToken}); w.Code != 200 || !s.hold.pausedNow() {
+		t.Fatalf("the installer's credential must still hold the dashboard route: %d %s", w.Code, w.Body.String())
+	}
+	if w := call("DELETE", "127.0.0.1:5000", map[string]string{"Authorization": "Bearer " + holdTestToken}); w.Code != 200 || s.hold.pausedNow() {
+		t.Fatalf("resume with a bearer credential: %d", w.Code)
+	}
+	if w := call("POST", "192.0.2.9:5000", map[string]string{"X-Hub-Token": holdTestToken}); w.Code != http.StatusForbidden {
+		t.Fatalf("a non-loopback dashboard hold must still be refused: %d", w.Code)
 	}
 }
 

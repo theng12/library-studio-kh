@@ -1,5 +1,9 @@
 # What's new in Library Studio KH
 
+## 0.7.30 — 2026-11-21
+
+- Only the updater can pause Library for an update, on the page's own address too. The page address still answered a pause request from anything on this Mac; it now asks for the updater's credential, the same as the fixed update address, and turns away a request made from a web page.
+
 ## 0.7.29 — 2026-11-20
 
 - Updates can install over Library again. Before this, quitting the app unloaded Library's background login job, so the updater found the job gone instead of stopped, called the stop unsafe, and retried every 79 seconds forever. Quit now stops the background process but leaves the login job in place, loaded but not running — the state the updater stops it from cleanly — so Library can also come straight back. Uninstall is unchanged: it still removes the login job for good.
