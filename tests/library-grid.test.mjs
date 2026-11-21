@@ -65,12 +65,13 @@ test("status chips follow the pipeline and never say verified without proof", ()
     { key: "verified", label: "Verified", tone: "ok" });
   assert.deepEqual({ ...g.libraryGridStatus({ status: "moved", verified: "size" }) },
     { key: "verified", label: "Verified", tone: "ok" });
+  // Needs proof is the amber warning Downloads shows, never the red of Missing.
   assert.deepEqual({ ...g.libraryGridStatus({ status: "copied" }) },
-    { key: "proof-pending", label: "Needs proof", tone: "problem" });
+    { key: "proof-pending", label: "Needs proof", tone: "warn" });
   assert.equal(g.libraryGridStatus({ status: "proof-pending" }).label, "Needs proof");
   assert.deepEqual({ ...g.libraryGridStatus({ status: "missing" }) },
     { key: "missing", label: "Missing", tone: "problem" });
-  assert.equal(g.libraryGridStatus({ status: "copied", verified: "none" }).tone, "problem");
+  assert.equal(g.libraryGridStatus({ status: "copied", verified: "none" }).tone, "warn");
   assert.equal(g.libraryGridStatus({ status: "stalled" }).tone, "problem");
   assert.equal(g.libraryGridStatus({}).label, "Status not reported");
 });

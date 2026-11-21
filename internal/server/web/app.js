@@ -1152,6 +1152,7 @@ function fillForm(st) {
       input.insertAdjacentElement("afterend", hint);
     }
     hint.textContent = input.value ? "Full path: " + input.value : "Not set";
+    hint.title = input.value;
     input.title = input.value;
   }
   f["qbittorrent.url"].value = c.qbittorrent.url;
@@ -1872,6 +1873,8 @@ async function signOut() {
 const updateStatus = $("#update-status"), checkUpdates = $("#check-updates"), openUpdate = $("#open-update");
 function updateLine(text, version) {
   updateStatus.textContent = text;
+  // One line by design; the hover carries the whole sentence when it is cut.
+  updateStatus.title = text;
   const cardState = document.getElementById("updates-state");
   if (cardState) cardState.textContent = text;
   openUpdate.hidden = !version;

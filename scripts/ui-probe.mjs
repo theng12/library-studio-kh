@@ -24,7 +24,9 @@ import { join } from "node:path";
 const PORT = Number(process.env.UI_PROBE_PORT || 9333);
 const pidFile = join(tmpdir(), (process.env.UI_PROBE_PROFILE || "library-ui-probe") + ".pid");
 const profileDir = join(tmpdir(), process.env.UI_PROBE_PROFILE || "library-ui-probe-profile");
-const shell = join(homedir(), "Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell");
+// UI_PROBE_SHELL names this Mac's own headless browser; the cached Playwright
+// shell path only exists on a Mac that has run Playwright.
+const shell = process.env.UI_PROBE_SHELL || join(homedir(), "Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

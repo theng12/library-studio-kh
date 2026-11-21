@@ -54,7 +54,7 @@ const LIBGRID_STATUS = {
   moved: { label: "Verified", tone: "ok" },
   missing: { label: "Missing", tone: "problem" },
   "on-disk": { label: "On disk", tone: "neutral" },
-  "proof-pending": { label: "Needs proof", tone: "problem" },
+  "proof-pending": { label: "Needs proof", tone: "warn" },
   upcoming: { label: "Upcoming", tone: "neutral" },
 };
 
@@ -100,7 +100,7 @@ function libraryGridStatus(item) {
   // One short chip; the volume and the proof method live in the detail.
   return libraryGridVerified(item)
     ? { key: "verified", label: "Verified", tone: "ok" }
-    : { key: "proof-pending", label: "Needs proof", tone: "problem" };
+    : { key: "proof-pending", label: "Needs proof", tone: "warn" };
 }
 
 function libraryGridRuntime(minutes) {
@@ -612,7 +612,11 @@ function libraryGridDetailPanel(detail, handlers = {}) {
   const facts = document.createElement("dl");
   facts.className = "libgrid-facts";
   const fact = (name, value, className) => {
-    facts.append(libraryGridNode("dt", name), libraryGridNode("dd", value, className || null));
+    // A path can outrun the sheet; the row keeps two lines and the hover shows it whole.
+    const path = name === "Location";
+    const dd = libraryGridNode("dd", value, path ? [className, "is-path"].filter(Boolean).join(" ") : (className || null));
+    if (path) dd.title = String(value);
+    facts.append(libraryGridNode("dt", name), dd);
   };
   if (detail.year) fact("Year", detail.year);
   if (detail.runtime) fact("Runtime", detail.runtime);

@@ -148,6 +148,8 @@
 .libgrid-status-active { background: var(--accent-soft); color: var(--accent); }
 .libgrid-status-ok { background: color-mix(in srgb, var(--connected) 15%, transparent); color: var(--connected); }
 .libgrid-status-problem { background: color-mix(in srgb, var(--disconnected) 14%, transparent); color: var(--disconnected); }
+/* "Needs proof" is the same warning the Downloads table shows, never the red of Missing. */
+.libgrid-status-warn { background: var(--warn-bg); color: var(--warn-ink); }
 .libgrid-status-neutral { background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--ink-2); }
 
 /* Detail pane: a side column on desktop; the whole screen on a phone. */
@@ -163,6 +165,8 @@
 .libgrid-overview { margin: 0; color: var(--ink-2); font-size: var(--text-sm); overflow-wrap: anywhere; }
 .libgrid-overview.is-muted { color: var(--muted); }
 .libgrid-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.35rem 1rem; margin: 0; font-size: var(--text-sm); }
+/* A path is one unbroken word; two lines and the hover carries the whole of it. */
+.libgrid-facts dd.is-path { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .libgrid-facts dt { color: var(--muted); font-size: var(--text-xs); padding-top: 0.1rem; }
 .libgrid-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .libgrid-history-block { display: grid; gap: 0.4rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
@@ -327,7 +331,23 @@
   .downloads-table th:last-child, .downloads-table td.dlp-actions { position: sticky; right: 0; z-index: 1; background: var(--panel); }
   .downloads-table tbody tr:hover td.dlp-actions { background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel)); }
   .dlp-missing td.dlp-actions { background: color-mix(in srgb, var(--warn-bg) 35%, var(--panel)); }
+  /* The sticky cells paint over the row, so each carries the row's own tint. Same
+     selector weight as the sticky rules above, or they keep their panel colour. */
+  /* The tint belongs to the row, so a cell that does not fill the row's height (the
+     Missing row's Progress cell is 33 px in a 93 px row) cannot leave a bare band. */
+  .downloads-panel .downloads-table tr.dlp-missing { background: color-mix(in srgb, var(--warn-bg) 35%, var(--panel)); }
+  .downloads-panel .downloads-table tr.dlp-missing td.dlp-title,
+  .downloads-panel .downloads-table tr.dlp-missing td:first-child { background: color-mix(in srgb, var(--warn-bg) 35%, var(--panel)); }
   .dlp-missing td:first-child { box-shadow: inset 3px 0 0 var(--wait); }
+}
+/* Between a phone and a wide window the whole table no longer fits the frame, and the
+   sticky Actions column covered Progress. Poster, Source and Target are either decoration
+   or repeated in the row's own detail line, so they go first and the rest fits. */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .downloads-table th[data-column="poster"], .downloads-table td.dlp-poster,
+  .downloads-table th[data-column="source"], .downloads-table td.dlp-source,
+  .downloads-table th[data-column="target"], .downloads-table td.dlp-target { display: none; }
+  .downloads-table td.dlp-title { min-width: 10rem; }
 }
 @media (min-width: 1101px) {
   .downloads-layout:has(> .dlp-detail:not([hidden])) { grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem); }
@@ -572,7 +592,9 @@ dialog.dlp-dialog .dlp-detail-head button { margin-left: auto; flex: none; }
 
 /* Folder fields: the full path under the input, so download and library
    locations are distinguishable without clicking into each field. */
-.path-full { margin: 0.15rem 0 0; font-size: var(--text-xs); overflow-wrap: anywhere; }
+/* Two lines of the full path, with the field's own title carrying the whole value. */
+.path-full { margin: 0.15rem 0 0; font-size: var(--text-xs); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 
 /* Path actions and the no-file next step. */
 .libgrid-copy-path {
