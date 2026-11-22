@@ -1,5 +1,11 @@
 # What's new in Library Studio KH
 
+## 0.7.32 — 2026-11-23
+
+- Choose folder opens the folder browser straight away in Settings instead of waiting on a system panel that could leave the click doing nothing.
+- Settings now shows your movie folders and TV folders separately, read live from Radarr and Sonarr. Adding a folder there never moves a title that is already in your library.
+- The old Library folder field is now Local media folder, and says plainly that it does not change where your library apps import.
+
 ## 0.7.31 — 2026-11-21
 
 - Every page was looked at, and these were fixed. Downloads fits the window again: the table no longer runs past the frame, and the Actions column no longer covers Progress, so "6 min left" reads whole instead of "6 m". "Needs proof" in My library is now the same amber as in Downloads instead of the red that "Missing" uses, and a row that needs attention is tinted in one piece. The update line under the sidebar wraps instead of being cut mid-word, and two long paths (Settings' full path and a title's Location) keep two lines with the whole path on hover.
