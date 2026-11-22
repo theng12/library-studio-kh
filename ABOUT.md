@@ -47,5 +47,5 @@ feed path, but Library does not hold the Studio job queue.
 
 ## Current version
 
-0.7.29, from the `version` field in `package.json`; the newest `CHANGELOG.md` entry
+0.7.32, from the `version` field in `package.json`; the newest `CHANGELOG.md` entry
 agrees.
