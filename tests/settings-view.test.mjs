@@ -41,7 +41,7 @@ const byId = (root, id) => walk(root).find((n) => n.getAttribute("id") === id);
 
 test("Settings path fields accept a typed path and keep the chooser", () => {
   const host = mount();
-  for (const id of ["settings-downloadpath", "settings-librarypath"]) {
+  for (const id of ["settings-downloadpath", "settings-librarypath", "settings-movieroot", "settings-tvroot"]) {
     const input = byId(host, id);
     assert.ok(input, id + " renders");
     assert.equal(input.getAttribute("readonly"), null, id + " is typeable");
@@ -52,6 +52,32 @@ test("Settings path fields accept a typed path and keep the chooser", () => {
   assert.match(picker, /async function checkPath\(/, "the picker checks a typed path");
   assert.match(picker, /checkPath,\s*\n\s*\};/, "the check is exported for Save");
   assert.match(app, /window\.folderPicker\?\.checkPath/, "Save runs that check per folder");
+});
+
+test("movie and TV folder actions stay with their owning apps", async () => {
+  const start = app.indexOf("const MEDIA_ROOTS =");
+  const stop = app.indexOf('document.addEventListener("click"', start);
+  const nodes = {
+    "#movie-root-list": {}, "#tv-root-list": {},
+    "#settings-tvroot": { id: "settings-tvroot", value: "/nas/new-tv" },
+    "#settings-tvroot-picker-status": {}, "#add-tv-root": {},
+  };
+  const calls = [];
+  const context = {
+    $: (selector) => nodes[selector],
+    api: async (url, body) => {
+      calls.push({ url, app: body?.app, path: body?.path });
+      if (body) return { status: "created", path: body.path };
+      return { rootFolders: [{ path: url.endsWith("Sonarr") ? "/nas/tv" : "/nas/movies" }] };
+    },
+  };
+  await runInNewContext(app.slice(start, stop) + "\naddMediaRoot(MEDIA_ROOTS.tv)", context);
+  assert.deepEqual(calls[0], { url: "/api/media/root-folder", app: "Sonarr", path: "/nas/new-tv" });
+  assert.equal(calls.filter(({ app }) => app).length, 1, "no write to Radarr");
+  assert.match(nodes["#movie-root-list"].textContent, /Radarr.*\/nas\/movies/);
+  assert.match(nodes["#tv-root-list"].textContent, /Sonarr.*\/nas\/tv/);
+  assert.match(nodes["#settings-tvroot-picker-status"].textContent, /Added.*to Sonarr/);
+  assert.equal(nodes["#add-tv-root"].disabled, false);
 });
 
 test("every input field carries one plain hint under it", () => {

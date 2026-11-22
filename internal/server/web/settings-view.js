@@ -31,8 +31,14 @@ const SETTINGS_CARDS = {
       fields: [
         { kind: "path", name: "downloadPath", label: "Download folder on this computer", placeholder: "Used to show free space",
           hint: "Where downloads land before they are imported; used to show free space." },
-        { kind: "path", name: "libraryPath", label: "Library folder", placeholder: "The folder your library apps import into",
-          hint: "Where finished items are moved to build your library." },
+        { kind: "path", name: "libraryPath", label: "Local media folder", placeholder: "Folder to scan for local media",
+          hint: "Library reads videos here in place; this does not change where companion apps import." },
+        { kind: "slot", id: "movie-root-list", tag: "p", class: "muted", role: "status", text: "Movie folders: not checked." },
+        { kind: "path", name: "movieRoot", label: "Add a movie folder", hint: "Adds a folder to Radarr. Existing movies stay where they are." },
+        { kind: "button", id: "add-movie-root", class: "small", label: "Add movie folder" },
+        { kind: "slot", id: "tv-root-list", tag: "p", class: "muted", role: "status", text: "TV folders: not checked." },
+        { kind: "path", name: "tvRoot", label: "Add a TV folder", hint: "Adds a folder to Sonarr. Existing shows stay where they are." },
+        { kind: "button", id: "add-tv-root", class: "small", label: "Add TV folder" },
       ],
     },
     {

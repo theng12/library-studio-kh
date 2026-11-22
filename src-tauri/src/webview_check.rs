@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 const DEFAULT_TIMEOUT_SECS: u64 = 90;
-const CONTROLS: usize = 9;
+const CONTROLS: usize = 11;
 
 // The environment whose values Tauri/WebKit derive data directories from.
 const ISOLATED_ENV: [(&str, &str); 6] = [
@@ -660,9 +660,9 @@ mod tests {
         serde_json::json!({
             "nonce": NONCE,
             "fixtureBinding": {"localUrl": URL, "downloadPath": fx.downloads, "libraryPath": fx.library},
-            "controls": 9,
-            "chosen": 9,
-            "typeable": 9,
+            "controls": CONTROLS,
+            "chosen": CONTROLS,
+            "typeable": CONTROLS,
             "clipboard": {"feedback": "Copied.", "state": "ok", "readbackOk": true, "readbackError": null},
             "folder": {"expected": dir, "chosen": dir, "exact": true, "typeable": true, "status": format!("Chose {}", dir.display())},
             "picker": format!("Chose {}", dir.display())

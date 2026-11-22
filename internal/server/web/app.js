@@ -1296,7 +1296,7 @@ function show(view) {
     if (b.dataset.view === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   }
   document.dispatchEvent(new CustomEvent("library:view", { detail: { view } }));
-  if (view === "settings" && current) { fillForm(current); loadSessions(); settingsCardsForPhone(); loadDeadSummary(); }
+  if (view === "settings" && current) { fillForm(current); loadSessions(); settingsCardsForPhone(); loadDeadSummary(); loadMediaRoots(); }
   if (view === "browse") loadLibrary();
   if (view === "downloads") loadDownloads();
   if (view === "sources") {
@@ -1714,6 +1714,54 @@ async function loadDeadSummary() {
     line.textContent = e.message || "The dead-download state could not be read.";
   }
 }
+
+// Movie and TV folders are the companion apps' own root folders, read live; adding
+// one never moves an existing title. The local media folder is a separate setting.
+const MEDIA_ROOTS = { movie: { app: "Radarr", list: "#movie-root-list", input: "movieRoot", button: "#add-movie-root", word: "Movie" },
+  tv: { app: "Sonarr", list: "#tv-root-list", input: "tvRoot", button: "#add-tv-root", word: "TV" } };
+
+async function loadMediaRoots() {
+  await Promise.all(Object.values(MEDIA_ROOTS).map(async (kind) => {
+    const line = $(kind.list);
+    if (!line) return;
+    try {
+      const r = await api("/api/media/options?app=" + kind.app);
+      const paths = (r.rootFolders || []).map((f) => f.path).filter(Boolean);
+      line.textContent = kind.word + " folders (" + kind.app + "): " + (paths.length ? paths.join(" · ") : "none yet.");
+    } catch (e) {
+      line.textContent = kind.word + " folders (" + kind.app + "): not checked — " + e.message;
+    }
+  }));
+}
+
+async function addMediaRoot(kind) {
+  const input = $("#settings-" + kind.input.toLowerCase());
+  const status = $("#" + input.id + "-picker-status");
+  const button = $(kind.button);
+  const path = (input?.value || "").trim();
+  if (!path) { status.textContent = "Choose or type a " + kind.word + " folder first."; return; }
+  if (button) button.disabled = true;
+  status.textContent = "Adding " + path + " to " + kind.app + "…";
+  try {
+    const r = await api("/api/media/root-folder", { app: kind.app, path });
+    status.textContent = r.status === "reused"
+      ? r.path + " is already a " + kind.app + " folder."
+      : "Added " + r.path + " to " + kind.app + ".";
+    input.value = "";
+    await loadMediaRoots();
+  } catch (e) {
+    status.textContent = "Could not confirm the folder: " + e.message;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest?.("#add-movie-root, #add-tv-root");
+  if (!b) return;
+  const kind = MEDIA_ROOTS[b.id === "add-movie-root" ? "movie" : "tv"];
+  addMediaRoot(kind);
+});
 
 async function loadSessions() {
   if (!AUTH.available || !AUTH.authenticated) return;

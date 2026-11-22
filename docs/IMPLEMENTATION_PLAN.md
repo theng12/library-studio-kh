@@ -46,6 +46,7 @@ Worker implements func (s *Server) registerControls(mux *http.ServeMux); lead ca
 - GET /api/downloads: {items:[]stock.Torrent}; absent qBittorrent or upstream errors are explicit.
 - POST /api/downloads/action: {hashes:[...],action:"pause"|"resume"}; validate action/hash boundary, qBittorrent 5 start/stop with legacy fallback only on 404. No delete action.
 - GET /api/media/options?app=Sonarr|Radarr|Lidarr: {qualityProfiles:[{id,name}],rootFolders:[{id,path}],metadataProfiles:[{id,name}]}.
+- POST /api/media/root-folder: {app: "Sonarr"|"Radarr", path}; registers or reuses a root in the named app and reads it back. Does not move existing media or change any title’s destination.
 - POST /api/media/add: {app,raw,qualityProfileId,rootFolderPath,metadataProfileId}; validate selection against live upstream options before add. Return {folder}. Metadata profile required only for Lidarr. Preserve legacy /api/add until lead can migrate it safely.
 - POST /api/media/monitor: {app,id,monitored}; read the current item before PUT, preserve unrelated fields, return {ok:true}.
 - Media output gains id, monitored and qualityProfileId; current browsing remains compatible.

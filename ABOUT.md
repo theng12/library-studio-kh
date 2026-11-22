@@ -22,7 +22,8 @@ stays in the stock apps and on the NAS.
   app says the whole download was imported, no queue still lists it, retention has
   passed and every connected app answered. Automatic cleanup starts off.
 - Offers Setup & help, native app settings and optional at-login startup from the
-  packaged server.
+  packaged server. Settings lists and adds movie folders in Radarr and TV folders
+  in Sonarr without moving existing titles; local media scanning is separate.
 - Supports Tailscale-only browser access from a phone when explicitly enabled:
   sign-in, 12-hour sessions or 30 days with "Remember this device", and session
   revocation in Settings.

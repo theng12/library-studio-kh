@@ -1,9 +1,8 @@
 "use strict";
 // Every path field offers the chooser and accepts a typed path; a typed value is
-// checked on save (checkPath) and the reason lands beside that field. On the
-// desktop the app's own platform layer opens the native folder panel; a
-// phone/remote page opens this in-app directory browser instead. Plain script,
-// no imports, no dependencies.
+// checked on save (checkPath) and the reason lands beside that field. Path
+// fields use the in-app directory browser on both desktop and remote pages.
+// Plain script, no imports, no dependencies.
 
 function folderPickerIsAbsolute(path) {
   const p = typeof path === "string" ? path.trim() : "";
@@ -135,26 +134,9 @@ function folderPickerValidSelection(state) {
     });
   }
 
-  async function choosePath(input, status) {
-    if (status.dataset.busy === "1") return;
-    status.dataset.busy = "1";
-    status.textContent = "Opening the folder panel…";
-    try {
-      const data = await askNative(input.dataset.pickerPrompt || "Choose a folder");
-      if (data.path) {
-        setPath(input, data.path);
-        status.textContent = "Chose " + data.path;
-      } else if (data.remote) {
-        status.textContent = "";
-        openBrowser(input, status);
-      } else {
-        status.textContent = ""; // cancelled
-      }
-    } catch (e) {
-      status.textContent = e.message;
-    } finally {
-      status.dataset.busy = "";
-    }
+  function choosePath(input, status) {
+    status.textContent = "";
+    openBrowser(input, status);
   }
 
   let dialog = null;

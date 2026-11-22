@@ -21,6 +21,7 @@ func TestControlRoutes(t *testing.T) {
 	var added bool
 	var addedPayload map[string]any
 	var put map[string]any
+	roots := []string{"/nas/films"}
 	stockSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v2/torrents/info":
@@ -31,7 +32,20 @@ func TestControlRoutes(t *testing.T) {
 		case "/api/v3/qualityprofile":
 			w.Write([]byte(`[{"id":6,"name":"HD"}]`))
 		case "/api/v3/rootfolder":
-			w.Write([]byte(`[{"id":1,"path":"/nas/films"}]`))
+			if r.Method == http.MethodPost {
+				var body struct {
+					Path string `json:"path"`
+				}
+				json.NewDecoder(r.Body).Decode(&body)
+				roots = append(roots, body.Path)
+				w.WriteHeader(http.StatusCreated)
+				return
+			}
+			out := make([]map[string]any, 0, len(roots))
+			for i, p := range roots {
+				out = append(out, map[string]any{"id": i + 1, "path": p, "accessible": true, "freeSpace": 1 << 40})
+			}
+			json.NewEncoder(w).Encode(out)
 		case "/api/v3/movie":
 			added = true
 			json.NewDecoder(r.Body).Decode(&addedPayload)
@@ -90,6 +104,18 @@ func TestControlRoutes(t *testing.T) {
 	}
 	if w := do("GET", "/api/media/options?app=Prowlarr", ""); w.Code != 400 {
 		t.Fatalf("unknown app: %d", w.Code)
+	}
+	if w := do("POST", "/api/media/root-folder", `{"app":"Radarr","path":"/nas/newfilms"}`); w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"created"`) {
+		t.Fatalf("add root folder: %d %s", w.Code, w.Body.String())
+	}
+	if w := do("POST", "/api/media/root-folder", `{"app":"Radarr","path":"/nas/newfilms"}`); w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"reused"`) {
+		t.Fatalf("an existing folder must be reused unchanged: %d %s", w.Code, w.Body.String())
+	}
+	if w := do("POST", "/api/media/root-folder", `{"app":"Lidarr","path":"/nas/music"}`); w.Code != 400 {
+		t.Fatalf("only movie and TV folders are accepted here: %d", w.Code)
+	}
+	if w := do("POST", "/api/media/root-folder", `{"app":"Radarr","path":"relative/films"}`); w.Code != 400 {
+		t.Fatalf("a relative folder must be refused: %d", w.Code)
 	}
 	bad := `{"app":"Radarr","raw":{"title":"Big Fish"},"qualityProfileId":99,"rootFolderPath":"/nas/films"}`
 	if w := do("POST", "/api/media/add", bad); w.Code != 400 || added {

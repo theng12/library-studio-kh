@@ -80,7 +80,8 @@ test("packaged webview check requires a chooser and a typed path on every path c
   for (const name of ["appDir", "downloadPath", "root.sonarr", "root.radarr", "root.lidarr", "root.whisparr"]) {
     assert.equal(nativeCheck.includes(name), true, "missing native check for " + name);
   }
-  assert.equal(nativeCheck.includes('document.querySelector("#settings-downloadpath + .folder-picker-choose").click()'), true);
+  assert.equal(nativeCheck.includes('document.querySelector("#settings-downloadpath ~ .folder-picker-choose").click()'), true);
+  for (const name of ["#settings-movieroot", "#settings-tvroot"]) assert.ok(nativeCheck.includes(name));
   assert.equal(nativeCheck.includes('name => \'#view-help input[name="\' + name + \'"]\')'), true);
   assert.equal(nativeCheck.includes('["appDir", "downloadPath", "root.sonarr", "root.radarr", "root.lidarr", "root.whisparr"].map(name => \'#view-help input[name="\' + name + \'"]\')'), true);
   assert.equal(nativeCheck.includes('report.pathControls = expected.map(selector =>'), true);
@@ -92,6 +93,12 @@ test("the picker loads before app and its stylesheet follows the layout", () => 
   assert.ok(html.indexOf("folder-picker.js") < html.indexOf("app.js"), "folder-picker.js must load before app.js");
   assert.ok(html.indexOf("folder-picker.css") > html.indexOf("layout.css"), "folder-picker.css must load after layout.css");
   assert.doesNotMatch(picker, /\bimport\s|\brequire\(/, "no new JS dependency");
+});
+
+test("path-field chooser opens the in-app browser without waiting for a native panel", () => {
+  const choosePath = picker.match(/function choosePath\(input, status\) \{[\s\S]*?\n  \}/)[0];
+  assert.match(choosePath, /openBrowser\(input, status\)/);
+  assert.doesNotMatch(choosePath, /askNative|await/);
 });
 
 test("the chooser returns focus to the control that opened it", () => {

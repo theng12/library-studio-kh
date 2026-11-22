@@ -96,6 +96,15 @@ func MediaOptions(c config.Config, app string) (stock.Options, error) {
 	return a.Options()
 }
 
+// EnsureMediaRoot adds a folder to its owning app without changing existing roots.
+func EnsureMediaRoot(c config.Config, app, path string) (stock.RootFolderSetup, error) {
+	a, err := arr(c, app)
+	if err != nil {
+		return stock.RootFolderSetup{}, err
+	}
+	return a.EnsureRootFolder(stock.RootFolderInput{Path: path})
+}
+
 // AddSelected adds a Find result only with choices the app currently offers.
 func AddSelected(c config.Config, app string, raw json.RawMessage, sel stock.AddSelection) (string, error) {
 	a, err := arr(c, app)

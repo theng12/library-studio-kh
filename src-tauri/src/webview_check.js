@@ -31,10 +31,8 @@ addEventListener("DOMContentLoaded", () => {
       libraryPath: state.settings?.libraryPath || ""
     };
     await wait(() => document.querySelector("#settings-tab-general"), "app initialization");
-    // Every path control offers the chooser and accepts a typed path (owner,
-    // 2026-11-15): the two Settings folders, the Cleanup managed folder and the
-    // six Setup folders.
-    const expected = ["#settings-downloadpath", "#settings-librarypath", "#view-cleanup input[name=managedTrashPath]", ...["appDir", "downloadPath", "root.sonarr", "root.radarr", "root.lidarr", "root.whisparr"].map(name => '#view-help input[name="' + name + '"]')];
+    // Every path control offers the chooser and accepts a typed path.
+    const expected = ["#settings-downloadpath", "#settings-librarypath", "#settings-movieroot", "#settings-tvroot", "#view-cleanup input[name=managedTrashPath]", ...["appDir", "downloadPath", "root.sonarr", "root.radarr", "root.lidarr", "root.whisparr"].map(name => '#view-help input[name="' + name + '"]')];
     report.pathControls = expected.map(selector => {
       const input = document.querySelector(selector);
       // The chooser sits beside the field, not always immediately after it: the
@@ -73,7 +71,7 @@ addEventListener("DOMContentLoaded", () => {
     if (report.clipboard.state !== "ok" || !readbackOk) throw new Error("Clipboard write/readback was not demonstrated: " + (readbackError || status));
     document.querySelector("button[data-view=settings]").click();
     document.querySelector("#settings-tab-general").click();
-    document.querySelector("#settings-downloadpath + .folder-picker-choose").click();
+    document.querySelector("#settings-downloadpath ~ .folder-picker-choose").click();
     await wait(() => document.querySelector("#folder-picker-dialog")?.open && document.querySelector(".folder-picker-dir"), "in-app folder browser");
     // Pick a fixture directory, not a mount volume: volumes always list first.
     const dir = document.querySelector(".folder-picker-dir:not([data-volume])");

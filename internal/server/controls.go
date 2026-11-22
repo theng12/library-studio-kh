@@ -181,6 +181,26 @@ func (s *Server) registerControls(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, o)
 	})
+	mux.HandleFunc("POST /api/media/root-folder", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			App  string `json:"app"`
+			Path string `json:"path"`
+		}
+		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10))
+		dec.DisallowUnknownFields()
+		// The library app validates the folder itself, so a NAS path the app can
+		// reach is accepted even when this Mac cannot open it.
+		if dec.Decode(&req) != nil || (req.App != "Sonarr" && req.App != "Radarr") || !filepath.IsAbs(req.Path) {
+			writeJSON(w, 400, map[string]string{"error": "Choose a full movie or TV folder path."})
+			return
+		}
+		result, err := library.EnsureMediaRoot(s.Store.Get(), req.App, req.Path)
+		if err != nil {
+			writeJSON(w, 502, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, result)
+	})
 	mux.HandleFunc("POST /api/media/add", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			App               string          `json:"app"`
