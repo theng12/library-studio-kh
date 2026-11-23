@@ -1,5 +1,9 @@
 # What's new in Library Studio KH
 
+## 0.7.35 — 2026-11-23
+
+- Updating works now. The updater could not find its own hold token when the path started with `~`, so it stopped itself before it could update. It reads that path properly.
+
 ## 0.7.34 — 2026-11-23
 
 - A download that has not moved for a day is cleared by itself. Library removes it, tells Sonarr or Radarr to stop offering that release, and they look for a different one.
