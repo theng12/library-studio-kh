@@ -14,7 +14,8 @@ test("closing the window hides it, and no window left is not a quit", () => {
   assert.match(rust, /let _ = window\.hide\(\)/);
   // A destroyed window must not end the app either; only Quit and Restart do.
   assert.match(rust, /RunEvent::ExitRequested \{ code, api, \.\. \}/);
-  assert.match(rust, /if code\.is_none\(\) \{\s*api\.prevent_exit\(\)/);
+  // A hidden window must not end the app — except while Sparkle is installing or relaunching.
+  assert.match(rust, /if code\.is_none\(\) && !sparkle::updating\(\) \{\s*api\.prevent_exit\(\)/);
 });
 
 test("the window comes back from the menu bar item, the app menu and the Dock", () => {
