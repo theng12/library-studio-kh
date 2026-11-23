@@ -16,10 +16,36 @@ const rustflags = [
   `--remap-path-prefix=${home}=/home/owner`,
   `--remap-path-prefix=${home}/.cargo/registry=/rust/registry`,
 ].join(" ").trim();
-execFileSync(join("node_modules", ".bin", "tauri"), ["build"], {
+// Two steps so nested Sparkle code can be signed in the documented order before the image is
+// sealed: Tauri's own pass signs the XPCs and the framework but leaves Updater.app and Autoupdate
+// ad-hoc, and a nested binary signed after the app breaks `codesign --deep --strict`.
+const tauri = join("node_modules", ".bin", "tauri");
+execFileSync(tauri, ["build", "--bundles", "app"], {
   stdio: "inherit",
   env: { ...process.env, RUSTFLAGS: rustflags },
 });
+const staged = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
+const appBundle = `src-tauri/target/release/bundle/macos/${staged.productName}.app`;
+const identity = "KH Studio Local Signing";
+const frameworkB = `${appBundle}/Contents/Frameworks/Sparkle.framework/Versions/B`;
+for (const nested of [
+  `${frameworkB}/XPCServices/Downloader.xpc`,
+  `${frameworkB}/XPCServices/Installer.xpc`,
+  `${frameworkB}/Updater.app`,
+  `${frameworkB}/Autoupdate`,
+  frameworkB,
+]) {
+  execFileSync("codesign", ["--force", "--sign", identity, "--timestamp=none", "--options", "runtime", nested], { stdio: "inherit" });
+}
+// Library validation would refuse the self-signed, Team-ID-less Sparkle framework at launch; the
+// entitlement switches off only that check (Displays 0.1.8 died on it with a green gate).
+execFileSync("codesign", ["--force", "--sign", identity, "--timestamp=none", "--options", "runtime",
+  "--entitlements", "src-tauri/entitlements.plist", appBundle], { stdio: "inherit" });
+const ents = execFileSync("codesign", ["-d", "--entitlements", ":-", appBundle], { encoding: "utf8" }) + "";
+if (!/disable-library-validation/.test(ents)) throw new Error("the signed app lacks com.apple.security.cs.disable-library-validation");
+// The proof of the order: this must stay after the app signature.
+execFileSync("codesign", ["--verify", "--deep", "--strict", appBundle], { stdio: "inherit" });
+execFileSync(tauri, ["bundle", "--bundles", "dmg"], { stdio: "inherit" });
 
 // Tauri deletes the .app after wrapping it in the DMG, so the check reads the
 // delivered image: the same bytes the owner would install.
