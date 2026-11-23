@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Library Studio KH</title>
+    <link>https://theng12.github.io/library-studio-kh/appcast.xml</link>
+    <description>Library Studio KH updates</description>
+    <language>en</language>
+    <item>
+      <title>Version 0.7.35</title>
+      <pubDate>Mon, 23 Nov 2026 15:36:58 +0000</pubDate>
+      <sparkle:version>0.7.35</sparkle:version>
+      <sparkle:shortVersionString>0.7.35</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[## 0.7.35 — 2026-11-23
+
+- Updating works now. The updater could not find its own hold token when the path started with `~`, so it stopped itself before it could update. It reads that path properly.]]></description>
+      <enclosure url="https://github.com/theng12/library-studio-kh/releases/download/library-studio-0.7.35/17b43aae7898-Library.Studio.KH-0.7.35.dmg" sparkle:edSignature="0UpN60thihqaPovSyAEJRdXu+UrqyOpnzr8xLb/tYv/i1sFHg9DugkOg3eDt24eQPi4c48RF9urgly11yhtqCw==" length="13056594" type="application/octet-stream"/>
+    </item>
+  </channel>
+</rss>
