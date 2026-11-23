@@ -22,7 +22,7 @@ The full owner-facing product plan is in Desktop/All YouTube Stuff/Apps/Library 
 | Setup/help and browser controls | Scoped worker | internal/server/web/* only |
 | Mac background host lifecycle | Scoped worker | cmd/library-studio/*, internal/server/health*.go, scripts/manage-host.mjs, docs/HOST.md |
 
-Workers share this checkout with disjoint file ownership. No branch switching or worker commits; lead integrates and commits once. No worker contacts real apps, NAS, 1301, Gateway, Updater or Launcher. All automated tests use mocks. First steps for every worker: invoke ponytail, then query the Hub graph at /home/user/Developer/_graphs/hub/graphify-out/graph.json with --budget 1500 before hand searching. Applicable AGENTS sections: Layout, Verify before claiming done, Rules. UI also follows impeccable.
+Workers share this checkout with disjoint file ownership. No branch switching or worker commits; lead integrates and commits once. No worker contacts real apps, NAS, 1301, Gateway, Updater or Launcher. All automated tests use mocks. First steps for every worker: invoke ponytail, then query the Hub graph at $HOME/Developer/_graphs/hub/graphify-out/graph.json with --budget 1500 before hand searching. Applicable AGENTS sections: Layout, Verify before claiming done, Rules. UI also follows impeccable.
 
 ## Auth contract
 

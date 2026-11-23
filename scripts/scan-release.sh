@@ -12,7 +12,7 @@
 set -u
 [[ -n "${ZSH_VERSION:-}" ]] || { echo "REFUSED: run with zsh so the shared scanner's builtins run"; exit 2; }
 dmg=${1:?usage: scan-release.sh <dmg>}
-tools=${KH_MIRROR_TOOLS:-/home/user/Developer/_orchestra/developer-handoff/kh-mirror-tools}
+tools=${KH_MIRROR_TOOLS:-$HOME/Developer/_orchestra/developer-handoff/kh-mirror-tools}
 scan="$tools/scan-dmg.sh"
 [ -x "$scan" ] || { echo "REFUSED: $scan is missing — nothing would be scanned"; exit 2; }
 [ -f "$dmg" ] || { echo "REFUSED: $dmg does not exist — build before scanning"; exit 2; }

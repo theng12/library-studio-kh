@@ -8,7 +8,7 @@ Owner authorized continuation after confirming the dashboard on1301. Scope: item
 - Sources worker: NEW internal/stock/sources*.go, internal/library/sources*.go, internal/server/sources*.go only. No edits to shared files.
 - Lead: web UI (new media.js module plus small app/index hooks), mock fixtures, route registration, version/docs, integration/build/deployment.
 
-Workers first invoke ponytail and then query the Hub graph /home/user/Developer/_graphs/hub/graphify-out/graph.json with --budget1500 before hand search. Relevant AGENTS sections: Layout, Rules, Verify (mock tests only). No agents/commits/branch changes, real apps, credentials, SSH, dependencies or gates. Focused tests only; keep within ~25 tool calls and one deliverable. Read this contract and the existing helper files, not the whole product plan.
+Workers first invoke ponytail and then query the Hub graph $HOME/Developer/_graphs/hub/graphify-out/graph.json with --budget1500 before hand search. Relevant AGENTS sections: Layout, Rules, Verify (mock tests only). No agents/commits/branch changes, real apps, credentials, SSH, dependencies or gates. Focused tests only; keep within ~25 tool calls and one deliverable. Read this contract and the existing helper files, not the whole product plan.
 
 ## Tracking API and shapes
 
