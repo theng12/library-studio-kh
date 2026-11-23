@@ -1,5 +1,11 @@
 # What's new in Library Studio KH
 
+## 0.7.34 — 2026-11-23
+
+- A download that has not moved for a day is cleared by itself. Library removes it, tells Sonarr or Radarr to stop offering that release, and they look for a different one.
+- Your files are never touched, and this only applies to downloads those apps started.
+- A download showing an error is left alone: that is usually something on this Mac, and dropping a good release because of it would lose it.
+
 ## 0.7.33 — 2026-11-23
 
 - Library now updates itself. When a new version is available it waits for work in flight to settle, installs quietly, and starts the new version by itself — no separate updater app.
