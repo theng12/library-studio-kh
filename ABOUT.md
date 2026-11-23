@@ -21,6 +21,10 @@ stays in the stock apps and on the NAS.
 - Optionally cleans local copies only after qBittorrent says complete, the library
   app says the whole download was imported, no queue still lists it, retention has
   passed and every connected app answered. Automatic cleanup starts off.
+- Clears a download that has stopped moving: a day with no progress from
+  qBittorrent removes it, blocklists that release in Sonarr or Radarr and leaves
+  them to pick another. Files, history and library records stay, and a download
+  reporting an error is left alone — that is usually this Mac, not the release.
 - Offers Setup & help, native app settings and optional at-login startup from the
   packaged server. Settings lists and adds movie folders in Radarr and TV folders
   in Sonarr without moving existing titles; local media scanning is separate.
@@ -49,5 +53,5 @@ path and its own signed appcast, but Library does not hold the Studio job queue.
 
 ## Current version
 
-0.7.33, from the `version` field in `package.json`; the newest `CHANGELOG.md` entry
+0.7.34, from the `version` field in `package.json`; the newest `CHANGELOG.md` entry
 agrees.
