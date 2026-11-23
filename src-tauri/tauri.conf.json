@@ -44,7 +44,10 @@
     },
     "macOS": {
       "minimumSystemVersion": "13.0",
-      "signingIdentity": "KH Studio Local Signing"
+      "signingIdentity": "KH Studio Local Signing",
+      "frameworks": [
+        "vendor/khsparkle/Sparkle.framework"
+      ]
     },
     "windows": {
       "nsis": {

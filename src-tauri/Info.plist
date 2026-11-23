@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Sparkle pilot: the shim reads these from the bundle. SUPublicEDKey is this app's own key
+       (~/.kh-sparkle/app.librarystudiokh.desktop/private.key, 0600; recovery copy on the KH drives;
+       never in a repo, never regenerated while an install trusts it). KHHoldURL matches the app's
+       own hold route on port 8643. -->
+  <key>SUFeedURL</key>
+  <string>https://theng12.github.io/library-studio-kh/appcast.xml</string>
+  <key>SUPublicEDKey</key>
+  <string>2WBwN34uUG97avHCHZdauDtJmnQXQF4pg5rlIiH21oQ=</string>
+  <key>KHHoldURL</key>
+  <string>http://127.0.0.1:8643/api/maintenance/hold</string>
+  <key>KHHoldTokenFile</key>
+  <string>~/Library/KHUpdater/state/hold-token</string>
+  <key>SUEnableAutomaticChecks</key>
+  <true/>
+</dict>
+</plist>

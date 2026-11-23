@@ -11,6 +11,40 @@ use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 #[cfg(feature = "webview-check")]
 mod webview_check;
 
+/// Sparkle through the shared shim: one C call, one state flag, no Tauri types in between.
+mod sparkle {
+    use std::sync::atomic::{AtomicU8, Ordering};
+
+    extern "C" {
+        fn kh_sparkle_start() -> i32;
+        fn kh_sparkle_last_error() -> *const std::ffi::c_char;
+        fn kh_sparkle_set_state_callback(cb: extern "C" fn(i32));
+    }
+
+    static STATE: AtomicU8 = AtomicU8::new(0);
+
+    extern "C" fn on_state(state: i32) {
+        STATE.store(state.clamp(0, 2) as u8, Ordering::SeqCst);
+    }
+
+    /// True while Sparkle is installing or relaunching: the app must not refuse its own quit then.
+    pub fn updating() -> bool {
+        STATE.load(Ordering::SeqCst) >= 1
+    }
+
+    /// Called once, after the window exists. A refusal lands in the log with its reason.
+    pub fn start() {
+        unsafe {
+            kh_sparkle_set_state_callback(on_state);
+            let rc = kh_sparkle_start();
+            if rc != 0 {
+                let reason = std::ffi::CStr::from_ptr(kh_sparkle_last_error()).to_string_lossy();
+                eprintln!("kh-sparkle: refused to start ({rc}): {reason}");
+            }
+        }
+    }
+}
+
 fn app_context() -> tauri::Context<tauri::Wry> { tauri::generate_context!() }
 
 struct Server(Mutex<Option<Child>>);
@@ -420,15 +454,18 @@ fn main() {
             if let Err(e) = open_main_window(app.handle(), &url) {
                 report_and_exit(&format!("the Library window could not open: {e}"));
             }
+            // Last: the shim wants the window in place, and the hidden checks return before here.
+            sparkle::start();
             Ok(())
         })
         .on_menu_event(|app, event| run_action(app, event.id().as_ref()))
         .build(app_context())
         .expect("Library Studio KH could not start")
         .run(|app, event| {
-            // No window left is not a quit either: only Quit, Cmd+Q or Restart exits.
+            // No window left is not a quit either: only Quit, Cmd+Q or Restart exits — except while
+            // Sparkle is installing or relaunching, which needs the process to exit.
             if let RunEvent::ExitRequested { code, api, .. } = &event {
-                if code.is_none() {
+                if code.is_none() && !sparkle::updating() {
                     api.prevent_exit();
                 }
             }
