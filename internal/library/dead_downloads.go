@@ -24,25 +24,39 @@ type DeadCandidate struct {
 	Hash       string    `json:"hash"`
 	Name       string    `json:"name"`
 	SavePath   string    `json:"savePath"`
+	Reason     string    `json:"reason,omitempty"` // missing | stalled
 	FirstSeen  time.Time `json:"firstSeen,omitempty"`
 	EligibleAt time.Time `json:"eligibleAt,omitempty"`
 }
 
-// deadRow is true only for a row qBittorrent itself reports as missing files,
-// and only when the owner has not paused it and nothing is being checked or
-// moved. An active download is never dead.
-func deadRow(t stock.Torrent) bool {
+// deadRow says why a row is dead, or "" when it is not. A paused row and one
+// being checked or moved is never dead. Two reasons count:
+//
+//   - missing: qBittorrent reports the files gone (already imported elsewhere).
+//   - stalled: no metadata, or no peer traffic with the file still incomplete.
+//     Nothing will move it, so the release is blocklisted and a different one
+//     is searched for.
+//
+// `error` is deliberately not dead: that is usually this Mac (a permission, a
+// path, a full disk), not a bad release, and blocklisting a good release would
+// be wrong. It stays visible and is fixed by hand.
+func deadRow(t stock.Torrent) string {
 	state := strings.ToLower(t.State)
-	if state != "missingfiles" {
-		return false
-	}
 	if strings.HasPrefix(state, "paused") || strings.HasPrefix(state, "stopped") {
-		return false
+		return ""
 	}
 	if strings.Contains(state, "check") || state == "moving" || state == "allocating" {
-		return false
+		return ""
 	}
-	return true
+	if state == "missingfiles" {
+		return "missing"
+	}
+	if state == "metadl" || state == "stalleddl" {
+		if t.Progress < 1 {
+			return "stalled"
+		}
+	}
+	return ""
 }
 
 func loadDeadState(home string) map[string]time.Time {
@@ -105,7 +119,8 @@ func deadDownloads(c config.Config, home string, now time.Time) ([]DeadCandidate
 	out := []DeadCandidate{}
 	problems := []string{}
 	for _, t := range ts {
-		if !deadRow(t) {
+		reason := deadRow(t)
+		if reason == "" {
 			continue
 		}
 		h := strings.ToUpper(t.Hash)
@@ -118,7 +133,7 @@ func deadDownloads(c config.Config, home string, now time.Time) ([]DeadCandidate
 			state[h] = now
 		}
 		out = append(out, DeadCandidate{
-			Hash: h, Name: t.Name, SavePath: t.SavePath, FirstSeen: first,
+			Hash: h, Name: t.Name, SavePath: t.SavePath, Reason: reason, FirstSeen: first,
 			EligibleAt: first.Add(time.Duration(c.DeadCleanupHours) * time.Hour),
 		})
 	}
@@ -199,6 +214,7 @@ type ArrRemoval struct {
 	Title      string    `json:"title"`
 	Hash       string    `json:"hash"`
 	SavePath   string    `json:"savePath"`
+	Reason     string    `json:"reason,omitempty"` // missing | stalled
 	QueueID    int       `json:"queueId"`
 	EligibleAt time.Time `json:"eligibleAt,omitempty"`
 }
@@ -228,7 +244,7 @@ func DeadArrQueued(c config.Config, home string, now time.Time) ([]ArrRemoval, [
 			if !ok || e.ID <= 0 {
 				continue
 			}
-			out = append(out, ArrRemoval{App: a.Name, Title: cand.Name, Hash: cand.Hash, SavePath: cand.SavePath, QueueID: e.ID, EligibleAt: cand.EligibleAt})
+			out = append(out, ArrRemoval{App: a.Name, Title: cand.Name, Hash: cand.Hash, SavePath: cand.SavePath, Reason: cand.Reason, QueueID: e.ID, EligibleAt: cand.EligibleAt})
 		}
 	}
 	if len(problems) > 0 {
@@ -238,8 +254,10 @@ func DeadArrQueued(c config.Config, home string, now time.Time) ([]ArrRemoval, [
 }
 
 // SweepDeadArr removes the queue row of a dead, unimported download once the
-// grace has passed. It removes from the app's queue only: files, history and
-// library records stay, and the release is never blocklisted.
+// grace has passed. Files, history and library records always stay. A missing
+// row only loses its queue row — the release was fine, the files were moved. A
+// stalled row is also dropped from the download client and blocklisted, and the
+// app is left to search for a different release for the same episode or movie.
 func SweepDeadArr(c config.Config, home string, now time.Time, execute bool) ([]ArrRemoval, []string, error) {
 	if !c.DeadArrCleanupOn {
 		return nil, nil, nil
@@ -262,11 +280,16 @@ func SweepDeadArr(c config.Config, home string, now time.Time, execute bool) ([]
 			problems = append(problems, err.Error())
 			continue
 		}
-		if err := a.RemoveQueue(item.QueueID); err != nil {
+		if item.Reason == "stalled" {
+			err = a.RemoveStalled(item.QueueID)
+		} else {
+			err = a.RemoveQueue(item.QueueID)
+		}
+		if err != nil {
 			problems = append(problems, item.App+" could not remove its queue row for "+item.Title+": "+err.Error())
 			continue
 		}
-		RecordEvent(home, Item{ID: item.Hash, Kind: "download-arr-removed", Title: item.Title, App: item.App, SourcePath: item.SavePath, When: now})
+		RecordEvent(home, Item{ID: item.Hash, Kind: "download-arr-removed", Title: item.Title, App: item.App, Status: item.Reason, SourcePath: item.SavePath, When: now})
 	}
 	return removed, problems, nil
 }

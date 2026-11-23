@@ -65,11 +65,18 @@ func (s *arrStub) deletes() []string {
 // arrFixture: a dead torrent in qBittorrent plus a Sonarr queue row for it.
 func arrFixture(t *testing.T, imported bool) (config.Config, string, *arrStub) {
 	t.Helper()
+	return arrFixtureState(t, imported, "missingFiles")
+}
+
+// arrFixtureState is arrFixture with the qBittorrent state chosen, for the
+// stalled path.
+func arrFixtureState(t *testing.T, imported bool, state string) (config.Config, string, *arrStub) {
+	t.Helper()
 	deletes := []url.Values{}
 	qbit := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v2/torrents/info":
-			json.NewEncoder(w).Encode([]map[string]any{{"hash": strings.ToLower(deadHash), "name": "Dead Show S01E09", "progress": 0.3, "state": "missingFiles", "save_path": "/downloads/tv"}})
+			json.NewEncoder(w).Encode([]map[string]any{{"hash": strings.ToLower(deadHash), "name": "Dead Show S01E09", "progress": 0.3, "state": state, "save_path": "/downloads/tv"}})
 		case "/api/v2/torrents/delete":
 			r.ParseForm()
 			deletes = append(deletes, r.PostForm)
@@ -133,6 +140,26 @@ func TestDeadArrCleanupRemovesOnlyTheQueueRowAfterGrace(t *testing.T) {
 	events, err := osRead(home, "removed.json")
 	if err != nil || !strings.Contains(events, "download-arr-removed") || !strings.Contains(events, "Dead Show S01E09") {
 		t.Fatalf("the app-queue removal must be recorded in Activity: %v %s", err, events)
+	}
+}
+
+func TestStalledDownloadIsBlocklistedAndSearchedAgain(t *testing.T) {
+	c, home, stub := arrFixtureState(t, false, "stalledDL")
+	now := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
+	if removed, _, err := SweepDeadArr(c, home, now, true); err != nil || len(removed) != 0 {
+		t.Fatalf("first sighting starts the grace: %v %v", removed, err)
+	}
+	if removed, _, err := SweepDeadArr(c, home, now.Add(23*time.Hour), true); err != nil || len(removed) != 0 {
+		t.Fatalf("a stalled row inside the grace must not be touched: %v %v", removed, err)
+	}
+	removed, problems, err := SweepDeadArr(c, home, now.Add(25*time.Hour), true)
+	if err != nil || len(problems) != 0 || len(removed) != 1 || removed[0].Reason != "stalled" {
+		t.Fatalf("a stalled row past the grace must be swept: removed=%v problems=%v err=%v", removed, problems, err)
+	}
+	got := stub.deletes()
+	if len(got) != 1 || !strings.Contains(got[0], "removeFromClient=true") ||
+		!strings.Contains(got[0], "blocklist=true") || !strings.Contains(got[0], "skipRedownload=false") {
+		t.Fatalf("a stalled release must leave the client, be blocklisted and be searched again, got %v", got)
 	}
 }
 

@@ -194,6 +194,17 @@ func (a *Arr) RemoveQueue(id int) error {
 	return a.do("DELETE", fmt.Sprintf("/queue/%d?%s", id, q.Encode()), nil, nil)
 }
 
+// RemoveStalled is RemoveQueue for a release that cannot finish: it also drops
+// the download client's entry and blocklists that release, so the app's own
+// redownload picks a different one. History and library records are untouched.
+func (a *Arr) RemoveStalled(id int) error {
+	if id <= 0 {
+		return fmt.Errorf("%s didn't report a queue id for that download", a.Name)
+	}
+	q := url.Values{"removeFromClient": {"true"}, "blocklist": {"true"}, "skipRedownload": {"false"}}
+	return a.do("DELETE", fmt.Sprintf("/queue/%d?%s", id, q.Encode()), nil, nil)
+}
+
 func (a *Arr) do(method, path string, body, out any) (err error) {
 	status := 0
 	defer func() {
