@@ -12,8 +12,7 @@
 
 ## 0.7.33 — 2026-11-23
 
-- Library now updates itself. When a new version is available it waits for work in flight to settle, installs quietly, and starts the new version by itself — no separate updater app.
-- Update checks are on by default; nothing asks for a password or shows a prompt.
+- Update checking was added here, but no 0.7.33 build was ever released. Self-updating starts with 0.7.35.
 
 ## 0.7.32 — 2026-11-23
 
