@@ -14,7 +14,7 @@ URL=${3:?download url}
 NOTES=${4:-}
 KEY="$HOME/.kh-sparkle/app.librarystudiokh.desktop/private.key"
 SIGN=/Users/vengtheng/Developer/_orchestra/developer-system/sparkle-shim-20261123/vendor/bin/sign_update
-OUT=docs/appcast.xml
+OUT=${APPCAST_OUT:-docs/appcast.xml}
 MIN=13.0
 
 [ -f "$KEY" ] || { echo "no EdDSA key at $KEY" >&2; exit 1; }
