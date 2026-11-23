@@ -24,6 +24,8 @@ stays in the stock apps and on the NAS.
 - Offers Setup & help, native app settings and optional at-login startup from the
   packaged server. Settings lists and adds movie folders in Radarr and TV folders
   in Sonarr without moving existing titles; local media scanning is separate.
+- Updates itself from its own signed appcast: it waits for work in flight to
+  settle, installs quietly and starts the new version by itself.
 - Supports Tailscale-only browser access from a phone when explicitly enabled:
   sign-in, 12-hour sessions or 30 days with "Remember this device", and session
   revocation in Settings.
@@ -43,9 +45,9 @@ Build the signed desktop app and DMG with:
 It is a standalone app that drives the owner's existing library stack; the README
 describes no Gateway or Hub role for it. A single Mac can also serve the interface
 over its Tailscale address. Packaging follows the shared signed-desktop and Updater
-feed path, but Library does not hold the Studio job queue.
+path and its own signed appcast, but Library does not hold the Studio job queue.
 
 ## Current version
 
-0.7.32, from the `version` field in `package.json`; the newest `CHANGELOG.md` entry
+0.7.33, from the `version` field in `package.json`; the newest `CHANGELOG.md` entry
 agrees.
