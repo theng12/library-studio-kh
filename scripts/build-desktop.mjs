@@ -1,7 +1,7 @@
 // Builds the Go sidecar and the signed desktop bundle, then proves the shipped
 // code carries no owner path. Rust embeds its absolute source paths unless they
 // are remapped, so every build maps them away and the shipped DMG is checked.
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -45,7 +45,14 @@ const ents = execFileSync("codesign", ["-d", "--entitlements", ":-", appBundle],
 if (!/disable-library-validation/.test(ents)) throw new Error("the signed app lacks com.apple.security.cs.disable-library-validation");
 // The proof of the order: this must stay after the app signature.
 execFileSync("codesign", ["--verify", "--deep", "--strict", appBundle], { stdio: "inherit" });
-execFileSync(tauri, ["bundle", "--bundles", "dmg"], { stdio: "inherit" });
+// The DMG is built here, not by `tauri bundle`: its bundler re-creates the .app from the binary and
+// drops both the nested signatures and the entitlement (measured 2026-11-23).
+const dmgOut = `src-tauri/target/release/bundle/dmg/${staged.productName}_${staged.version}_${execFileSync("rustc", ["--print", "host-tuple"]).toString().trim().split("-")[0]}.dmg`;
+const staging = mkdtempSync(join(tmpdir(), "library-dmg-src-"));
+execFileSync("cp", ["-R", appBundle, join(staging, `${staged.productName}.app`)]);
+execFileSync("ln", ["-s", "/Applications", join(staging, "Applications")]);
+execFileSync("mkdir", ["-p", "src-tauri/target/release/bundle/dmg"]);
+execFileSync("hdiutil", ["create", "-volname", staged.productName, "-srcfolder", staging, "-format", "UDZO", "-ov", dmgOut], { stdio: "inherit" });
 
 // Tauri deletes the .app after wrapping it in the DMG, so the check reads the
 // delivered image: the same bytes the owner would install.
@@ -70,6 +77,16 @@ const mount = mkdtempSync(join(tmpdir(), "library-paths-"));
 try {
   execFileSync("hdiutil", ["attach", "-readonly", "-nobrowse", "-mountpoint", mount, dmg], { stdio: "ignore" });
   walk(mount);
+  // The shipped app, not the staging copy: entitlement, nested identity and the deep check.
+  const shipped = join(mount, `${staged.productName}.app`);
+  execFileSync("codesign", ["--verify", "--deep", "--strict", shipped]);
+  const shippedEnts = execFileSync("codesign", ["-d", "--entitlements", ":-", shipped], { encoding: "utf8" }) + "";
+  if (!/disable-library-validation/.test(shippedEnts)) throw new Error("the shipped app lacks com.apple.security.cs.disable-library-validation");
+  for (const rel of ["Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app", "Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate"]) {
+    const r = spawnSync("codesign", ["-d", "-vv", join(shipped, rel)], { encoding: "utf8" });
+    const who = (r.stdout || "") + (r.stderr || "");
+    if (!/Authority=KH Studio Local Signing/.test(who)) throw new Error(`nested code not signed with the estate identity: ${rel}`);
+  }
   if (leaks.length) {
     console.error("owner paths found in the shipped app:\n  " + leaks.join("\n  "));
     process.exitCode = 1;
