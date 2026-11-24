@@ -6,15 +6,15 @@
     <description>Library Studio KH updates</description>
     <language>en</language>
     <item>
-      <title>Version 0.7.36</title>
-      <pubDate>Tue, 24 Nov 2026 05:06:11 +0000</pubDate>
-      <sparkle:version>0.7.36</sparkle:version>
-      <sparkle:shortVersionString>0.7.36</sparkle:shortVersionString>
+      <title>Version 0.7.37</title>
+      <pubDate>Tue, 24 Nov 2026 08:05:13 +0000</pubDate>
+      <sparkle:version>0.7.37</sparkle:version>
+      <sparkle:shortVersionString>0.7.37</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[## 0.7.36 — 2026-11-24
+      <description><![CDATA[## 0.7.37 — 2026-11-24
 
-- Nothing changes in how Library works. This release adds pictures of the app to its repository, so you can see the screens before you install it.]]></description>
-      <enclosure url="https://github.com/theng12/library-studio-kh/releases/download/library-studio-0.7.36/91a66e6a918c-Library.Studio.KH-0.7.36.dmg" sparkle:edSignature="3l6wp5TSeNxWCkZ1+lhcvulf4U5UjsEu8o5YFsSj5065LbuZJ4VscoAnb3NB6XA+t13aCz5FPEpPaHAH6LEEBg==" length="13057984" type="application/octet-stream"/>
+- Nothing changes in how Library works. A build now refuses to start if the app's screenshots are missing, and the app's own name and description live in one file beside the code instead of only in the release feed.]]></description>
+      <enclosure url="https://github.com/theng12/library-studio-kh/releases/download/library-studio-0.7.37/1dc1404fa7a5-Library.Studio.KH-0.7.37.dmg" sparkle:edSignature="aRXxn+AZ7nrVRFhrRiUHfEta1alMDr2ROv4Jd6R8Tx2u9KWesMeg5o7ch9pdWDokMQ5qjsRhtRXHSJXVGCqqCA==" length="13057869" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
