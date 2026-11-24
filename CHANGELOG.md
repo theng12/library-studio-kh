@@ -1,5 +1,9 @@
 # What's new in Library Studio KH
 
+## 0.7.37 — 2026-11-24
+
+- Nothing changes in how Library works. A build now refuses to start if the app's screenshots are missing, and the app's own name and description live in one file beside the code instead of only in the release feed.
+
 ## 0.7.36 — 2026-11-24
 
 - Nothing changes in how Library works. This release adds pictures of the app to its repository, so you can see the screens before you install it.
