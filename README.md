@@ -8,6 +8,14 @@ The owner's media library manager. Media downloads and searches run in the stock
 
 Only use sources and content you are allowed to download.
 
+## What it looks like
+
+![Activity: every download, import and copy in one timeline, each named with the app that owns it](docs/screenshots/activity-light.png)
+
+![My library: films, series and music as cards, each saying whether its local copy is verified](docs/screenshots/library-light.png)
+
+Also: [Activity in dark](docs/screenshots/activity-dark.png) · [Cleanup policy](docs/screenshots/cleanup-light.png)
+
 ## How removal stays safe
 
 The old permanent-delete cleanup is retired. The optional staged policy is implemented and specified in [docs/STORAGE_POLICY.md](docs/STORAGE_POLICY.md): keep local copies for 3 days after verified import, keep them in the local download folder's `_trash` until day 7 total, then retain them in macOS Trash for up to 30 days; below the editable free-space threshold, eligible Library-owned native Trash may be removed early, oldest first. An explicit pressure override can also bypass staging waits for completed NAS-verified copies; it starts off. The periods, threshold and local managed folder are editable on Cleanup. Preview changes nothing; automatic cleanup starts off and deployment does not turn it on.

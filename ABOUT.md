@@ -53,5 +53,5 @@ path and its own signed appcast, but Library does not hold the Studio job queue.
 
 ## Current version
 
-0.7.35, from the `version` field in `package.json`; the newest `CHANGELOG.md` entry
+0.7.36, from the `version` field in `package.json`; the newest `CHANGELOG.md` entry
 agrees.

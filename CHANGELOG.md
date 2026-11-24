@@ -1,5 +1,9 @@
 # What's new in Library Studio KH
 
+## 0.7.36 — 2026-11-24
+
+- Nothing changes in how Library works. This release adds pictures of the app to its repository, so you can see the screens before you install it.
+
 ## 0.7.35 — 2026-11-23
 
 - Updating works now. The updater could not find its own hold token when the path started with `~`, so it stopped itself before it could update. It reads that path properly.
