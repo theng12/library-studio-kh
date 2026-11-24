@@ -6,15 +6,15 @@
     <description>Library Studio KH updates</description>
     <language>en</language>
     <item>
-      <title>Version 0.7.35</title>
-      <pubDate>Mon, 23 Nov 2026 15:36:58 +0000</pubDate>
-      <sparkle:version>0.7.35</sparkle:version>
-      <sparkle:shortVersionString>0.7.35</sparkle:shortVersionString>
+      <title>Version 0.7.36</title>
+      <pubDate>Tue, 24 Nov 2026 05:06:11 +0000</pubDate>
+      <sparkle:version>0.7.36</sparkle:version>
+      <sparkle:shortVersionString>0.7.36</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[## 0.7.35 — 2026-11-23
+      <description><![CDATA[## 0.7.36 — 2026-11-24
 
-- Updating works now. The updater could not find its own hold token when the path started with `~`, so it stopped itself before it could update. It reads that path properly.]]></description>
-      <enclosure url="https://github.com/theng12/library-studio-kh/releases/download/library-studio-0.7.35/17b43aae7898-Library.Studio.KH-0.7.35.dmg" sparkle:edSignature="0UpN60thihqaPovSyAEJRdXu+UrqyOpnzr8xLb/tYv/i1sFHg9DugkOg3eDt24eQPi4c48RF9urgly11yhtqCw==" length="13056594" type="application/octet-stream"/>
+- Nothing changes in how Library works. This release adds pictures of the app to its repository, so you can see the screens before you install it.]]></description>
+      <enclosure url="https://github.com/theng12/library-studio-kh/releases/download/library-studio-0.7.36/91a66e6a918c-Library.Studio.KH-0.7.36.dmg" sparkle:edSignature="3l6wp5TSeNxWCkZ1+lhcvulf4U5UjsEu8o5YFsSj5065LbuZJ4VscoAnb3NB6XA+t13aCz5FPEpPaHAH6LEEBg==" length="13057984" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
