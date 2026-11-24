@@ -6,6 +6,9 @@ import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
+// A release is not done without its screenshots (RELEASE-POLICY §5d): refuse to build rather than
+// ship a version that dropped them, with nothing red anywhere.
+execFileSync("node", ["scripts/check-screenshots.mjs"], { stdio: "inherit" });
 execFileSync("node", ["scripts/build-server.mjs"], { stdio: "inherit" });
 
 const home = homedir();

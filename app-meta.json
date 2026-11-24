@@ -1,0 +1,11 @@
+{
+  "name": "Library Studio KH",
+  "bundle_id": "app.librarystudiokh.desktop",
+  "bundle_name": "Library Studio KH.app",
+  "type": "entertainment",
+  "tagline": "Media library and downloads for your Sonarr, Radarr and qBittorrent stack.",
+  "description": "Library Studio KH tracks downloads, imports and local copies for a Sonarr, Radarr, Lidarr and qBittorrent setup, and now updates itself.",
+  "hold_url": "http://127.0.0.1:8643/api/maintenance/hold",
+  "hold_since": "0.7.21",
+  "kind": "app-dmg"
+}
