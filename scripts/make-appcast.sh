@@ -13,7 +13,7 @@ DMG=${2:?dmg}
 URL=${3:?download url}
 NOTES=${4:-}
 KEY="$HOME/.kh-sparkle/app.librarystudiokh.desktop/private.key"
-SIGN=/Users/vengtheng/Developer/_orchestra/developer-system/sparkle-shim-20261123/vendor/bin/sign_update
+SIGN="$HOME/Developer/_orchestra/developer-system/sparkle-shim-20261123/vendor/bin/sign_update"
 OUT=${APPCAST_OUT:-docs/appcast.xml}
 MIN=13.0
 
