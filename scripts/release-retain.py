@@ -2,9 +2,9 @@
 """Retain the accepted dist pair and rotate older installers automatically.
 
 Calls the shared portfolio helper (release-dist.py) with the pin document, then
-moves any remaining Library DMG older than the newest three into
-`~/Desktop/_trash/library-studio-kh/<date> <what>/`, so keeping the latest three
-never needs a hand step.
+moves any remaining Library DMG older than the newest two into
+`~/Desktop/_trash/library-studio-kh/<date> <what>/`, so keeping the latest release
+and the one before it never needs a hand step.
 
 Guards: a version named by the live or previous feed release, the dist ledger,
 artifact retention, rollback/state records, a queued publish job or the
@@ -155,7 +155,8 @@ def main():
     parser.add_argument("--project", default=project, help="project whose dist/ is rotated by default")
     parser.add_argument("--trash", default=None, help="default: ~/Desktop/_trash/library-studio-kh/<date> library dist rotation")
     parser.add_argument("--prefix", default=APP_NAME)
-    parser.add_argument("--keep", type=int, default=3)
+    parser.add_argument("--keep", type=int, default=2,
+                        help="default 2: the newest verified release and the one before it (owner 2026-11-16)")
     args = parser.parse_args()
 
     helper = {}
