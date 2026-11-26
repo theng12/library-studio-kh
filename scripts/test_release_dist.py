@@ -28,6 +28,12 @@ class ReleaseDistContract(unittest.TestCase):
         self.dist.mkdir()
         self.pins = self.root / 'accepted pins.json'
 
+    def trash(self):
+        """The one trash, on the Desktop (owner 2026-11-18), inside this fixture.
+
+        realpath: $TMPDIR is /var/folders/…, and the helper refuses a symlinked component."""
+        return Path(os.path.realpath(self.root / 'Desktop' / '_trash' / 'library-studio-kh' / 'dist'))
+
     def pin(self, version, data):
         source = self.sources / (hashlib.sha256(data).hexdigest()[:12] + '-feed-artifact.dmg')
         source.write_bytes(data)
@@ -35,8 +41,18 @@ class ReleaseDistContract(unittest.TestCase):
         evidence.write_text(json.dumps({'version': version, 'installedVerified': True}))
         return {'version': version, 'source': str(source), 'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data), 'evidence': str(evidence)}
 
+    def pins_doc(self, pins):
+        """A pins document that names the Desktop trash, as the helper requires.
+
+        Without this key the helper defaults to `project/_trash/dist`, which put 975 MB
+        inside Business's checkout and is retired by the owner's one-trash rule."""
+        trash = self.trash().parent
+        trash.mkdir(parents=True, exist_ok=True)
+        return {'schema': 1, 'apps': [{'app': APP, 'project': str(self.project),
+                                       'retirement_trash': str(trash), 'releases': pins}]}
+
     def run_retention(self, pins, ok=True):
-        self.pins.write_text(json.dumps({'schema': 1, 'apps': [{'app': APP, 'project': str(self.project), 'releases': pins}]}))
+        self.pins.write_text(json.dumps(self.pins_doc(pins)))
         # Same shell command and quoted argument passing used by npm run.
         result = subprocess.run(['/bin/sh', '-c', COMMAND + ' "$@"', 'retain:accepted', str(self.pins)], cwd=ROOT, capture_output=True, text=True, timeout=10)
         if not ok:
@@ -103,9 +119,11 @@ class ReleaseDistContract(unittest.TestCase):
         self.assertEqual(len(result['retired']), 1)
         self.assertFalse((self.dist / (APP + '-0.7.4.dmg')).exists())
         self.assertEqual(unmanaged.read_bytes(), b'preserve unowned file')
-        retired = list((self.project / '_trash/dist').glob('*'))
+        retired = list(self.trash().glob('*'))
         self.assertEqual(len(retired), 1)
         self.assertEqual(retired[0].read_bytes(), b'previous')
+        # One trash, on the Desktop: nothing may be written inside the checkout.
+        self.assertFalse((self.project / '_trash').exists(), 'retired an installer into the project')
         self.assertEqual(set(self.ledger()), {APP + '-0.7.6.dmg', APP + '-0.7.5.dmg'})
 
 
